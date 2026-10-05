@@ -1,0 +1,88 @@
+{
+  "repo": "nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos",
+  "revision": "522e4ffa3bb9d9729f79b241c65fc9e589f2659c",
+  "family": "human_pretrain",
+  "task": "CloseBlenderLid",
+  "episode_index": 0,
+  "total_bytes": 1133145,
+  "files": [
+    {
+      "path": "official-episode/meta/info.json",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/meta/info.json",
+      "bytes": 4656,
+      "sha256": "e206b6c5a27694a227da6ddd3d4f2647a93f4d8bb114954acd339d1f442d1362"
+    },
+    {
+      "path": "official-episode/meta/modality.json",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/meta/modality.json",
+      "bytes": 1869,
+      "sha256": "59589093ca5f946ed06328319cb43d0609492dbd6c583b1c2617803ae3e473fb"
+    },
+    {
+      "path": "official-episode/meta/episodes.jsonl",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/meta/episodes.jsonl",
+      "bytes": 11550,
+      "sha256": "de88a03a1c1e483a9e1d4bee9fa196424d61257cf75b2ef4bf43401925d672d0"
+    },
+    {
+      "path": "official-episode/meta/tasks.jsonl",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/meta/tasks.jsonl",
+      "bytes": 132,
+      "sha256": "9d0cb9764e243abe60ab0e18f623c5449fce7efc8971930e9706c2f162085938"
+    },
+    {
+      "path": "official-episode/meta/embodiment.json",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/meta/embodiment.json",
+      "bytes": 220,
+      "sha256": "fdbfb5b94ae9f14545cac33e225645b3e84e9cdac4a74dc5ad7fdd86dd923964"
+    },
+    {
+      "path": "official-episode/extras/dataset_meta.json",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/extras/dataset_meta.json",
+      "bytes": 11783,
+      "sha256": "8eda03672cae42ce304033e3a11c0119da27144edb16bfba5ed2e2caafa30f8d"
+    },
+    {
+      "path": "official-episode/data/chunk-000/episode_000000.parquet",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/data/chunk-000/episode_000000.parquet",
+      "bytes": 56302,
+      "sha256": "3a74007a30c8f0f324fa57b873dc04bbce92cc8af127b9e3a09d5bfeb3d82072"
+    },
+    {
+      "path": "official-episode/extras/episode_000000/ep_meta.json",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/extras/episode_000000/ep_meta.json",
+      "bytes": 13216,
+      "sha256": "7f40686023093e358d52867bc7d2c5b4d5bc131176e622e6800e08c778bcd8da"
+    },
+    {
+      "path": "official-episode/extras/episode_000000/model.xml.gz",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/extras/episode_000000/model.xml.gz",
+      "bytes": 93417,
+      "sha256": "1b72357ade4b3f698534c0eec40f387025738305da6d277d53eda5d41a314b24"
+    },
+    {
+      "path": "official-episode/extras/episode_000000/states.npz",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/extras/episode_000000/states.npz",
+      "bytes": 195072,
+      "sha256": "4f2ccf1b0a330e1bdd75484da0dd14bd1775c7218f31881850361439ba57978b"
+    },
+    {
+      "path": "official-episode/videos/chunk-000/observation.images.robot0_agentview_left/episode_000000.mp4",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/videos/chunk-000/observation.images.robot0_agentview_left/episode_000000.mp4",
+      "bytes": 226806,
+      "sha256": "d971d66e1a35955ba5c7d8ee9394a411cdfdcf2fe27e3692524cd830231aa1c6"
+    },
+    {
+      "path": "official-episode/videos/chunk-000/observation.images.robot0_agentview_right/episode_000000.mp4",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/videos/chunk-000/observation.images.robot0_agentview_right/episode_000000.mp4",
+      "bytes": 229581,
+      "sha256": "a653c30a1a93a6341eb65d2b808edd43cfae61946b02185c3849d65d387c9462"
+    },
+    {
+      "path": "official-episode/videos/chunk-000/observation.images.robot0_eye_in_hand/episode_000000.mp4",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Robotics-Manipulation-Kitchen-Demos/resolve/522e4ffa3bb9d9729f79b241c65fc9e589f2659c/pretrain/atomic/CloseBlenderLid/20250822/lerobot/videos/chunk-000/observation.images.robot0_eye_in_hand/episode_000000.mp4",
+      "bytes": 288541,
+      "sha256": "974f1765ddc55a2dd3030fd05eacb49ba97f2f8c6a9fa5a74e7895c824c7eac4"
+    }
+  ]
+}

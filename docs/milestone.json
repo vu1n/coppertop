@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "project": "coppertop",
+  "data_layer": "chords",
+  "source_revision": "522e4ffa3bb9d9729f79b241c65fc9e589f2659c",
+  "release": "4e86ad3bb106be2ae9e9fbb32f4799682c0e24ede5966aa5a0af967975e2d8ce",
+  "cpu_tests_passed": 11,
+  "official_loader": "lerobot==0.3.3",
+  "format": "v2.1",
+  "frames": 347,
+  "camera_frames": 1041,
+  "source_files": 13,
+  "source_bytes": 1133145,
+  "video_transcoding": false,
+  "state_action_parquet_loss": false,
+  "loader_float32_precision_loss": true,
+  "official_loader_status": "passed"
+}

@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "loader": "lerobot==0.3.3",
+  "format": "v2.1",
+  "frames_checked": 347,
+  "camera_frames_checked": 1041,
+  "episode_bounds": [
+    0,
+    347
+  ],
+  "video_backend": "pyav",
+  "state_action_tensor_parity": "bit-identical to official float32 conversion",
+  "float64_to_float32_max_abs_error": {
+    "observation.state": 2.370526415162999e-07,
+    "action": 2.8950827513085642e-08
+  },
+  "camera_pixels": "all decoded frames equal",
+  "camera_pts": "all within 1e-5 seconds",
+  "boundary_padding": "first and last frame verified",
+  "offline": true
+}
