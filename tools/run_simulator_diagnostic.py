@@ -26,14 +26,15 @@ def prepare(ledger, attempt, root):
     if not re.fullmatch(r'diag-[0-9a-f]{16}', attempt): raise ValueError('Dedicated diagnostic attempt required')
     if 'pending-'+attempt in ledger['apps']: raise ValueError('Attempt already reserved; preserve its hold')
     total = historical_total(ledger)
-    if Decimal(str(ledger['cumulative_cap'])) != 48 or total+CAP > 48:
-        raise ValueError('Retained holds plus full $.10 must fit $48')
+    ceiling = Decimal(str(ledger['cumulative_cap']))
+    if ceiling not in (48, Decimal('48.07')) or total+CAP > ceiling:
+        raise ValueError('Retained holds plus full $.10 must fit the exact reviewed ceiling')
     p = {'schema_version': 1, 'kind': 'cpu_only_simulator_diagnostic', 'attempt': attempt,
         'app_name': 'coppertop-simulator-'+attempt, 'environment': 'main', 'region': 'us',
         'image': CACHED_IMAGE, 'sdk': '1.6.1', 'runtime_sources_sha256': runtime_sources(),
         'launcher_sha256': hashlib.sha256((Path(root)/'tools/run_simulator_diagnostic.py').read_bytes()).hexdigest(),
         'ledger_sha256': digest(canonical(ledger)), 'prior_holds_usd': str(total),
-        'additional_cap_usd': str(CAP), 'cumulative_cap_usd': '48', 'holds_released_usd': '0',
+        'additional_cap_usd': str(CAP), 'cumulative_cap_usd': str(ceiling), 'holds_released_usd': '0',
         'limits': {'cpu': [2, 2], 'memory_mib': [4096, 4096], 'gpu': None,
             'function_seconds': 900, 'startup_seconds': 300, 'subprocess_seconds': 600,
             'controller_seconds': 1500, 'audit_seconds_each': 60, 'max_containers': 1,

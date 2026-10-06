@@ -67,6 +67,19 @@ class DiagnosticTests(unittest.TestCase):
                 module.prepare(held, ATTEMPT, ROOT)
         self.assertEqual(held, original)
 
+    def test_revised_ceiling_applies_only_to_the_single_ten_cent_cpu_diagnostic(self):
+        held = ledger(); held['apps']['ap-old']['reservation_usd'] = '47.96459248'
+        with self.assertRaises(ValueError): module.prepare(held, ATTEMPT, ROOT)
+        held['cumulative_cap'] = '48.07'
+        prepared = module.prepare(held, ATTEMPT, ROOT)
+        self.assertEqual(prepared['plan']['cumulative_cap_usd'], '48.07')
+        updated, _ = reconcile(held, [], additional_cap=module.CAP)
+        self.assertEqual(updated, held)
+        with self.assertRaises(ValueError): reconcile(held, [], additional_cap=10)
+        with self.assertRaises(ValueError): reconcile(held, [], additional_cap=8)
+        held['cumulative_cap'] = '48.08'
+        with self.assertRaises(ValueError): module.prepare(held, ATTEMPT, ROOT)
+
     def test_partial_start_audits_owned_app_and_preserves_full_tiny_hold(self):
         self.partial_start(0)
 
