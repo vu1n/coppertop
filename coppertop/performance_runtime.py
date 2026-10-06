@@ -22,6 +22,7 @@ OFFICIAL = Path('/work/xiaomi')
 MODEL = Path('/work/model')
 PORT = 10086
 MODULE = 'coppertop.performance_runtime'
+SIMULATOR_GIT_SECONDS = 60
 GATE_REASONS = {'Cached simulator package missing', 'Pinned simulator checkout revision differs',
     'Pinned simulator tracked content differs',
     'Official task registry/horizon changed', 'Completed six-archive cache receipt required',
@@ -60,8 +61,10 @@ def simulator_gate(progress=lambda check: None):
         if spec is None or not spec.origin:
             raise ValueError('Cached simulator package missing')
         root = Path(spec.origin).resolve().parent.parent
-        revision = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], timeout=10, text=True).strip()
-        dirty = subprocess.check_output(['git', '-C', str(root), 'status', '--porcelain', '--untracked-files=no'], timeout=10)
+        # Cold image checkout scans need their own bounded allowance inside the
+        # existing 600-second preflight; the source-integrity contract is unchanged.
+        revision = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], timeout=SIMULATOR_GIT_SECONDS, text=True).strip()
+        dirty = subprocess.check_output(['git', '-C', str(root), 'status', '--porcelain', '--untracked-files=no'], timeout=SIMULATOR_GIT_SECONDS)
         if revision != SOURCE_PINS[name]:
             raise ValueError('Pinned simulator checkout revision differs')
         if dirty:

@@ -238,3 +238,22 @@ python tools/run_simulator_diagnostic.py \\
 This default prepares the plan without provider access. After separate approval,
 the same arguments plus `--execute --approved-plan-sha256 EXACT_HASH` consume the
 exact code/ledger-bound plan once. No diagnostic has been launched by preparation.
+
+## CPU diagnostic result
+
+Approved attempt `diag-a072f9d9b1774f30`, commit
+`61086635b34227340af7d88ee13a874022abee28`, retained the exact child failure:
+`TimeoutExpired` at `checkout_robocasa`, from `git status --porcelain
+--untracked-files=no` with its original 10-second timeout. This establishes why
+this diagnostic stopped; it does not recover the original evaluation's discarded
+exception or establish whether any tracked files differ. Dependencies and assets
+were not reached. No GPU, R2, Volume or model loading occurred.
+
+Git checkout commands now allow 60 seconds each within the same 600-second
+preflight; revision and cleanliness checks remain mandatory. The longer allowance
+has not been verified live. The initial shutdown audit raced container draining;
+a later independent exact-App audit proved stopped/zero containers/Sandboxes.
+The diagnostic launcher now waits through up to three exact-App metadata audits
+within 180 seconds, without repeating diagnostic work. Persistent activity still
+fails cleanup. Retained holds total $47.96459248, and the consumed diagnostic
+approval cannot be reused for changed code or another job.

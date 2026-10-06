@@ -80,6 +80,14 @@ class PerformanceTests(unittest.TestCase):
             self.assertIn(reason, receipt['diagnostic']['reason'])
             self.assertEqual(receipt['diagnostic']['check'], 'checkout_robocasa')
 
+    def test_checkout_scan_gets_bounded_cold_image_allowance(self):
+        spec = SimpleNamespace(origin='/cache/robocasa/robocasa/__init__.py')
+        with patch.object(runtime.importlib.util, 'find_spec', return_value=spec), \
+             patch.object(runtime.subprocess, 'check_output', side_effect=[runtime.SOURCE_PINS['robocasa'], b' M model.xml']) as git:
+            receipt = runtime.simulator_gate_receipt()
+        self.assertEqual(receipt['status'], 'failed')
+        self.assertEqual([call.kwargs['timeout'] for call in git.call_args_list], [60, 60])
+
     def test_prepare_is_offline_and_has_no_provider_or_model_execution(self):
         with patch.object(runtime, 'serve', side_effect=AssertionError('model loading')), \
              patch.object(runtime, 'simulator_gate', side_effect=AssertionError('simulator import')), \

@@ -68,6 +68,15 @@ class DiagnosticTests(unittest.TestCase):
         self.assertEqual(held, original)
 
     def test_partial_start_audits_owned_app_and_preserves_full_tiny_hold(self):
+        self.partial_start(0)
+
+    def test_shutdown_audit_waits_for_drain_without_retrying_diagnostic(self):
+        self.partial_start(1)
+
+    def test_persistently_active_resources_are_not_reported_clean(self):
+        self.partial_start(3)
+
+    def partial_start(self, failures):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name in ('tools/run_simulator_diagnostic.py',):
@@ -80,17 +89,24 @@ class DiagnosticTests(unittest.TestCase):
             app.run = Mock(return_value=SimpleNamespace(__enter__=enter, __exit__=Mock()))
             function = Mock()
             sdk = SimpleNamespace(__version__='1.6.1', Image=SimpleNamespace(from_id=Mock(return_value='cached')))
-            audit = Mock(return_value={'app_stopped': True, 'active_containers': 0, 'active_sandboxes': 0})
+            audit = Mock(side_effect=[RuntimeError('draining')]*failures +
+                [{'app_stopped': True, 'active_containers': 0, 'active_sandboxes': 0}])
             with patch.object(module, 'refresh_billing', side_effect=lambda value,*a,**k:copy.deepcopy(value)), \
                  patch.object(module, 'cli_json', return_value=[]), \
                  patch.object(module, 'runtime_image', return_value='cached'), \
                  patch.object(module, 'define', return_value=(app, function)), \
-                 patch.object(module, 'stop_and_audit_owned_app', audit):
+                 patch.object(module, 'stop_and_audit_owned_app', audit), patch.object(module.time, 'sleep'):
                 with self.assertRaises(TimeoutError): module.execute(prepared, ledger(), root, prepared['plan_sha256'], sdk=sdk)
                 with self.assertRaises(FileExistsError): module.execute(prepared, ledger(), root, prepared['plan_sha256'], sdk=sdk)
-            function.spawn.assert_not_called(); audit.assert_called_once()
+            function.spawn.assert_not_called()
+            self.assertEqual(audit.call_count, min(failures+1, 3))
+            self.assertTrue(all(call.args == ('ap-owned',) for call in audit.call_args_list))
             out = root/'.local/simulator-diagnostic'/ATTEMPT
             held = read_json(out/'ledger.json')
             self.assertEqual(held['apps']['ap-owned']['reservation_usd'], '0.10')
             self.assertEqual(historical_total(held), module.Decimal('47.96459248'))
-            self.assertEqual(read_json(out/'outcome.json')['cleanup']['active_containers'], 0)
+            outcome = read_json(out/'outcome.json')
+            if failures == 3:
+                self.assertEqual(outcome['cleanup_error_type'], 'RuntimeError')
+                self.assertNotIn('cleanup', outcome)
+            else: self.assertEqual(outcome['cleanup']['active_containers'], 0)

@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from decimal import Decimal
 from pathlib import Path
 
@@ -116,7 +117,16 @@ def execute(prepared, ledger, root, approved, *, sdk=None, runner=subprocess.run
                     with hard_deadline(60): context.__exit__(None, None, None)
                 except BaseException as caught: state['context_exit_error_type'] = type(caught).__name__
             if app and app.app_id:
-                state['cleanup'] = stop_and_audit_owned_app(app.app_id, runner=runner)
+                # A returned single-use Function can still be draining. Repeat
+                # only the exact-App stop/audit, never the paid diagnostic.
+                with hard_deadline(180):
+                    for audit_attempt in range(3):
+                        try:
+                            state['cleanup'] = stop_and_audit_owned_app(app.app_id, runner=runner)
+                            break
+                        except RuntimeError:
+                            if audit_attempt == 2: raise
+                            time.sleep(2)
             elif attempted:
                 raise RuntimeError('Partial App start lacks identity; ownership audit required')
             else:
