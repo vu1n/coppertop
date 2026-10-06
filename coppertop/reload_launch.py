@@ -196,7 +196,8 @@ def cli_json(args, runner=subprocess.run, limit=2*1024**2):
 
 
 def reconcile(ledger, rows, *, app_id=None, reservation_key=None, additional_cap=8):
-    if additional_cap not in (8, 10):
+    additional_cap = Decimal(str(additional_cap))
+    if additional_cap not in (Decimal('0.10'), 8, 10):
         raise ValueError('Reviewed full reservation required')
     if not isinstance(rows,list) or len(rows)>4096:
         raise ValueError('Bounded billing rows required')

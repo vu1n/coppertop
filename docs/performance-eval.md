@@ -205,3 +205,36 @@ It would reveal the failing simulator check, not establish rendering or performa
 No such diagnostic retry has been authorized or executed. Previous run receipts
 and all budget holds remain unchanged. Changed code invalidates the old launch
 digest; any further paid action needs a separately bound approval.
+
+## Minimal CPU-only diagnostic proposal
+
+`tools/run_simulator_diagnostic.py` prepares one exact-approval Function using the
+same cached image and four runtime mounts. It does not access R2, create keys,
+inject secrets, mount Volumes, load models, allocate GPU, build images or download.
+One US container has two physical CPU cores and 4GiB RAM as hard limits, a
+900-second function timeout, 300-second startup timeout, 600-second simulator
+subprocess timeout, concurrency one, zero retries and no warm/buffer containers.
+The local controller is limited to 1500 seconds, followed by bounded exact-App
+shutdown/audits (60 seconds each). Only its captured App is stopped; there is no
+storage resource to delete. Structured metadata is retained locally.
+
+At the published Modal rates, reserving a 1.75 region factor and 1260 seconds
+(startup, runtime and a 60-second shutdown allowance), compute is $0.0773514.
+A conservative 1MiB metadata allowance adds $0.000039063. Builds, new storage,
+R2 operations and model downloads add zero. Total estimate: **$0.077390463**,
+without free credits. Reserve **$0.10**, rather than another $10.
+
+Retained historical holds total $47.86459248, leaving $0.13540752 under the
+existing $48 ceiling. The new reservation yields $47.96459248, retaining every
+old hold and leaving $0.03540752. Fresh billing is mandatory before allocation
+and after cleanup; unaccounted spend or an exceeded old hold blocks execution.
+The diagnostic refuses an existing pending attempt rather than replacing it.
+
+```sh
+python tools/run_simulator_diagnostic.py \\
+  --ledger /path/to/preserved-current-ledger.json --attempt diag-16_HEX_DIGITS
+```
+
+This default prepares the plan without provider access. After separate approval,
+the same arguments plus `--execute --approved-plan-sha256 EXACT_HASH` consume the
+exact code/ledger-bound plan once. No diagnostic has been launched by preparation.
