@@ -1,11 +1,14 @@
 """Export a single Chords episode to LeRobot v2.1, pinned to loader 0.3.3."""
 import io
 import json
+import os
+import tempfile
 from pathlib import Path
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-from .chords import ObjectStore, canonical, digest
+from .chords import ObjectStore, canonical
+from .streams import checked, file_ref
 from .episode import CAMERAS, reorder_action
 
 LOADER_VERSION = '0.3.3'
@@ -71,7 +74,16 @@ def export(store: ObjectStore, release_key: str, destination: Path) -> None:
         video_key = 'observation.images.' + name
         target = destination / f'videos/chunk-000/{video_key}/episode_000000.mp4'
         target.parent.mkdir(parents=True)
-        target.write_bytes(store.get(video['object']))
+        with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as output:
+            staging = Path(output.name)
+            try:
+                for chunk in checked(store.iter_bytes(video['object']), store.stat(video['object'])):
+                    output.write(chunk)
+                output.flush()
+                os.fsync(output.fileno())
+                os.link(staging, target)
+            finally:
+                staging.unlink(missing_ok=True)
         count = 0
         total = np.zeros(3)
         squares = np.zeros(3)
@@ -105,7 +117,7 @@ def export(store: ObjectStore, release_key: str, destination: Path) -> None:
     (sidecars / 'release.json').write_bytes(store.get(release_key))
     for ref in manifest['overlays']:
         (sidecars / f'annotation-{ref}.json').write_bytes(store.get(ref))
-    outputs = {str(p.relative_to(destination)): digest(p.read_bytes())
+    outputs = {str(p.relative_to(destination)): file_ref(p).sha256
                for p in sorted(destination.rglob('*')) if p.is_file()}
     (sidecars / 'export.json').write_bytes(canonical({'loader_version': LOADER_VERSION,
         'format': 'v2.1', 'release': release_key, 'files': outputs}))

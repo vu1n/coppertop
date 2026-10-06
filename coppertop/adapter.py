@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+from .streams import file_ref
 from .episode import CAMERAS, Episode, initialization_group, reorder_action
 
 LOGICAL_DATASET = 'pretrain/atomic/CloseBlenderLid/20250822/lerobot'
@@ -59,8 +60,9 @@ def load_official(root):
     for entry in manifest['files']:
         path=(root/entry['path']).resolve()
         if not path.is_relative_to(root.resolve()): raise ValueError('Source path escapes input root')
-        digest=hashlib.sha256(path.read_bytes()).hexdigest()
-        if digest!=entry['sha256']: raise ValueError('Source checksum mismatch')
+        ref=file_ref(path)
+        digest=ref.sha256
+        if digest!=entry['sha256'] or ref.size!=entry['bytes']: raise ValueError('Source checksum mismatch')
         hashes[entry['path']]=digest
     required={'official-episode/data/chunk-000/episode_000000.parquet',
         'official-episode/meta/info.json','official-episode/meta/modality.json','official-episode/meta/tasks.jsonl'}

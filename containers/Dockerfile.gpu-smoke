@@ -1,0 +1,18 @@
+# Build only on an approved remote CPU worker, never during GPU rental.
+FROM pytorch/pytorch@sha256:417bd75df6365104c283ea4c1651fb3530d9eb5a4c2fafa51943cff2a94e6385
+WORKDIR /app
+COPY requirements-gpu-smoke.lock /app/requirements-gpu-smoke.lock
+RUN python -m pip install --no-cache-dir --no-deps -r requirements-gpu-smoke.lock && python -m pip check
+# Prepared outside this build: checksum-verified native snapshot, evaluator and wheel.
+# Deliberate missing inputs prevent an accidental generic source-context build.
+COPY runtime/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl /tmp/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl
+RUN test "$(stat -c %s /tmp/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl)" = 256043372 && echo '3d41b2fc55753faa7f45d6568ea73a96b96afb48b82994ab9b49bcbcb6c87588  /tmp/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl' | sha256sum -c - && python -m pip install --no-deps /tmp/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl
+COPY runtime/model /opt/model
+COPY runtime/evaluator.py /opt/evaluator.py
+COPY containers /app/containers
+COPY containers/gpu-smoke-pins.json /opt/gpu-smoke-pins.json
+COPY coppertop /app/coppertop
+ENV PYTHONPATH=/app PYTHONDONTWRITEBYTECODE=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 TOKENIZERS_PARALLELISM=false HF_HOME=/tmp/coppertop-hf HF_MODULES_CACHE=/tmp/coppertop-hf/modules
+USER 65532:65532
+ENTRYPOINT []
+CMD ["python", "-m", "coppertop.smoke_runtime"]

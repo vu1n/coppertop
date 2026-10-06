@@ -1,0 +1,15 @@
+**
+!coppertop/
+!coppertop/*.py
+!requirements-gpu-smoke.lock
+!containers/
+!containers/Dockerfile.gpu-smoke
+!containers/gpu-smoke-pins.json
+!runtime/
+!runtime/model/
+!runtime/model/*
+!runtime/evaluator.py
+!runtime/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl
+**/.env*
+**/*secret*
+**/__pycache__/**

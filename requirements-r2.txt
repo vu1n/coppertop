@@ -1,0 +1,8 @@
+# Reviewed public PyPI metadata; pure Python SDK only, no CRT extra/models.
+boto3==1.43.108
+botocore==1.43.108
+s3transfer==0.19.2
+jmespath==1.1.0
+python-dateutil==2.9.0.post0
+urllib3==2.8.0
+six==1.17.0

@@ -17,3 +17,68 @@ Run commands are in the README. `coppertop.verify_loader` produces the machine-r
 Security used independent static finder and refuter agents. Trust boundary: operator CLI args trusted; imported files/manifests untrusted. Finder candidates concerned metadata-controlled output paths and compressed video/Parquet expansion. Fixes pinned acquisition authenticity, fixed export templates/camera allowlist, bounded signal metadata before decode, and streamed video statistics with frame/dimension guards. Refuter dropped the original three candidates; no confirmed vulnerability remains. Native codec internals are outside this source review. Imported/shared stores still require ordinary integrity/access control; this prototype is not an untrusted multi-tenant ingestion service.
 
 Residual limits: no R2/compute integration, durable orchestration, model/token parity, training, simulator evaluation or robot-improvement evidence. Sidecars reference raw store objects; copying an export alone is not a complete Chords store migration. Object immutability is application-level; interrupted writes/export directories require explicit operator recovery. No official-loader blocker remains for this episode.
+
+## Cloud transfer publication, 2026-10-06
+
+The curated publication includes the streaming storage boundary, bounded native
+checkpoint prerequisites and cloud transfer adapters. It excludes the separate
+Cloudflare CPU-job experiments, secrets, local evidence and dataset/model bytes.
+All 134 tests passed in the isolated publication checkout with the already
+acquired official episode enabled. Without that local source, 132 pass and two
+integration cases skip. This run uses the existing CPU environment and downloads
+no model or dataset. It does not rerun the official LeRobot loader.
+
+The transfer implementation passed independent structure, correctness and security
+reviews after fixes for duplicate transfer, temporary path collisions, metadata
+bounds, report hash binding and teardown error handling. Publication scope and
+the new CPU workflow were independently checked; no remaining blocker was found.
+GitHub CI pins action commits, grants read-only repository permissions, and runs
+CPU tests under a 15-minute limit with offline model settings.
+
+The previous native GPU update produced a verified immutable checkpoint in R2.
+Its fresh verifier did not run because the shared GPU lifetime expired during
+the Mac relay. The new adapter separates CPU transfers from GPU lifetimes and
+requires independent stop checks. Mounted storage, updated image validation,
+fresh-container exact velocity equality and live teardown remain unverified.
+See [cloud transfer](cloud-transfer.md) and [native smoke](gpu-smoke.md) for scope
+and evidence. No paid run is implied by these local tests or this publication.
+
+## Executable reload-only preparation
+
+The original 134-test publication includes every reviewed transfer file, both
+Modal and Runpod adapters, and the complete required checkpoint/storage closure.
+The prior 164-test working-directory suite additionally ran 30 unrelated cases:
+seven CPU-job tests, four job-budget tests, twelve live-key helper tests, and
+seven provider-helper tests. Those excluded cases contained the prior SDK skip;
+no transfer implementation or transfer test was omitted.
+
+The executable reload-only preparation adds 42 tests. The exact final checkout
+ran 176 tests with the acquired source enabled: 175 passed and the optional
+pinned-SDK case skipped in the older CPU environment. Eight image tests then
+passed in the existing Modal 1.6.1 controller environment, including that case
+and actual generated builder resource limits. Offline preparation printed the
+plan/code hashes with zero env reads or cloud calls. CI installs the small
+pinned R2 SDK and runs the same suite without downloading source or models.
+
+Independent structure review rejected introducing a generic resource manager or
+reusing the full training runner for this fixed reload. Correctness review fixed
+the pinned CLI billing schema and durable retention of the new hold through
+delayed billing/startup failure. Security review narrowed the actual temporary
+JWT report grant to the approved `objects/` subtree; independent recheck found
+no surviving blocker. Nested deadlines preserve the whole-attempt limit, and
+owned cleanup handles partial App startup and refuses unsafe Volume adoption.
+The live image build, scoped sessions, mounted barriers, fresh CUDA comparison
+and provider teardown remain execution gates. See [reload-only](reload-only.md).
+
+The first approved reload launch stopped before allocation: the launcher required
+an unnecessary `R2_BUCKET` env assignment although the plan already pins
+`coppertop`. The existing token/account/URL assignments were present. The parser
+now accepts those three assignments and rejects any explicitly conflicting
+optional bucket; fourteen launcher tests pass, including this regression.
+Independent correctness/security rechecks found no blocker. Read-only exact-name
+audits confirmed no App or Volume was created; no session was signed, R2 object
+request issued or compute allocated. The consumed marker and full $8 pending
+hold remain. Changed code needs a new reviewed binding before any continuation;
+this fix did not retry the paid run or release the reservation.
+
+Runtime alignment correction: the approved reload passed temporary scoped R2 source reads, immutable checksums and mounted commit, then failed the CPU image gate on `accelerate` before any GPU allocation. Independent terminal audit confirmed App stopped, zero containers/Sandboxes and owned Volume absent. Native pin installation was omitted in the warm image path; earlier GPU preparation installed it before snapshotting. The revised lazy recipe aligns all 30 merged native/R2 pins and reports aggregate discrepancies, including historical differences in offline preparation. This correction has not been built or executed remotely. The spent attempt, original checkpoint and full billing hold remain preserved; no further paid retry is authorized.
