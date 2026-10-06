@@ -5,7 +5,8 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 from .adapter import load_official
-from .chords import ObjectStore, canonical, digest, frame_id, release
+from .chords import ObjectStore, canonical, frame_id, release
+from .streams import file_ref, file_chunks
 
 LICENSE = 'CC-BY-4.0'
 
@@ -15,10 +16,11 @@ def ingest(source: Path, store: ObjectStore) -> str:
     acquisition = json.loads((source / 'sources/official-files.json').read_text())
     raw = {}
     for entry in acquisition['files']:
-        data = (source / entry['path']).read_bytes()
-        if len(data) != entry['bytes'] or digest(data) != entry['sha256']:
+        path = source / entry['path']
+        ref = file_ref(path)
+        if ref.size != entry['bytes'] or ref.sha256 != entry['sha256']:
             raise ValueError('Acquisition manifest mismatch')
-        raw[entry['path']] = {**entry, 'object': store.put(data), 'license': LICENSE}
+        raw[entry['path']] = {**entry, 'object': store.put_stream(ref, file_chunks(path)).sha256, 'object_ref': ref.to_dict(), 'license': LICENSE}
     table = pq.read_table(io.BytesIO(store.get(raw['official-episode/data/chunk-000/episode_000000.parquet']['object'])))
     # Canonical actions are native control commands, never normalized model targets.
     action = pa.array(episode.executed_native, type=table.schema.field('action').type)

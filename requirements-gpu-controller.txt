@@ -1,0 +1,2 @@
+# Local controller only; never inject this SDK or provider credentials into compute.
+modal==1.6.1

@@ -23,3 +23,12 @@ HF_HOME=.local/huggingface .venv/bin/python -m coppertop.verify_loader .local/le
 The importer reads only `sources/official-files.json` and its 13 explicitly listed objects, verifying checksums and lengths. Originals remain unchanged. Dataset bytes, generated exports and environments are ignored by Git. Exports refuse an existing output directory. An interrupted export should be discarded by the operator and recreated in a fresh directory.
 
 See [data contract](docs/data-contract.md), [source attribution](docs/source.md), [secret management](docs/secrets.md), and [verification](docs/verification.md). This is data plumbing, with no training, token/model parity, simulator replay or robot-improvement claim.
+
+The [cloud transfer adapters](docs/cloud-transfer.md) stage immutable objects on
+CPU, run bounded GPU work, and publish verified checkpoints to R2. The
+[native Xiaomi smoke](docs/gpu-smoke.md) records the completed bounded training
+check and the remaining fresh-container reload check. Provider execution needs
+separate explicit cost, storage and temporary-access approval.
+
+CPU CI uses fixtures without model or dataset downloads. To include the acquired
+real episode locally, set `COPPERTOP_SOURCE` when running the tests above.

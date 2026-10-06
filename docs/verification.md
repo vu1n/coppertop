@@ -17,3 +17,28 @@ Run commands are in the README. `coppertop.verify_loader` produces the machine-r
 Security used independent static finder and refuter agents. Trust boundary: operator CLI args trusted; imported files/manifests untrusted. Finder candidates concerned metadata-controlled output paths and compressed video/Parquet expansion. Fixes pinned acquisition authenticity, fixed export templates/camera allowlist, bounded signal metadata before decode, and streamed video statistics with frame/dimension guards. Refuter dropped the original three candidates; no confirmed vulnerability remains. Native codec internals are outside this source review. Imported/shared stores still require ordinary integrity/access control; this prototype is not an untrusted multi-tenant ingestion service.
 
 Residual limits: no R2/compute integration, durable orchestration, model/token parity, training, simulator evaluation or robot-improvement evidence. Sidecars reference raw store objects; copying an export alone is not a complete Chords store migration. Object immutability is application-level; interrupted writes/export directories require explicit operator recovery. No official-loader blocker remains for this episode.
+
+## Cloud transfer publication, 2026-10-06
+
+The curated publication includes the streaming storage boundary, bounded native
+checkpoint prerequisites and cloud transfer adapters. It excludes the separate
+Cloudflare CPU-job experiments, secrets, local evidence and dataset/model bytes.
+All 134 tests passed in the isolated publication checkout with the already
+acquired official episode enabled. Without that local source, 132 pass and two
+integration cases skip. This run uses the existing CPU environment and downloads
+no model or dataset. It does not rerun the official LeRobot loader.
+
+The transfer implementation passed independent structure, correctness and security
+reviews after fixes for duplicate transfer, temporary path collisions, metadata
+bounds, report hash binding and teardown error handling. Publication scope and
+the new CPU workflow were independently checked; no remaining blocker was found.
+GitHub CI pins action commits, grants read-only repository permissions, and runs
+CPU tests under a 15-minute limit with offline model settings.
+
+The previous native GPU update produced a verified immutable checkpoint in R2.
+Its fresh verifier did not run because the shared GPU lifetime expired during
+the Mac relay. The new adapter separates CPU transfers from GPU lifetimes and
+requires independent stop checks. Mounted storage, updated image validation,
+fresh-container exact velocity equality and live teardown remain unverified.
+See [cloud transfer](cloud-transfer.md) and [native smoke](gpu-smoke.md) for scope
+and evidence. No paid run is implied by these local tests or this publication.

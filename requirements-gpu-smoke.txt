@@ -1,0 +1,12 @@
+# CUDA torch==2.8.0 and torchvision==0.23.0 come from the immutable CUDA base.
+# Flash Attention is a separately SHA256-verified prebuilt wheel, never compiled.
+transformers==4.57.1
+tokenizers==0.22.1
+huggingface-hub==0.35.3
+safetensors==0.6.2
+accelerate==1.11.0
+numpy==2.2.5
+pillow==11.3.0
+einops==0.8.1
+pyarrow==20.0.0
+av==15.1.0
