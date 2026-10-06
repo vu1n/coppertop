@@ -107,7 +107,9 @@ partial result counts as policy failure or comparison success.
 
 ## Proposed resource and access envelope
 
-No paid evaluation is authorized or started. Proposed additional maximum: $10;
+The first approved attempt stopped at CPU simulator validation, before GPU
+admission; its four-rollout approval is consumed and cannot be reused. Its approved
+additional maximum was $10;
 with $37.86459248 in retained holds, request a cumulative ceiling of $48.
 Holds are reservations, not actual spent charges. No old hold is released.
 
@@ -168,3 +170,38 @@ publisher attribution/license files with results and any redistributed assets.
 - [Pinned RoboCasa registry and license](https://github.com/robocasa/robocasa/tree/456174f62b89b8fca99eaaf33949c29fec9cfc2a)
 - [Pinned model](https://huggingface.co/XiaomiRobotics/Xiaomi-Robotics-1-RoboCasa365/tree/3a6d0293bfa90759d34a7fc48c2c62413cd7bcf4)
 - [Modal prices](https://modal.com/pricing/), [R2 prices and rounding](https://developers.cloudflare.com/r2/pricing/)
+
+## First live attempt and diagnostic correction
+
+Attempt `reload-9b8bee11ac163e72` used reviewed commit
+`eb15b57e8717b7ae684c719904c6d97b4bc18cc7`. Source and checkpoint CPU staging
+committed and stopped; native cache/processor validation reached the simulator
+subprocess, which failed. GPU never started; zero rollouts ran. Exact-App
+shutdown, zero containers/Sandboxes and temporary Volume absence were independently
+verified. Original checkpoint objects remain preserved. No evaluation report or
+success-rate estimate exists for this invalid attempt.
+
+The original wrapper captured but discarded the simulator's stdout/stderr.
+Provider logs therefore establish only `Simulator source/assets/import CPU gate
+failed`; they do not establish the underlying exception. Recorded dependency
+versions, receipt size, asset counts and byte totals match the gate. Official asset
+extraction writes 12 Git-tracked cabinet-panel XML paths; legitimate asset changes
+could conflict with whole-checkout cleanliness, but this is not a proven cause.
+Do not relax source or asset validation based on that possibility.
+
+The corrected child emits a structured failure receipt with the failing check,
+exception type, controlled guard reason or missing module, and traceback filename,
+line and function. It excludes arbitrary exception text, source lines, locals and
+raw stderr. The parent validates the bounded schema and persists failure metadata
+before teardown. Invalid output retains only exit status and output byte counts;
+timeout/missing interpreter retain exception type. Failed receipts still forbid
+GPU. Captured output uses temporary files; retained/read metadata is bounded,
+while third-party output spool size is constrained by the existing job lifetime.
+
+The smallest next live diagnostic is one CPU-only job on the same cached image,
+running `performance_cloud.simulator_preflight()` with the reviewed runtime mounts.
+It needs no R2 access, secrets, input Volume, model loading, GPU, builds or downloads.
+It would reveal the failing simulator check, not establish rendering or performance.
+No such diagnostic retry has been authorized or executed. Previous run receipts
+and all budget holds remain unchanged. Changed code invalidates the old launch
+digest; any further paid action needs a separately bound approval.

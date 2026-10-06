@@ -22,7 +22,7 @@ from .image_check import validate as validate_native, require_native_interpreter
 from .modal_reload import CHECKPOINT_RUN_ID, ORIGINAL_CONTAINER_ID, INPUT_MOUNT, _container
 from .modal_staging import stop_verifier
 from .performance_eval import plan as evaluation_plan, validate_plan, summarize, runtime_image, runtime_sources, CACHED_IMAGE
-from .performance_runtime import MODULE, SIMULATOR
+from .performance_runtime import MODULE, SIMULATOR, GATE_REASONS
 from .r2_session import SessionScope, R2StoreFactory, mint
 from .reload_launch import (read_json, save, cli_json, hard_deadline, delete_owned_volume,
                             selected_env, parent_credentials, refresh_billing, stop_and_audit_owned_app, CHECKPOINT_PREFIX, RECEIPT)
@@ -119,6 +119,57 @@ def loopback_gate():
     return True
 
 
+def simulator_preflight(runner=subprocess.run):
+    """Persist the structured child receipt, including failure, without raw stderr."""
+    with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+        try:
+            process = runner([SIMULATOR, '-m', MODULE, '--simulator-gate'], stdout=stdout, stderr=stderr, timeout=600,
+                env={'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+                     'HOME': '/root', 'PYTHONPATH': '/app', 'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1'})
+        except (OSError, subprocess.TimeoutExpired) as error:
+            return {'status': 'failed', 'render_reset_executed': False, 'diagnostic': {
+                'check': 'process_bootstrap', 'error_type': type(error).__name__, 'reason': 'exception_text_omitted'}}
+        stdout_size = stdout.tell(); stderr_size = stderr.tell()
+        stdout.seek(max(0, stdout_size-65536)); lines = stdout.read(65536).splitlines()
+    fallback = {'status': 'failed', 'render_reset_executed': False,
+        'diagnostic': {'check': 'process_bootstrap', 'error_type': 'SimulatorProcessFailure',
+            'reason': 'structured_receipt_unavailable', 'exit_code': process.returncode,
+            'stdout_bytes': stdout_size, 'stderr_bytes': stderr_size}}
+    try:
+        receipt = json.loads(lines[-1])
+        _metadata(receipt)
+        if (stdout_size > 65536 or receipt.get('render_reset_executed') is not False or
+            (process.returncode == 0 and receipt.get('status') != 'passed') or
+            (process.returncode != 0 and receipt.get('status') != 'failed')):
+            return fallback
+        if receipt['status'] == 'failed':
+            if set(receipt) != {'status', 'render_reset_executed', 'diagnostic'}: return fallback
+            diagnostic = receipt['diagnostic']
+            if (not isinstance(diagnostic, dict) or not {'check', 'error_type', 'reason', 'trace'} <= set(diagnostic)
+                or set(diagnostic)-{'check', 'error_type', 'reason', 'trace', 'missing_module', 'exit_code', 'errno'}
+                or diagnostic['reason'] not in GATE_REASONS | {'exception_text_omitted'}): return fallback
+            for key in ('check', 'error_type', 'missing_module'):
+                if key in diagnostic and (not isinstance(diagnostic[key], str)
+                    or not re.fullmatch(r'[A-Za-z0-9_.]{1,128}', diagnostic[key])): return fallback
+            for key in ('exit_code', 'errno'):
+                if key in diagnostic and type(diagnostic[key]) is not int: return fallback
+            if not isinstance(diagnostic['trace'], list) or len(diagnostic['trace']) > 16: return fallback
+            for frame in diagnostic['trace']:
+                if (not isinstance(frame, dict) or set(frame) != {'file', 'line', 'function'}
+                    or type(frame['line']) is not int or not 1 <= frame['line'] <= 1000000
+                    or any(not isinstance(frame[key], str) or not re.fullmatch(r'[A-Za-z0-9_.<>-]{1,128}', frame[key])
+                           for key in ('file', 'function'))): return fallback
+        elif (set(receipt) != {'status', 'task', 'horizon', 'render_reset_executed', 'assets'}
+              or receipt['task'] != evaluation_plan()['task'] or receipt['horizon'] != evaluation_plan()['horizon']
+              or receipt['assets'] != {'files': 123236, 'extracted_bytes': 24063148172,
+                  'archive_bytes': 10986648838,
+                  'verification': 'immutable image provenance plus completed CRC extraction receipt and every cached file length'}):
+            return fallback
+        return receipt
+    except (ValueError, IndexError, AttributeError, TypeError, KeyError):
+        return fallback
+
+
 def create_functions(sdk, prepared, *, image, volume, store_factory, sessions, runner=subprocess.run):
     """Define five single-use phases. This function performs no allocation."""
     if sdk.__version__ != '1.6.1' or set(sessions) != {'source', 'checkpoint', 'report'}:
@@ -173,15 +224,8 @@ def create_functions(sdk, prepared, *, image, volume, store_factory, sessions, r
             or native.get('cuda_executed') is not False
             or any(native.get(k) is not True for k in ('snapshot_verified', 'imports_verified', 'processor_parity_verified', 'entrypoint_verified'))):
             raise ValueError('Native CPU cache gate failed')
-        process = runner([SIMULATOR, '-m', MODULE, '--simulator-gate'], capture_output=True, timeout=600,
-            env={'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-                 'HOME': '/root', 'PYTHONPATH': '/app', 'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1'})
-        if process.returncode != 0 or len(process.stdout)>65536:
-            raise RuntimeError('Simulator source/assets/import CPU gate failed')
-        simulation = json.loads(process.stdout.splitlines()[-1])
-        if simulation.get('status') != 'passed' or simulation.get('render_reset_executed') is not False:
-            raise ValueError('Simulator CPU gate receipt differs')
-        return {'container_id': _container(os.environ.get('MODAL_TASK_ID')), 'status': 'passed',
+        simulation = simulator_preflight(runner)
+        return {'container_id': _container(os.environ.get('MODAL_TASK_ID')), 'status': simulation['status'],
                 'image_id': CACHED_IMAGE, 'native': native, 'simulator': simulation,
                 'evaluation_plan_sha256': validate_plan(p['evaluation'])}
 

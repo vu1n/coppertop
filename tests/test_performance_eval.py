@@ -53,8 +53,32 @@ class PerformanceTests(unittest.TestCase):
         with patch.object(runtime.importlib.util, 'find_spec', return_value=spec), \
              patch.object(runtime.subprocess, 'check_output', side_effect=[runtime.SOURCE_PINS['robocasa'], b' M robocasa/__init__.py']), \
              patch('builtins.__import__', side_effect=AssertionError('premature simulator import')):
-            with self.assertRaisesRegex(ValueError, 'checkout is changed'):
+            with self.assertRaisesRegex(ValueError, 'tracked content differs'):
                 runtime.simulator_gate()
+
+    def test_simulator_failure_receipt_keeps_check_and_trace_without_exception_values(self):
+        secret = 'dummy-secret-never-persist'
+        def broken(progress):
+            progress('dependencies')
+            raise ModuleNotFoundError('contains '+secret, name='missing_public_module')
+        with patch.object(runtime, 'simulator_gate', side_effect=broken):
+            receipt = runtime.simulator_gate_receipt()
+        self.assertEqual(receipt['status'], 'failed')
+        self.assertEqual(receipt['diagnostic']['check'], 'dependencies')
+        self.assertEqual(receipt['diagnostic']['missing_module'], 'missing_public_module')
+        self.assertEqual(receipt['diagnostic']['error_type'], 'ModuleNotFoundError')
+        self.assertTrue(receipt['diagnostic']['trace'])
+        self.assertNotIn(secret, json.dumps(receipt))
+
+    def test_simulator_gate_differentiates_revision_and_tracked_content_failures(self):
+        spec = SimpleNamespace(origin='/cache/robocasa/robocasa/__init__.py')
+        for revision, dirty, reason in (('wrong', b'', 'checkout revision differs'),
+                (runtime.SOURCE_PINS['robocasa'], b' M robocasa/model.xml', 'tracked content differs')):
+            with patch.object(runtime.importlib.util, 'find_spec', return_value=spec), \
+                 patch.object(runtime.subprocess, 'check_output', side_effect=[revision, dirty]):
+                receipt = runtime.simulator_gate_receipt()
+            self.assertIn(reason, receipt['diagnostic']['reason'])
+            self.assertEqual(receipt['diagnostic']['check'], 'checkout_robocasa')
 
     def test_prepare_is_offline_and_has_no_provider_or_model_execution(self):
         with patch.object(runtime, 'serve', side_effect=AssertionError('model loading')), \

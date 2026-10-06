@@ -4,10 +4,12 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 from .chords import canonical
 from .performance_eval import plan, validate_plan, summarize, SOURCE_BLOBS, SOURCE_PINS
@@ -20,6 +22,13 @@ OFFICIAL = Path('/work/xiaomi')
 MODEL = Path('/work/model')
 PORT = 10086
 MODULE = 'coppertop.performance_runtime'
+GATE_REASONS = {'Cached simulator package missing', 'Pinned simulator checkout revision differs',
+    'Pinned simulator tracked content differs',
+    'Official task registry/horizon changed', 'Completed six-archive cache receipt required',
+    'Cached archive provenance incomplete', 'Cached simulator asset path/length differs',
+    'Pinned cached asset inventory differs', 'Official source symlink rejected'} | {
+    'Pinned simulator dependency differs: '+name for name in ('gymnasium', 'mujoco', 'transformers')} | {
+    'Pinned official source differs: '+name for name in SOURCE_BLOBS}
 
 
 def source_gate():
@@ -43,31 +52,61 @@ def load_official(name):
     return module
 
 
-def simulator_gate():
+def simulator_gate(progress=lambda check: None):
     # Authenticate executable checkout contents before importing simulator code.
     for name in ('robocasa', 'robosuite'):
+        progress('checkout_'+name)
         spec = importlib.util.find_spec(name)
         if spec is None or not spec.origin:
             raise ValueError('Cached simulator package missing')
         root = Path(spec.origin).resolve().parent.parent
         revision = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], timeout=10, text=True).strip()
         dirty = subprocess.check_output(['git', '-C', str(root), 'status', '--porcelain', '--untracked-files=no'], timeout=10)
-        if revision != SOURCE_PINS[name] or dirty:
-            raise ValueError('Pinned simulator checkout is changed')
+        if revision != SOURCE_PINS[name]:
+            raise ValueError('Pinned simulator checkout revision differs')
+        if dirty:
+            raise ValueError('Pinned simulator tracked content differs')
+    progress('dependencies')
     import gymnasium, mujoco, transformers
     for module, expected in ((gymnasium, '0.29.1'), (mujoco, '3.3.1'), (transformers, '4.57.1')):
         if module.__version__ != expected:
             raise ValueError('Pinned simulator dependency differs: '+module.__name__)
+    progress('task_registry')
     from robocasa.utils.dataset_registry import TASK_SET_REGISTRY
     from robocasa.utils.dataset_registry_utils import get_task_horizon
     p = plan()
     if (list(TASK_SET_REGISTRY[p['task_set']])[p['task_index']] != p['task']
         or get_task_horizon(p['task']) != p['horizon']):
         raise ValueError('Official task registry/horizon changed')
+    progress('official_source')
     source_gate()
+    progress('asset_inventory')
     assets = asset_gate()
     return {'status': 'passed', 'task': p['task'], 'horizon': p['horizon'],
             'render_reset_executed': False, 'assets': assets}
+
+
+def simulator_gate_receipt():
+    """Keep useful failure locations without copying exception text, locals or logs."""
+    current = 'startup'
+    def progress(check):
+        nonlocal current
+        current = check
+    try:
+        return simulator_gate(progress)
+    except Exception as error:
+        # Third-party messages can contain arbitrary values; only our exact guards
+        # and module identifiers are public diagnostic fields.
+        reason = str(error) if type(error) is ValueError and str(error) in GATE_REASONS else 'exception_text_omitted'
+        frames = traceback.extract_tb(error.__traceback__)[-16:]
+        trace = [{'file': Path(frame.filename).name, 'line': frame.lineno, 'function': frame.name}
+                 for frame in frames]
+        diagnostic = {'check': current, 'error_type': type(error).__name__, 'reason': reason, 'trace': trace}
+        if isinstance(error, ImportError) and isinstance(error.name, str) and re.fullmatch(r'[A-Za-z0-9_.]{1,128}', error.name):
+            diagnostic['missing_module'] = error.name
+        if isinstance(error, subprocess.CalledProcessError): diagnostic['exit_code'] = error.returncode
+        if isinstance(error, OSError) and type(error.errno) is int: diagnostic['errno'] = error.errno
+        return {'status': 'failed', 'render_reset_executed': False, 'diagnostic': diagnostic}
 
 
 def asset_gate():
@@ -286,7 +325,10 @@ def main(argv=None):
     parser.add_argument('--seed', type=int)
     args = parser.parse_args(argv)
     if args.prepare: print(json.dumps({'plan': plan(), 'plan_sha256': validate_plan(plan()), 'cloud_actions': False}))
-    elif args.simulator_gate: print(json.dumps(simulator_gate()))
+    elif args.simulator_gate:
+        receipt = simulator_gate_receipt()
+        print(json.dumps(receipt))
+        if receipt['status'] != 'passed': raise SystemExit(1)
     elif args.serve: serve(args)
     elif args.rollout: rollout(args)
     else: run(args)

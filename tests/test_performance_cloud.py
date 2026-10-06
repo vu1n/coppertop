@@ -38,6 +38,41 @@ def envelope(prepared):
 class PerformanceCloudTests(unittest.TestCase):
     def prepare(self, root=ROOT): return module.prepare(INPUTS, ledger(), ATTEMPT, root)
 
+    def test_subprocess_failure_receipt_survives_but_raw_output_and_credentials_do_not(self):
+        diagnostic = {'check': 'task_registry', 'error_type': 'ModuleNotFoundError',
+            'reason': 'exception_text_omitted', 'missing_module': 'missing_sim',
+            'trace': [{'file': 'performance_runtime.py', 'line': 73, 'function': 'simulator_gate'}]}
+        receipt = {'status': 'failed', 'render_reset_executed': False, 'diagnostic': diagnostic}
+        def runner(args, **options):
+            self.assertEqual(options['timeout'], 600)
+            self.assertNotIn('CLOUDFLARE_API_TOKEN', options['env'])
+            options['stdout'].write(b'harmless warning\n'+canonical(receipt))
+            options['stderr'].write(b'dummy-secret-must-not-persist')
+            return SimpleNamespace(returncode=1)
+        returned = module.simulator_preflight(runner)
+        self.assertEqual(returned, receipt)
+        self.assertNotIn('dummy-secret', json.dumps(returned))
+
+    def test_invalid_or_oversized_child_output_retains_only_exit_and_size(self):
+        for raw in (b'dummy-secret', b'x'*65537, canonical({'status': 'failed', 'render_reset_executed': False,
+                'diagnostic': {'check': 'bad', 'raw_secret': 'dummy-secret'}}),
+                canonical({'status': 'failed', 'render_reset_executed': False, 'diagnostic': {
+                    'check': 'dependencies', 'error_type': 'ValueError', 'reason': [], 'trace': []}})):
+            def runner(args, **options):
+                options['stdout'].write(raw); options['stderr'].write(b'dummy-secret')
+                return SimpleNamespace(returncode=2)
+            returned = module.simulator_preflight(runner)
+            self.assertEqual(returned['status'], 'failed')
+            self.assertEqual(returned['diagnostic']['exit_code'], 2)
+            self.assertNotIn('dummy-secret', json.dumps(returned))
+
+    def test_timeout_and_missing_interpreter_return_safe_failure_receipts(self):
+        for error in (FileNotFoundError('dummy-secret'), module.subprocess.TimeoutExpired(['private'], 600)):
+            receipt = module.simulator_preflight(Mock(side_effect=error))
+            self.assertEqual(receipt['status'], 'failed')
+            self.assertEqual(receipt['diagnostic']['error_type'], type(error).__name__)
+            self.assertNotIn('dummy-secret', json.dumps(receipt))
+
     def test_prepare_binds_fixed_inputs_budget_code_and_cpu_only_scopes_without_access(self):
         with patch.object(module, 'selected_env', side_effect=AssertionError('secret read')), \
              patch.object(module, 'parent_credentials', side_effect=AssertionError('API call')):
@@ -105,7 +140,9 @@ class PerformanceCloudTests(unittest.TestCase):
                 return {'container_id': 'ta-'+function, 'receipt': stage_receipt(prepared[function])}
             if function == 'gate':
                 return {'container_id': 'ta-gate', 'status': 'failed' if failure == 'bad_gate' else 'passed', 'image_id': module.CACHED_IMAGE,
-                        'evaluation_plan_sha256': module.validate_plan(prepared['cloud_plan']['evaluation'])}
+                        'evaluation_plan_sha256': module.validate_plan(prepared['cloud_plan']['evaluation']),
+                        'simulator': {'status': 'failed' if failure == 'bad_gate' else 'passed',
+                            'diagnostic': {'check': 'asset_inventory', 'error_type': 'ValueError'}}}
             if function == 'evaluate': return evaluated
             return {'container_id': 'ta-publisher', 'report_key': '0'*64 if failure == 'bad_publish' else evaluated['report_sha256'],
                     'attempt_id': ATTEMPT, 'verifier_container_id': 'ta-fresh'}
@@ -139,6 +176,8 @@ class PerformanceCloudTests(unittest.TestCase):
                 self.assertEqual(result['status'], 'failed'); self.assertEqual(events[-1], 'cleanup')
                 if failure in ('source', 'checkpoint', 'gate', 'bad_gate'):
                     self.assertNotIn('invoke-evaluate', events)
+                if failure == 'bad_gate':
+                    self.assertEqual(result['phases']['cache_gate']['simulator']['diagnostic']['check'], 'asset_inventory')
 
     def test_publication_rejects_forged_metrics_hash_and_training_identity(self):
         prepared = self.prepare(); record = envelope(prepared)
