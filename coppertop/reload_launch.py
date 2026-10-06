@@ -123,6 +123,7 @@ def prepare(plan, ledger, root):
         'recipe_sha256':recipe_hash, 'ledger_sha256':hashlib.sha256(canonical(ledger)).hexdigest(),
         'historical_conservative_usd':str(total), 'full_hold_usd':'8',
         'conservative_after_hold_usd':str(total+8), 'cloud_actions_performed':False,
+        'runtime_dependency_alignment': recipe['dependency_alignment'],
         'source':StageManifest(CHECKPOINT_RUN_ID,RELEASE,source_objects),
         'checkpoint':StageManifest(CHECKPOINT_RUN_ID,RELEASE,refs), 'scopes':scopes}
 
@@ -448,7 +449,8 @@ def main(argv=None):
         return 0
     except Exception as error:
         # Provider exceptions can include URLs, headers or request bodies.
-        print('Reload-only blocked: '+type(error).__name__,file=sys.stderr)
+        detail = type(error).__name__ if args.execute else type(error).__name__+': '+str(error)
+        print('Reload-only blocked: '+detail,file=sys.stderr)
         return 1
 
 

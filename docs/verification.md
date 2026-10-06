@@ -80,3 +80,5 @@ audits confirmed no App or Volume was created; no session was signed, R2 object
 request issued or compute allocated. The consumed marker and full $8 pending
 hold remain. Changed code needs a new reviewed binding before any continuation;
 this fix did not retry the paid run or release the reservation.
+
+Runtime alignment correction: the approved reload passed temporary scoped R2 source reads, immutable checksums and mounted commit, then failed the CPU image gate on `accelerate` before any GPU allocation. Independent terminal audit confirmed App stopped, zero containers/Sandboxes and owned Volume absent. Native pin installation was omitted in the warm image path; earlier GPU preparation installed it before snapshotting. The revised lazy recipe aligns all 30 merged native/R2 pins and reports aggregate discrepancies, including historical differences in offline preparation. This correction has not been built or executed remotely. The spent attempt, original checkpoint and full billing hold remain preserved; no further paid retry is authorized.

@@ -4,12 +4,89 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
-from .chords import LocalStore
+from .chords import LocalStore, canonical
 from .gpu_smoke import RELEASE,load_window,camera_history,messages
 from .smoke_runtime import verify_snapshot,official_messages,processor_inputs,equal_inputs
+
+NATIVE_PYTHON = '/opt/conda/bin/python'
+
+
+def require_native_interpreter():
+    # GPU reload invokes this executable; metadata from another environment
+    # cannot prove that the checkpoint's runtime is aligned.
+    try:
+        same = os.path.samefile(sys.executable, NATIVE_PYTHON)
+    except OSError:
+        same = False
+    prefix = Path('/opt/conda').resolve()
+    if (not same or Path(sys.prefix).resolve() != prefix
+        or Path(sys.exec_prefix).resolve() != prefix):
+        raise ValueError('Build/gate interpreter differs from native GPU interpreter')
+
+
+def pinned_dependencies(*paths):
+    """Merge exact locks without allowing resolver options or conflicting pins."""
+    pins, conflicts = {}, []
+    for path in paths:
+        with Path(path).open('rb') as source:
+            raw = source.read(65537)
+        if len(raw) > 65536:
+            raise ValueError('Dependency lock exceeds bound')
+        for line in raw.decode().splitlines():
+            if not line or line.startswith('#'):
+                continue
+            match = re.fullmatch(r'([A-Za-z0-9][A-Za-z0-9_.-]*)==([0-9][A-Za-z0-9.+-]*)', line)
+            if not match:
+                raise ValueError('Exact distribution pins required')
+            name = re.sub(r'[-_.]+', '-', match[1]).lower()
+            version = match[2]
+            if name in pins and pins[name] != version:
+                conflicts.append({'package': name, 'versions': [pins[name], version]})
+            pins[name] = version
+    if conflicts:
+        raise ValueError('Conflicting dependency pins: ' + canonical(conflicts).decode())
+    if not pins or len(pins) > 64:
+        raise ValueError('Bounded nonempty dependency lock required')
+    return dict(sorted(pins.items()))
+
+
+def dependency_report(expected, observed):
+    differences = []
+    for name, version in sorted(expected.items()):
+        actual = observed.get(name)
+        if name not in observed:
+            status = 'unknown'
+        elif actual is None:
+            status = 'missing'
+        elif actual != version:
+            status = 'different'
+        else:
+            continue
+        differences.append({'package': name, 'expected': version,
+                            'observed': actual, 'status': status})
+    return {'package_count': len(expected), 'matched_count': len(expected)-len(differences),
+            'differences': differences}
+
+
+def installed_dependencies(expected):
+    versions = {}
+    for name in expected:
+        try:
+            versions[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            versions[name] = None
+    return versions
+
+
+def require_dependencies(expected):
+    report = dependency_report(expected, installed_dependencies(expected))
+    if report['differences']:
+        raise ValueError('Pinned dependencies differ: ' + canonical(report).decode())
+    return report
 
 
 def recipe_digest(root):
@@ -23,15 +100,11 @@ def recipe_digest(root):
 
 
 def validate(args):
+    require_native_interpreter()
     if sys.version_info[:2] != (3,11):raise ValueError('Python 3.11 required')
     if os.environ.get('HF_HUB_OFFLINE') != '1' or os.environ.get('TRANSFORMERS_OFFLINE') != '1':
         raise ValueError('Offline native model inspection required')
-    expected={}
-    for line in (args.root/'requirements-gpu-smoke.lock').read_text().splitlines():
-        if line and not line.startswith('#'):
-            name,version=line.split('==');expected[name]=version
-    for name,version in expected.items():
-        if importlib.metadata.version(name)!=version:raise ValueError('Pinned dependency differs: '+name)
+    require_dependencies(pinned_dependencies(args.root/'requirements-gpu-smoke.lock'))
     import torch,torchvision,flash_attn,transformers,av,pyarrow,numpy
     if torch.__version__.split('+')[0]!='2.8.0' or torchvision.__version__.split('+')[0]!='0.23.0':
         raise ValueError('Immutable CUDA base packages differ')

@@ -66,7 +66,7 @@ class ReloadLauncherTests(unittest.TestCase):
                 module.selected_env(path)
 
     def prepare(self,plan,ledger):
-        with patch.object(module,'build_recipe',return_value={'reviewed':'recipe'}):
+        with patch.object(module,'build_recipe',return_value={'reviewed':'recipe','dependency_alignment':{'expected':{'accelerate':'1.11.0'},'historical_seed_report':{'differences':[]},'inventory_is_fresh':False}}):
             return module.prepare(plan,ledger,Path('/does-not-exist'))
 
     def test_preparation_uses_only_metadata_and_binds_three_narrow_scopes(self):
@@ -147,7 +147,7 @@ class ReloadLauncherTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             (root/'plan.json').write_bytes(canonical(plan));(root/'ledger.json').write_bytes(canonical(ledger))
-            with patch.object(module,'build_recipe',return_value={'reviewed':'recipe'}), \
+            with patch.object(module,'build_recipe',return_value={'reviewed':'recipe','dependency_alignment':{'expected':{'accelerate':'1.11.0'},'historical_seed_report':{'differences':[]},'inventory_is_fresh':False}}), \
                  patch.object(module,'run_approved',side_effect=AssertionError('execution')), \
                  patch('builtins.print'):
                 result=module.main(['--plan',str(root/'plan.json'),'--ledger',str(root/'ledger.json'),

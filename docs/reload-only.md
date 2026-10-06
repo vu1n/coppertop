@@ -10,7 +10,7 @@ After explicit approval of the full plan, the same command with `--execute
 --approved-plan-sha256 HASH --env-file ~/code/coppertop/.env.local` consumes one
 attempt before credential reads, temporary signing or provider access. Changed
 code/plan hashes, expired sessions, missing cache or existing Volume stop the
-attempt. There is no retraining, model download, upgrade or retry.
+attempt. There is no retraining, model download, unpinned upgrade or retry.
 
 The CPU source stage streams the pinned 17-object release from R2 into one new
 input Volume, verifies hashes and acknowledges mounted commit. An independent
@@ -42,12 +42,57 @@ four hard cores and 64 GiB. CPU build is at most 600 seconds, entire App entry
 separately bounded to 300, each audit to 60, and the whole controller to 7,200.
 All containers are single-use with zero retries/warm minimum/buffer.
 
-The warm seed retains the native CUDA model and wheel. Only seven pinned pure
-Python R2 packages in `requirements-r2.txt` are installed by the CPU build,
-without dependency resolution; existing package directories occupy about
-30.4 MiB. No native/model fallback installation occurs. Stale project sources
-and bytecode are removed only within the disposable image's project package.
-Offline SDK registration and resource-spec checks do not execute this build.
+The warm seed retains the CUDA model, Torch/Torchvision and Flash Attention.
+The CPU build aligns `requirements-gpu-smoke.lock` and `requirements-r2.txt`
+together: 24 native runtime pins plus seven R2 SDK pins, with one shared
+`urllib3` pin, for 30 unique distributions. Binary wheels only, no dependency
+resolution, CUDA-stack reinstall or model download. It reports every installed
+version difference before alignment, verifies all 30 afterward, then runs
+`pip check`. Some distributions, including AV and PyArrow, contain native code;
+this is more than the original seven-package R2-only update and must be included
+in any future execution approval. The historical 20-package native alignment
+fetched approximately 95.5 MB of compressed wheels; this is historical evidence,
+not a fresh download-size guarantee. Existing R2 package directories occupied
+about 30.4 MiB. The 600-second CPU build and 900-second App-entry bounds remain.
+
+Local `--prepare` reports all historically known seed differences and unknown
+R2 entries before credential reads or resource allocation. The recipe includes
+[the curated historical seed inventory](../containers/gpu-smoke-seed-runtime.json),
+bound to the exact immutable seed ID and prior log checksum. It is explicitly
+not a fresh remote inventory. Unexpected R2 entries or conflicting normalized pins fail
+local preparation; cached Torch, Torchvision and Flash Attention cannot become
+installer targets. The live CPU gate reports all remaining lock discrepancies
+together before native imports or GPU allocation. Snapshot hashes, Python/CUDA
+ABI, native APIs and processor parity remain separate compatibility checks.
+Stale project sources and bytecode are removed only within the disposable
+image's project package. Offline registration/tests do not execute this build.
+
+The failed reload used the original seed `im-MGjcv5j3hs0KKoxdxCexhs` and installed
+only R2 pins. Prior successful GPU preparation first installed the full native
+lock and retained an aligned snapshot, `im-01M47WY37160XVP52TCJ4PHP6G`.
+Historical seed logs show 18 differing versions and AV/PyArrow newly installed;
+R2-only alignment corrected just `urllib3`, leaving 19 native entries unresolved.
+The failed live gate observed only an Accelerate mismatch because it stopped at
+the first discrepancy. Its actual version and the other current versions were
+not measured. Historical Accelerate was 1.15.0; the lock requires 1.11.0.
+Provide the already acquired official evaluator at `.local/native/evaluator.py`
+(17,701 bytes, Git blob `03202dbd056110ea1087a4cf4e9d76fcd9848913`). Local
+preparation verifies its bytes before any provider access; the lazy image copies
+it to `/opt/evaluator.py`. It remains an ignored runtime input, outside Git.
+The CPU builder requires the existing `/work/model` index, creates only the
+`/opt/model` alias to that directory and verifies the cached Flash Attention
+wheel’s pinned length/SHA256. It downloads or reinstalls neither model nor wheel.
+The later CPU gate still verifies every model file and actual Flash/torch ABI.
+These reproduce the earlier bootstrap paths omitted from the failed reload.
+
+Build and CPU gate must use `/opt/conda/bin/python` with Conda prefixes used by
+GPU reload. The installer clears inherited pip/Python path overrides, disables
+pip configuration files and uses isolated pip with the explicit PyPI index;
+see [pip configuration](https://pip.pypa.io/en/stable/topics/configuration/).
+
+Exact pin equality reproduces the earlier tested environment; it does not prove
+that Accelerate 1.15.0 or every differing patch version is incompatible. Keep
+pins until an alternative environment is explicitly tested and recorded.
 
 Three two-hour locally signed temporary R2 sessions grant source GET/HEAD for
 17 exact paths, checkpoint GET/HEAD for five exact paths, and report GET/HEAD/PUT

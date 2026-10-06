@@ -4,7 +4,6 @@ Constructing these definitions performs no build or provider lookup. The caller
 must supply the separately verified seed handle and authorize its later use.
 """
 import hashlib
-import importlib.metadata
 import json
 import os
 import re
@@ -16,11 +15,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from .chords import canonical
-from .cloud_stage import StageManifest, verify_stage
-from .image_check import validate
+from .cloud_stage import StageManifest, verify_stage, _file_reference
+from .streams import ObjectRef
+from .image_check import (validate, pinned_dependencies, dependency_report,
+                          installed_dependencies, require_dependencies,
+                          require_native_interpreter, NATIVE_PYTHON)
 
 SEED_IMAGE_ID = 'im-MGjcv5j3hs0KKoxdxCexhs'
 INPUT_MOUNT = '/coppertop-inputs'
+EVALUATOR_FILE = '.local/native/evaluator.py'
 PACKAGE_FILES = tuple('coppertop/' + name + '.py' for name in (
     '__init__', '__main__', 'adapter', 'checkpoint', 'chords', 'cloud_roundtrip',
     'cloud_smoke', 'cloud_stage', 'episode', 'gpu_launch', 'gpu_smoke', 'image_check',
@@ -29,6 +32,7 @@ PACKAGE_FILES = tuple('coppertop/' + name + '.py' for name in (
     'smoke_runtime', 'streams', 'verify_loader', 'worker', 'xiaomi'))
 RECIPE_FILES = PACKAGE_FILES + (
     'containers/Dockerfile.gpu-smoke', 'containers/gpu-smoke-pins.json',
+    'containers/gpu-smoke-seed-runtime.json',
     'requirements-gpu-smoke.lock', 'requirements-r2.txt',
     'tools/prepare_gpu_fixture.py', 'tools/run_reload_only.py')
 OFFLINE_ENV = {'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1',
@@ -47,17 +51,29 @@ def _hash_files(root, names):
     return hashes
 
 
-def _install_r2():
-    """Build step: only the seven reviewed Python SDK packages, no dependency resolver."""
-    requirements = Path('/app/requirements-r2.txt')
-    pins = [line for line in requirements.read_text().splitlines() if line and not line.startswith('#')]
-    expected = {'boto3==1.43.108', 'botocore==1.43.108', 's3transfer==0.19.2',
-        'jmespath==1.1.0', 'python-dateutil==2.9.0.post0', 'urllib3==2.8.0', 'six==1.17.0'}
-    if set(pins) != expected or len(pins) != len(expected):
+def runtime_dependencies(root):
+    sdk_pins = pinned_dependencies(root/'requirements-r2.txt')
+    expected = {'boto3': '1.43.108', 'botocore': '1.43.108', 's3transfer': '0.19.2',
+        'jmespath': '1.1.0', 'python-dateutil': '2.9.0.post0', 'urllib3': '2.8.0', 'six': '1.17.0'}
+    if sdk_pins != expected:
         raise ValueError('Reviewed R2 SDK pins required')
+    pins = pinned_dependencies(root/'requirements-gpu-smoke.lock', root/'requirements-r2.txt')
+    if {'torch', 'torchvision', 'flash-attn'} & pins.keys():
+        raise ValueError('Cached CUDA stack must not be reinstalled')
+    return pins
+
+
+def _install_runtime():
+    """Align both exact locks while retaining cached Torch, Flash Attention and model."""
+    root = Path('/app')
+    pins = runtime_dependencies(root)
+    require_native_interpreter()
+    prepare_cached_layout()
+    print(canonical({'dependency_alignment_before':
+        dependency_report(pins, installed_dependencies(pins))}).decode())
     # The disposable seed may contain earlier project modules. Remove only stale
     # Python sources/bytecode in this exact package; keep native model/cache files.
-    package = Path('/app/coppertop')
+    package = root/'coppertop'
     allowed = {Path(name).name for name in PACKAGE_FILES}
     if package.is_symlink() or not package.is_dir():
         raise ValueError('Regular project package required')
@@ -74,10 +90,35 @@ def _install_r2():
         if cache.parent.resolve() != package.resolve():
             raise ValueError('Package bytecode cache escapes owned package')
         shutil.rmtree(cache)
-    subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-deps', '--no-cache-dir',
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith('PIP_') and key not in ('PYTHONHOME', 'PYTHONPATH')}
+    env['PIP_CONFIG_FILE'] = os.devnull
+    subprocess.run([sys.executable, '-m', 'pip', '--isolated', 'install',
+        '--no-input', '--disable-pip-version-check', '--no-deps', '--no-cache-dir',
         '--only-binary=:all:', '--retries', '0', '--timeout', '15',
-        '--index-url', 'https://pypi.org/simple', '-r', str(requirements)], check=True, timeout=480)
-    subprocess.run([sys.executable, '-m', 'pip', 'check'], check=True, timeout=30)
+        '--index-url', 'https://pypi.org/simple', '-r', str(root/'requirements-gpu-smoke.lock'),
+        '-r', str(root/'requirements-r2.txt')], check=True, timeout=480, env=env)
+    require_dependencies(pins)
+    subprocess.run([sys.executable, '-m', 'pip', '--isolated', 'check'], check=True, timeout=30, env=env)
+
+
+def prepare_cached_layout():
+    """Reuse existing assets at the same paths as the previous verified runtime."""
+    model, cached = Path('/opt/model'), Path('/work/model')
+    if not (cached/'model.safetensors.index.json').is_file():
+        raise ValueError('Warm checkpoint cache absent; no download/fallback')
+    if model.exists() or model.is_symlink():
+        if not model.is_dir() or model.resolve() != cached.resolve():
+            raise ValueError('Native model path differs from cached model')
+    else:
+        model.symlink_to(cached, target_is_directory=True)
+    pin = json.loads(Path('/opt/gpu-smoke-pins.json').read_bytes())['flash_attention_wheel']
+    name = pin['name']
+    if Path(name).name != name:
+        raise ValueError('Cached wheel filename must be a basename')
+    ref = ObjectRef(pin['digest'].removeprefix('sha256:'), pin['size'])
+    if _file_reference(Path('/work')/name, ref.size) != ref:
+        raise ValueError('Cached wheel checksum differs')
 
 
 def _native_digest(hashes):
@@ -102,11 +143,36 @@ def build_recipe(root: Path, *, seed_id=SEED_IMAGE_ID, region: str):
         raise ValueError('Reviewed seed identity and region required')
     root = Path(root)
     hashes = _hash_files(root, RECIPE_FILES)
+    pins = runtime_dependencies(root)
+    inventory = json.loads((root/'containers/gpu-smoke-seed-runtime.json').read_bytes())
+    if (inventory.get('schema_version') != 1 or inventory.get('seed_image_id') != seed_id
+        or inventory.get('evidence_kind') != 'historical_seed_install_log'
+        or not isinstance(inventory.get('versions'), dict)):
+        raise ValueError('Historical inventory must identify the exact seed')
+    evaluator = root/EVALUATOR_FILE
+    if evaluator.is_symlink() or not evaluator.is_file():
+        raise ValueError('Pinned local evaluator required before provider access')
+    with evaluator.open('rb') as source:
+        raw = source.read(32769)
+    blob = hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
+    expected_blob = json.loads((root/'containers/gpu-smoke-pins.json').read_bytes())['evaluator_git_blob']
+    if len(raw) > 32768 or blob != expected_blob:
+        raise ValueError('Bounded pinned evaluator bytes differ')
     return {'schema_version': 1, 'seed_image_id': seed_id, 'files': hashes,
+        'evaluator': {'git_blob': blob, 'sha256': hashlib.sha256(raw).hexdigest(),
+                      'size': len(raw), 'image_path': '/opt/evaluator.py'},
         'native_recipe_sha256': _native_digest(hashes),
+        'dependency_alignment': {'expected': pins,
+            'historical_seed_report': dependency_report(pins, inventory['versions']),
+            'inventory_is_fresh': False,
+            'installer_lock_files': ['requirements-gpu-smoke.lock', 'requirements-r2.txt'],
+            'live_gate': 'All installed versions, CUDA ABI, model hashes and processor parity before GPU'},
         'environment': OFFLINE_ENV, 'region': region,
         'build': {'cpu': (4, 4), 'memory': (16384, 16384), 'timeout': 600, 'gpu': None,
-                  'secrets': [], 'include_source': False, 'installer': 'coppertop.modal_image._install_r2',
+                  'native_python': NATIVE_PYTHON, 'pip_isolated': True, 'pip_config_file': '/dev/null',
+                  'cached_model': '/work/model', 'native_model_alias': '/opt/model',
+                  'cached_wheel': 'verify pinned length/hash without download or reinstall',
+                  'secrets': [], 'include_source': False, 'installer': 'coppertop.modal_image._install_runtime',
                   'cleanup': 'remove unexpected /app/coppertop/*.py and *.pyc plus owned __pycache__'}}
 
 
@@ -120,10 +186,11 @@ def prepare_image(sdk, *, seed, seed_id: str, root: Path, region: str):
     for name in RECIPE_FILES:
         image = image.add_local_file(root / name, '/app/' + name, copy=True)
     image = image.add_local_file(root/'containers/gpu-smoke-pins.json', '/opt/gpu-smoke-pins.json', copy=True)
+    image = image.add_local_file(root/EVALUATOR_FILE, '/opt/evaluator.py', copy=True)
     image = image.env(OFFLINE_ENV).workdir('/app')
     # SDK 1.6.1 forwards tuple limits to its Function resource protobuf even
     # though Image.run_function's public annotations list only scalar requests.
-    image = image.run_function(_install_r2, cpu=(4, 4), memory=(16384, 16384), timeout=600,
+    image = image.run_function(_install_runtime, cpu=(4, 4), memory=(16384, 16384), timeout=600,
         gpu=None, secrets=[], region=region, include_source=False)
     return ImagePreparation(image, recipe, hashlib.sha256(canonical(recipe)).hexdigest())
 
@@ -152,6 +219,7 @@ def create_image_gate(app, *, prepared: ImagePreparation, input_volume, run_id: 
         identity = os.environ.get('MODAL_TASK_ID', '')
         if not re.fullmatch(r'ta-[A-Za-z0-9]+', identity):
             raise ValueError('Actual Modal container identity required')
+        require_native_interpreter()
         root = Path('/app')
         if {path.name for path in (root/'coppertop').glob('*.py')} != {Path(name).name for name in PACKAGE_FILES}:
             raise ValueError('Image contains an unexpected project module')
@@ -159,13 +227,13 @@ def create_image_gate(app, *, prepared: ImagePreparation, input_volume, run_id: 
             raise ValueError('Image code/recipe inputs differ')
         if hashlib.sha256(Path('/opt/gpu-smoke-pins.json').read_bytes()).hexdigest() != recipe['files']['containers/gpu-smoke-pins.json']:
             raise ValueError('Runtime pins differ from reviewed recipe')
+        evaluator = recipe['evaluator']
+        if _file_reference(Path('/opt/evaluator.py'), evaluator['size']) != ObjectRef(evaluator['sha256'], evaluator['size']):
+            raise ValueError('Runtime evaluator bytes differ')
         source = Path(INPUT_MOUNT) / manifest.key
         verify_stage(manifest, source)
-        for line in (root/'requirements-r2.txt').read_text().splitlines():
-            if line and not line.startswith('#'):
-                name, version = line.split('==')
-                if importlib.metadata.version(name) != version:
-                    raise ValueError('R2 package differs: ' + name)
+        require_dependencies(pinned_dependencies(root/'requirements-gpu-smoke.lock',
+                                                root/'requirements-r2.txt'))
         # Verify the new entrypoints and the CPU transfer client's imports offline.
         import boto3, botocore, s3transfer
         from . import modal_staging, modal_reload, runpod_staging, reload_launch, r2_session
