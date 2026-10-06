@@ -69,3 +69,14 @@ no surviving blocker. Nested deadlines preserve the whole-attempt limit, and
 owned cleanup handles partial App startup and refuses unsafe Volume adoption.
 The live image build, scoped sessions, mounted barriers, fresh CUDA comparison
 and provider teardown remain execution gates. See [reload-only](reload-only.md).
+
+The first approved reload launch stopped before allocation: the launcher required
+an unnecessary `R2_BUCKET` env assignment although the plan already pins
+`coppertop`. The existing token/account/URL assignments were present. The parser
+now accepts those three assignments and rejects any explicitly conflicting
+optional bucket; fourteen launcher tests pass, including this regression.
+Independent correctness/security rechecks found no blocker. Read-only exact-name
+audits confirmed no App or Volume was created; no session was signed, R2 object
+request issued or compute allocated. The consumed marker and full $8 pending
+hold remain. Changed code needs a new reviewed binding before any continuation;
+this fix did not retry the paid run or release the reservation.

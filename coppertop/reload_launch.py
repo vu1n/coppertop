@@ -145,8 +145,10 @@ def selected_env(path):
             if len(parts) != 1 or any(c in parts[0] for c in ('$','`','\r','\n')):
                 raise ValueError('Unsupported selected local configuration')
             values[match[1]] = parts[0]
-    if set(values) != ENV_NAMES or values['R2_BUCKET'] != 'coppertop':
-        raise ValueError('Four existing local Cloudflare assignments required')
+    if not (ENV_NAMES - {'R2_BUCKET'}) <= set(values):
+        raise ValueError('Existing local Cloudflare token, account and R2 URL required')
+    if values.get('R2_BUCKET', 'coppertop') != 'coppertop':
+        raise ValueError('Configured bucket differs from approved coppertop bucket')
     url = urlsplit(values['CLOUDFLARE_R2_URL'])
     if url.path not in ('', '/', '/coppertop', '/coppertop/') or url.query or url.fragment:
         raise ValueError('Existing R2 URL route differs')

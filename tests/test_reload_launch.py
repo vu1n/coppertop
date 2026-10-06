@@ -47,6 +47,24 @@ def fixture():
 
 
 class ReloadLauncherTests(unittest.TestCase):
+    def test_pinned_bucket_does_not_require_an_extra_local_assignment(self):
+        account = 'a' * 32
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / '.env.local'
+            config = ('CLOUDFLARE_API_TOKEN=fixture-token\n'
+                f'CLOUDFLARE_ACCOUNT_ID={account}\n'
+                f'CLOUDFLARE_R2_URL=https://{account}.r2.cloudflarestorage.com/coppertop\n')
+            path.write_text(config)
+            values = module.selected_env(path)
+            self.assertNotIn('R2_BUCKET', values)
+            self.assertEqual(values['CLOUDFLARE_R2_URL'],
+                f'https://{account}.r2.cloudflarestorage.com')
+            path.write_text(config + 'R2_BUCKET=coppertop\n')
+            self.assertEqual(module.selected_env(path)['R2_BUCKET'], 'coppertop')
+            path.write_text(config + 'R2_BUCKET=unrelated\n')
+            with self.assertRaisesRegex(ValueError, 'approved coppertop bucket'):
+                module.selected_env(path)
+
     def prepare(self,plan,ledger):
         with patch.object(module,'build_recipe',return_value={'reviewed':'recipe'}):
             return module.prepare(plan,ledger,Path('/does-not-exist'))
