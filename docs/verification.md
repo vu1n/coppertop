@@ -42,3 +42,30 @@ requires independent stop checks. Mounted storage, updated image validation,
 fresh-container exact velocity equality and live teardown remain unverified.
 See [cloud transfer](cloud-transfer.md) and [native smoke](gpu-smoke.md) for scope
 and evidence. No paid run is implied by these local tests or this publication.
+
+## Executable reload-only preparation
+
+The original 134-test publication includes every reviewed transfer file, both
+Modal and Runpod adapters, and the complete required checkpoint/storage closure.
+The prior 164-test working-directory suite additionally ran 30 unrelated cases:
+seven CPU-job tests, four job-budget tests, twelve live-key helper tests, and
+seven provider-helper tests. Those excluded cases contained the prior SDK skip;
+no transfer implementation or transfer test was omitted.
+
+The executable reload-only preparation adds 42 tests. The exact final checkout
+ran 176 tests with the acquired source enabled: 175 passed and the optional
+pinned-SDK case skipped in the older CPU environment. Eight image tests then
+passed in the existing Modal 1.6.1 controller environment, including that case
+and actual generated builder resource limits. Offline preparation printed the
+plan/code hashes with zero env reads or cloud calls. CI installs the small
+pinned R2 SDK and runs the same suite without downloading source or models.
+
+Independent structure review rejected introducing a generic resource manager or
+reusing the full training runner for this fixed reload. Correctness review fixed
+the pinned CLI billing schema and durable retention of the new hold through
+delayed billing/startup failure. Security review narrowed the actual temporary
+JWT report grant to the approved `objects/` subtree; independent recheck found
+no surviving blocker. Nested deadlines preserve the whole-attempt limit, and
+owned cleanup handles partial App startup and refuses unsafe Volume adoption.
+The live image build, scoped sessions, mounted barriers, fresh CUDA comparison
+and provider teardown remain execution gates. See [reload-only](reload-only.md).

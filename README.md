@@ -32,3 +32,7 @@ separate explicit cost, storage and temporary-access approval.
 
 CPU CI uses fixtures without model or dataset downloads. To include the acquired
 real episode locally, set `COPPERTOP_SOURCE` when running the tests above.
+
+The [reload-only launcher](docs/reload-only.md) reuses the saved checkpoint with
+one disposable input Volume. Preparation is offline; execution requires the
+exact approved plan and current code hashes.
