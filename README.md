@@ -36,3 +36,8 @@ real episode locally, set `COPPERTOP_SOURCE` when running the tests above.
 The [reload-only launcher](docs/reload-only.md) reuses the saved checkpoint with
 one disposable input Volume. Preparation is offline; execution requires the
 exact approved plan and current code hashes.
+
+The [paired performance pilot](docs/performance-eval.md) compares the official
+model and saved one-update head on two matched CoffeeSetupMug seeds. Its bounded
+cloud controller validates cached inputs on CPU before GPU admission. Offline
+preparation is available; paid execution requires the exact budget-bound approval.

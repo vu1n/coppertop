@@ -24,7 +24,7 @@ CACHED_IMAGE = 'im-jSDPqh8D8lT4vK8OLVkOvP'
 def runtime_sources():
     root = Path(__file__).resolve().parent
     return {name: hashlib.sha256((root/name).read_bytes()).hexdigest()
-            for name in ('performance_eval.py', 'performance_runtime.py')}
+            for name in ('performance_eval.py', 'performance_runtime.py', 'performance_cloud.py', 'reload_launch.py')}
 
 
 def plan():

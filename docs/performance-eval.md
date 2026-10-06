@@ -50,12 +50,12 @@ python tools/run_performance_eval.py --prepare > .local/performance-plan.json
 ```
 
 Preparation imports no simulator/model, reads no credentials and performs no
-provider calls. It returns the exact plan and SHA-256 binding, including both
-new runtime module hashes. CPU fixtures exercise schedules, metrics, integrity,
+provider calls. It returns the exact plan and SHA-256 binding, including all four
+reviewed runtime module hashes. CPU fixtures exercise schedules, metrics, integrity,
 pair guards and failures; they are not simulator execution.
 
 The existing aligned image `im-jSDPqh8D8lT4vK8OLVkOvP` was read from the completed
-verifier's provider metadata. `performance_eval.runtime_image` adds the two
+verifier's provider metadata. `performance_eval.runtime_image` adds the four
 reviewed modules with `copy=False` as runtime files. It performs no lookup,
 image build, package installation or download. Its caller must supply the
 already verified image handle. Preserve `/app` on PYTHONPATH for both interpreters.
@@ -70,21 +70,40 @@ checks assets/imports but **does not claim reset/render execution**. The first
 GPU rollout additionally checks the real EGL rendering/reset/camera/controller
 path; no performance comparison is valid unless all four rollouts finish.
 
-After approval, the isolated CUDA job runs:
+The cloud controller is executable locally with the pinned Modal 1.6.1 controller
+Python. Prepare an exact attempt against a local proposal ledger preserving every
+historical hold and setting its cumulative cap to 48:
 
 ```sh
-/opt/conda/bin/python -m coppertop.performance_runtime --execute-cuda \
-  --plan /tmp/exact-plan.json --approved-plan-sha256 EXACT_HASH \
-  --head /coppertop-inputs/bdacc7fa4604fd52a32621eb21dcbd4bb2a93375c2bd1a16247af5dae4e64d5d/head.safetensors \
-  --output /tmp/paired-eval
+python tools/run_performance_cloud.py --prepare \
+  --inputs containers/performance-inputs.json \
+  --ledger /path/to/proposed-ledger-48.json --attempt reload-16_HEX_DIGITS
 ```
 
-The plan file contains the `plan` field of offline preparation, not its enclosing
-JSON receipt. The CUDA runner creates one exclusive consumed marker, no retry,
-and kills only its owned subprocess groups on completion or error. It allocates
-no provider resources. A separately approval-bound cloud controller must stage
-on CPU, enforce function limits, publish/read back the bounded report and audit
-teardown; this draft does not implement or claim that new cloud launch.
+Preparation reads public object references and code hashes only. It returns
+`cloud_plan` and `cloud_plan_sha256`; approval must bind that exact digest.
+Use the same inputs, ledger and attempt with `--execute` and
+`--approved-cloud-plan-sha256 EXACT_HASH` only after budget approval.
+The default environment file is `~/code/coppertop/.env.local`; no keys are
+requested in chat. Changing code, inputs, ledger or scope invalidates approval.
+
+The bounded controller stages the 17 source objects and five checkpoint objects
+on separate CPU jobs, verifies and commits their manifests, then runs the paid
+CPU cache/native-processor/simulator-import gate. No GPU starts unless all CPU
+gates pass and their containers stop. The CPU gate also checks loopback transport
+under external-network blocking. This runtime validation inherently needs a paid
+CPU job, included in the same proposed envelope; it has not run yet.
+
+The fresh secret-free GPU job runs `coppertop.performance_runtime` with the
+verified head under `/coppertop-reload-inputs`, performs all four official
+closed-loop rollouts, and returns only bounded metadata. A separate CPU publisher
+writes the immutable report and verifies its readback. The controller creates one
+exclusive consumed marker, never retries, stops/audits the exact App and deletes
+only the captured newly created Volume identity. Original checkpoint objects and
+reports remain in R2. Native failures with bounded partial metadata can produce
+an invalid-run report; provider hard termination may prevent that report, but the
+local terminal receipt and teardown audit still record failure. No missing or
+partial result counts as policy failure or comparison success.
 
 ## Proposed resource and access envelope
 
@@ -97,18 +116,24 @@ One US L40S Function, `(4,4)` CPU cores and `(65536,65536)` MiB memory, timeout
 single-use, minimum/buffer containers 0. Each server is limited to 420 seconds,
 startup 90, each simulator 330, and the complete CUDA runner to 1800. If full
 600-step episodes do not fit, report timeout; never shorten the horizon or retry.
-CPU cache gate: four hard cores/16GiB, 1200+300 seconds. Checkpoint stage: two
+CPU source stage: two hard cores/4GiB, 600+300 seconds. CPU cache gate: four
+hard cores/16GiB, 1200+300 seconds. Checkpoint stage: two
 hard cores/4GiB, 1800+300 seconds. Metadata publisher: two cores/4GiB, 300+300.
-Controller deadline 5400 seconds. Independent audits each at most 60 seconds.
+Controller deadline 5400 seconds, followed by bounded cleanup on failure.
+Independent audits each take at most 60 seconds. GPU admission requires at least
+3000 seconds remaining for execution, publication and teardown; otherwise stop.
+Fresh billing must fit retained holds plus $10, and CPU costs above $.75 block GPU.
 
 One newly owned input Volume, at most 3GiB. CPU verifies/commits before GPU;
 GPU mounts read-only with empty secrets and blocked external networking.
-Existing source/checkpoint session scopes may be reused as separate two-hour
+Source/checkpoint permissions use separate two-hour
 CPU-only sessions, limited to the 17 source and five checkpoint object paths;
 report access is limited to one new attempt prefix. No listing, deleting,
 multipart, renewal, permanent credential or parent credential in compute.
 Bound aggregate R2 requests to 2000, new report bytes to 64KiB and provider
-egress to 1GiB. No model, simulator asset or dependency download. Stop/audit the
+metadata egress to 1GiB. Checkpoint R2-to-Modal transfer is inbound.
+The report uses `chords/gpu-reload/<attempt>/objects/` to retain the existing
+narrow access contract; its record kind identifies this performance evaluation. No model, simulator asset or dependency download. Stop/audit the
 exact App and zero active containers/Sandboxes before deleting only the captured
 new Volume identity. Retain original checkpoint and immutable report in R2.
 
@@ -117,6 +142,7 @@ Conservative estimate at current prices, reserving a 1.75 region factor:
 | Item | Upper reservation, USD |
 | --- | ---: |
 | L40S+4 cores+64GiB, 2100 seconds | 2.706564 |
+| CPU source stage, 900 seconds | .055251 |
 | CPU gate, 1500 seconds | .230790 |
 | CPU transfer, 2100 seconds | .128919 |
 | CPU publisher, 600 seconds | .036834 |
@@ -124,7 +150,7 @@ Conservative estimate at current prices, reserving a 1.75 region factor:
 | Provider egress, 1GiB | .040000 |
 | R2 rounded Class A and B request units | 4.860000 |
 | R2 storage, conservatively 1GB-month | .015000 |
-| Total envelope | 8.288107 |
+| Total envelope | 8.343358 |
 
 Reserve $10 to cover this envelope; assume no credits or free tier. Runtime
 mounts avoid the unbounded implicit COPY-build charge issue. These are proposal

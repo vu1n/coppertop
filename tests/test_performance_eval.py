@@ -27,7 +27,7 @@ class PerformanceTests(unittest.TestCase):
                 calls.append((path, remote, copy)); return self
         image = Image()
         self.assertIs(runtime_image(SimpleNamespace(__version__='1.6.1'), image, Path(runtime.__file__).parents[1]), image)
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 4)
         self.assertTrue(all(not call[2] for call in calls))
         image.object_id = 'im-unrelated'
         with self.assertRaises(ValueError): runtime_image(SimpleNamespace(__version__='1.6.1'), image, Path('.'))

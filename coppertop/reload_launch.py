@@ -195,7 +195,9 @@ def cli_json(args, runner=subprocess.run, limit=2*1024**2):
     return json.loads(process.stdout)
 
 
-def reconcile(ledger, rows, *, app_id=None, reservation_key=None):
+def reconcile(ledger, rows, *, app_id=None, reservation_key=None, additional_cap=8):
+    if additional_cap not in (8, 10):
+        raise ValueError('Reviewed full reservation required')
     if not isinstance(rows,list) or len(rows)>4096:
         raise ValueError('Bounded billing rows required')
     result = copy.deepcopy(ledger)
@@ -222,22 +224,23 @@ def reconcile(ledger, rows, *, app_id=None, reservation_key=None):
             raise ValueError('Prior app exceeds retained hold')
     if reservation_key is not None:
         hold=result['apps'].get(reservation_key)
-        if not hold or hold['state']!='unsettled_bounded' or Decimal(str(hold.get('reservation_usd',0)))!=8:
+        if not hold or hold['state']!='unsettled_bounded' or Decimal(str(hold.get('reservation_usd',0)))!=additional_cap:
             raise ValueError('Current full reservation missing')
-    additional=0 if reservation_key is not None else 8
+    additional=0 if reservation_key is not None else additional_cap
     cap = Decimal(str(result.get('cumulative_cap', '30')))
-    if cap not in (30, 38) or historical_total(result)+additional>cap or totals.get(app_id,Decimal(0))>8:
+    approved_caps = (30, 38) if additional_cap == 8 else (48,)
+    if cap not in approved_caps or historical_total(result)+additional>cap or totals.get(app_id,Decimal(0))>additional_cap:
         raise ValueError('Fresh billing exceeds full approved holds')
     return result, str(totals.get(app_id,Decimal(0)))
 
 
-def refresh_billing(ledger, output, *, app_id=None, reservation_key=None, runner=subprocess.run, now=None):
+def refresh_billing(ledger, output, *, app_id=None, reservation_key=None, runner=subprocess.run, now=None, additional_cap=8):
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         raise ValueError('UTC billing clock required')
     rows = cli_json([sys.executable,'-m','modal','billing','report','--start',ledger['billing_start_utc'],
         '--end',(now+timedelta(days=1)).date().isoformat(),'--resolution','h','--tz','UTC','--json'],runner)
-    updated, cost = reconcile(ledger, rows, app_id=app_id,reservation_key=reservation_key)
+    updated, cost = reconcile(ledger, rows, app_id=app_id,reservation_key=reservation_key,additional_cap=additional_cap)
     save(Path(output)/'billing.json', {'fetched_at_utc':now.isoformat(),'rows':rows,'current_app_reported_usd':cost})
     save(Path(output)/'ledger.json',updated)
     return updated
@@ -274,6 +277,23 @@ def delete_owned_volume(sdk, name, identity):
         if current.object_id!=identity:
             raise ValueError('Owned Volume identity changed; no deletion')
         sdk.Volume.objects.delete(name,environment_name='main',allow_missing=False)
+
+
+def stop_and_audit_owned_app(app_id, *, runner=subprocess.run):
+    """One exact App only; stopping is not sufficient without both empty lists."""
+    if not re.fullmatch(r'ap-[A-Za-z0-9]+', app_id):
+        raise ValueError('Owned App identity invalid')
+    process = runner([sys.executable, '-m', 'modal', 'app', 'stop', app_id,
+                      '--env', 'main', '--yes'], capture_output=True, timeout=60)
+    message = process.stdout+process.stderr
+    stopped = process.returncode == 0 or (len(message)<=65536 and b'App is already stopped.' in message)
+    containers = cli_json([sys.executable, '-m', 'modal', 'container', 'list',
+                          '--app-id', app_id, '--env', 'main', '--json'], runner, 65536)
+    script = 'import modal,json,sys; print(json.dumps([s.object_id for s in modal.Sandbox.list(app_id=sys.argv[1])]))'
+    sandboxes = cli_json([sys.executable, '-c', script, app_id], runner, 65536)
+    if not stopped or containers != [] or sandboxes != []:
+        raise RuntimeError('Owned App still has active resources; no Volume deletion')
+    return {'app_stopped': True, 'active_containers': 0, 'active_sandboxes': 0}
 
 
 def _run_approved(plan, prepared, ledger, env_file, output, root, *, sdk=None, runner=subprocess.run):
@@ -365,18 +385,7 @@ def _run_approved(plan, prepared, ledger, env_file, output, root, *, sdk=None, r
                 context_error=type(error).__name__
             owned['entered']=False
         if app_id:
-            if not re.fullmatch(r'ap-[A-Za-z0-9]+',app_id):
-                raise ValueError('Owned App identity invalid')
-            # SDK context stops ephemeral Apps; tolerate CLI already-stopped only
-            # by independently requiring both exact-app lists to be empty below.
-            stopped_app=runner([sys.executable,'-m','modal','app','stop',app_id,'--env','main','--yes'],capture_output=True,timeout=60)
-            message=stopped_app.stdout+stopped_app.stderr
-            app_stopped=stopped_app.returncode==0 or (len(message)<=65536 and b'App is already stopped.' in message)
-            containers=cli_json([sys.executable,'-m','modal','container','list','--app-id',app_id,'--env','main','--json'],runner,65536)
-            script='import modal,json,sys; print(json.dumps([s.object_id for s in modal.Sandbox.list(app_id=sys.argv[1])]))'
-            sandboxes=cli_json([sys.executable,'-c',script,app_id],runner,65536)
-            if not app_stopped or containers!=[] or sandboxes!=[]:
-                raise RuntimeError('Owned App still has active resources; no Volume deletion')
+            stop_and_audit_owned_app(app_id, runner=runner)
         if owned['created']:
             if not owned['volume_id']:
                 with hard_deadline(60):
