@@ -53,6 +53,20 @@ class PerformanceCloudTests(unittest.TestCase):
         self.assertEqual(returned, receipt)
         self.assertNotIn('dummy-secret', json.dumps(returned))
 
+    def test_real_import_trace_with_frozen_frames_survives_receipt_validation(self):
+        import importlib
+        from coppertop import performance_runtime as runtime
+        def missing(progress):
+            progress('dependencies')
+            importlib.import_module('coppertop_missing_simulator_module_for_test')
+        with patch.object(runtime, 'simulator_gate', side_effect=missing):
+            receipt = runtime.simulator_gate_receipt()
+        self.assertTrue(any('frozen' in frame['file'] for frame in receipt['diagnostic']['trace']))
+        def runner(args, **options):
+            options['stdout'].write(canonical(receipt))
+            return SimpleNamespace(returncode=1)
+        self.assertEqual(module.simulator_preflight(runner), receipt)
+
     def test_invalid_or_oversized_child_output_retains_only_exit_and_size(self):
         for raw in (b'dummy-secret', b'x'*65537, canonical({'status': 'failed', 'render_reset_executed': False,
                 'diagnostic': {'check': 'bad', 'raw_secret': 'dummy-secret'}}),

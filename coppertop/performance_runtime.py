@@ -99,7 +99,8 @@ def simulator_gate_receipt():
         # and module identifiers are public diagnostic fields.
         reason = str(error) if type(error) is ValueError and str(error) in GATE_REASONS else 'exception_text_omitted'
         frames = traceback.extract_tb(error.__traceback__)[-16:]
-        trace = [{'file': Path(frame.filename).name, 'line': frame.lineno, 'function': frame.name}
+        trace = [{'file': re.sub(r'[^A-Za-z0-9_.<>-]', '_', Path(frame.filename).name)[:128],
+                  'line': frame.lineno, 'function': re.sub(r'[^A-Za-z0-9_.<>-]', '_', frame.name)[:128]}
                  for frame in frames]
         diagnostic = {'check': current, 'error_type': type(error).__name__, 'reason': reason, 'trace': trace}
         if isinstance(error, ImportError) and isinstance(error.name, str) and re.fullmatch(r'[A-Za-z0-9_.]{1,128}', error.name):
