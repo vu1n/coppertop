@@ -52,7 +52,7 @@ def prepare(plan, ledger, root):
     """Pure local validation, source/checkpoint manifests and exact review hash."""
     if (plan.get('provider') != 'Modal' or plan.get('region') != 'us'
         or plan.get('environment') != 'main' or Decimal(plan['additional_cap']) != 8
-        or Decimal(plan['cumulative_cap']) != 30 or plan.get('holds_released') != 0
+        or Decimal(plan['cumulative_cap']) not in (30, 38) or plan.get('holds_released') != 0
         or plan.get('checkpoint_run_id') != CHECKPOINT_RUN_ID
         or plan.get('source_release') != RELEASE or plan.get('checkpoint_receipt_sha256') != RECEIPT
         or plan.get('original_training_task_id') != ORIGINAL_CONTAINER_ID
@@ -80,8 +80,11 @@ def prepare(plan, ledger, root):
         'modal_outbound_bytes':1073741824, 'max_gpu_containers':1, 'automatic_retries':0}
     if limits != expected:
         raise ValueError('Reviewed phase limits differ')
+    cap = Decimal(str(ledger.get('cumulative_cap', '30')))
+    if cap != Decimal(plan['cumulative_cap']):
+        raise ValueError('Plan and ledger cumulative caps differ')
     total = historical_total(ledger)
-    if total != Decimal(str(plan['prior_conservative_holds'])) or total + 8 > 30:
+    if total != Decimal(str(plan['prior_conservative_holds'])) or total + 8 > cap:
         raise ValueError('Historical holds differ or exceed cumulative cap')
     objects = plan['exact_input_objects']
     if not isinstance(objects, list) or len(objects) != 22:
@@ -222,7 +225,8 @@ def reconcile(ledger, rows, *, app_id=None, reservation_key=None):
         if not hold or hold['state']!='unsettled_bounded' or Decimal(str(hold.get('reservation_usd',0)))!=8:
             raise ValueError('Current full reservation missing')
     additional=0 if reservation_key is not None else 8
-    if historical_total(result)+additional>30 or totals.get(app_id,Decimal(0))>8:
+    cap = Decimal(str(result.get('cumulative_cap', '30')))
+    if cap not in (30, 38) or historical_total(result)+additional>cap or totals.get(app_id,Decimal(0))>8:
         raise ValueError('Fresh billing exceeds full approved holds')
     return result, str(totals.get(app_id,Decimal(0)))
 
@@ -309,7 +313,7 @@ def _run_approved(plan, prepared, ledger, env_file, output, root, *, sdk=None, r
     def admission():
         nonlocal current_ledger
         current_ledger=refresh_billing(current_ledger,output,reservation_key=pending_key,runner=runner)
-        save(Path(output)/'reservation.json',{'additional_usd':'8','overall_usd':'30','released_usd':'0',
+        save(Path(output)/'reservation.json',{'additional_usd':'8','overall_usd':str(plan['cumulative_cap']),'released_usd':'0',
             'plan_sha256':prepared['plan_sha256'],'recipe_sha256':prepared['recipe_sha256'],
             'prior_holds_usd':prepared['historical_conservative_usd']})
         with hard_deadline(60):
@@ -412,7 +416,7 @@ def run_approved(plan, prepared, ledger, env_file, output, root, *, sdk=None, ru
                 'reservation_usd':'8','description':'coppertop-reload-only',
                 'acceptance_basis':'Full approved reload hold; no automatic release even if allocation fails'}
             save(output/'ledger.json',refreshed)
-            save(output/'reservation.json',{'additional_usd':'8','overall_usd':'30','released_usd':'0',
+            save(output/'reservation.json',{'additional_usd':'8','overall_usd':str(plan['cumulative_cap']),'released_usd':'0',
                 'plan_sha256':prepared['plan_sha256'],'recipe_sha256':prepared['recipe_sha256'],
                 'prior_holds_usd':prepared['historical_conservative_usd']})
             return _run_approved(plan,prepared,refreshed,env_file,output,root,sdk=sdk,runner=runner)

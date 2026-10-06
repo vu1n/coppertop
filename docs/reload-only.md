@@ -12,6 +12,11 @@ attempt before credential reads, temporary signing or provider access. Changed
 code/plan hashes, expired sessions, missing cache or existing Volume stop the
 attempt. There is no retraining, model download, unpinned upgrade or retry.
 
+The plan and ledger must explicitly agree on the approved cumulative ceiling
+($30 originally, or $38 after separate approval). The new attempt retains its
+full $8 hold and every historical hold; stopped resources do not establish
+final billing. Reservation receipts record the actual approved ceiling.
+
 The CPU source stage streams the pinned 17-object release from R2 into one new
 input Volume, verifies hashes and acknowledges mounted commit. An independent
 stop check precedes a secret-free CPU image gate that verifies the updated code,

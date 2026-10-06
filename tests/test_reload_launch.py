@@ -79,6 +79,27 @@ class ReloadLauncherTests(unittest.TestCase):
         self.assertEqual([len(s.object_paths) for s in prepared['scopes']],[17,5,0])
         self.assertEqual(prepared['conservative_after_hold_usd'],'29')
 
+    def test_explicit_raised_cap_preserves_holds_and_requires_plan_ledger_match(self):
+        plan, ledger = fixture()
+        ledger['apps']['ap-old']['reservation_usd'] = '29.86459248'
+        plan['prior_conservative_holds'] = '29.86459248'
+        with self.assertRaises(ValueError):
+            self.prepare(plan, ledger)
+        plan['cumulative_cap'] = '38'
+        with self.assertRaisesRegex(ValueError, 'caps differ'):
+            self.prepare(plan, ledger)
+        ledger['cumulative_cap'] = '38'
+        prepared = self.prepare(plan, ledger)
+        self.assertEqual(prepared['conservative_after_hold_usd'], '37.86459248')
+        updated, _ = module.reconcile(ledger, [])
+        self.assertEqual(updated['apps'], ledger['apps'])
+        ledger['apps']['ap-old']['reservation_usd'] = '30.01'
+        with self.assertRaises(ValueError):
+            module.reconcile(ledger, [])
+        ledger['cumulative_cap'] = '39'
+        with self.assertRaises(ValueError):
+            module.reconcile(ledger, [])
+
     def test_changed_review_recipe_or_missing_approval_blocks(self):
         plan,ledger=fixture()
         prepared=self.prepare(plan,ledger)
