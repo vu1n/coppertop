@@ -2,6 +2,8 @@
 import copy
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -23,6 +25,24 @@ def ledger():
 
 
 class CloudTests(unittest.TestCase):
+    def test_cli_exit_reflects_terminal_status_after_publication_cleanup(self):
+        # Exercise process exit as well as main's returned code; no provider path runs.
+        script = """
+import sys
+from unittest.mock import patch
+from coppertop import mechanism_cloud as module
+status=sys.argv[1]
+sys.argv=['mechanism_cloud','--ledger','unused','--attempt','unused','--execute']
+result={'status':status,'durable_report_verified':True,
+        'cleanup':{'app_stopped':True,'volume_deleted':True}}
+with patch.object(module,'read_json',return_value={}), patch.object(module,'prepare',return_value={}), patch.object(module,'execute',return_value=result):
+    raise SystemExit(module.main())
+"""
+        for status, expected in (('passed',0),('failed',1),('started',1)):
+            with self.subTest(status=status):
+                process=subprocess.run([sys.executable,'-c',script,status],capture_output=True,timeout=30)
+                self.assertEqual(process.returncode,expected,process.stderr.decode())
+
     def test_preparation_never_reads_keys_or_allocates(self):
         with patch.object(module,'selected_env',side_effect=AssertionError), patch.object(module,'mint',side_effect=AssertionError):
             prepared=module.prepare(ledger(),ATTEMPT)

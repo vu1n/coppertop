@@ -343,8 +343,9 @@ def main():
     parser.add_argument('--env-file',type=Path,default=Path.home()/'code/coppertop/.env.local')
     args=parser.parse_args(); ledger=read_json(args.ledger); prepared=prepare(ledger,args.attempt)
     if not args.execute:
-        print(json.dumps({key:value for key,value in prepared.items() if key!='scope'})); return
-    execute(prepared,ledger,Path(__file__).resolve().parent.parent,args.env_file,args.approved_cloud_plan_sha256)
+        print(json.dumps({key:value for key,value in prepared.items() if key!='scope'})); return 0
+    result = execute(prepared,ledger,Path(__file__).resolve().parent.parent,args.env_file,args.approved_cloud_plan_sha256)
+    return 0 if result.get('status') == 'passed' else 1
 
 
-if __name__ == '__main__': main()
+if __name__ == '__main__': raise SystemExit(main())

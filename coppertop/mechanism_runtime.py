@@ -154,7 +154,7 @@ def experiment(factory, query, *, seed=1150, policy_seed=20261006, log_sink=lamb
             frames.append(baseline.step(action))
             if index == 3:
                 snapshot = baseline.env.inputs()
-            if frames[-1].stopped:
+            if frames[-1].stopped and index < len(old)-1:
                 raise ValueError('Baseline ended before required 16-control tape')
         root_group = f'CoffeeSetupMug/pretrain/constructor1000/episode{seed}'
         identity = digest(canonical({'policy_seed': policy_seed, 'actions': old, 'pins': SOURCE_PINS}))
