@@ -64,41 +64,66 @@ pins with `--no-deps`, binary wheels and an explicit package index, followed
 by `pip check`. `--no-deps` is safe only alongside the verified inherited
 base and the full live closure checks; it is not a dependency resolver.
 
-## Smallest proposed CPU repair and validation bundle
+## Executable CPU repair and validation proposal
 
-No repair/build/retry has been executed or authorized by this change. Current
-remaining headroom is only $0.00540752, so it cannot fund another $0.10 hold.
+`tools/run_cpu_image_repair.py` prepares the exact approval plan offline. Its
+`--execute --approved-plan-sha256` mode is for a separately approved single
+attempt; preparation, tests and publication do not authorize that mode.
+No repair/build/retry has run. Retained holds are $48.06459248 against the
+currently approved $48.07 ceiling, leaving $0.00540752.
 
-Prepare one CPU image repair and one CPU validation on the exact cached image,
-with no GPU, secrets, R2, Volumes, model/asset downloads or automatic retries.
-Retain the native CUDA stack, cached model/assets, source editables and CPU
-Torch/Torchvision. Compare the entire simulator inventory against the lock.
-Fail on version differences until reviewed; install only missing exact pins
-plus reinstall the known broken `idna==3.10` wheel. Validate the entire lock,
-active metadata closure, both interpreter `pip check` results and imports,
-then the existing simulator source/assets CPU gate.
+The tool first runs the cached native interpreter's active dependency closure,
+30 overlay pins, `pip check`, imports and CUDA ABI checks on CPU. It then checks
+both source editables' revisions/cleanliness and all 129 simulator versions.
+It rejects any changed version or missing protected/unrelated package before
+network or installation. The 124-package repair allowlist follows audited
+runtime dependencies; five unrelated historical service packages are excluded.
+Missing approved wheels plus `idna==3.10` are installed from exact official
+wheel filenames, sizes and SHA-256 hashes. Official PyPI JSON resolves only
+the already bound artifact; redirects, proxies and alternate hosts are rejected.
+This is a small repair, not a complete reinstall of the historical freeze.
 
-`gym==0.26.2` and `evdev==2.0.0` have no compatible official binary wheels.
-Their inherited installations must remain intact. If either, CPU Torch, or
-an editable source is absent, stop instead of building/downloading a fallback.
-The other selected compatible PyPI wheels total 574,678,742 bytes, excluding
-CPU Torch, source-only packages, source editables and extraction overhead.
-This is a minimum selected-wheel footprint, not a bound on arbitrary pip
-selection. A live repair recipe must bind those exact wheel hashes and sizes
-and enforce its aggregate download/disk bounds before execution.
+`gym==0.26.2`, `evdev==2.0.0`, CPU Torch/Torchvision and source editables must
+remain inherited. Downloads are limited to 32 MiB compressed wheels and 64 MiB
+unpacked wheel contents. A larger missing closure fails before download.
+Temporary wheels are removed before capture; seven hash-bound reviewed runtime
+files are delivered by SDK entrypoint mount and serialized bytes, with no
+additional COPY build. The original image, model/assets and native stack stay
+intact. A new immutable image is recorded only after validation; the GPU image
+selector is never changed automatically.
 
-Proposed hard resources: 2 physical CPU cores, 4 GiB RAM, one 600-second repair
-build and one 900-second gate, each at most 300 seconds startup plus 60 seconds
-drain; no implicit unbounded copy builds. At [Modal's published pricing](https://modal.com/pricing),
-using the maximum 1.75 region multiplier, 2,220 seconds costs at most an
-estimated $0.1362858 compute plus $0.0000390625 for 1 MiB metadata egress.
-Reserve $0.20 additional and preserve every previous hold: $48.26459248 total,
-requiring a proposed $48.27 cumulative ceiling. No credits are assumed.
-This is a proposal, not permission or a finalized bill.
+The single build and validation function use hard limits of two CPU cores and
+4 GiB RAM, no GPU, secrets, R2, Volumes, model/asset downloads or automatic
+retries. Build execution/startup are each limited to 600 seconds; validation
+execution/startup to 900/300 seconds. The controller has a 3,000-second deadline,
+then at most 60 seconds context exit and 180 seconds exact-App stop/audit.
+Allowing another 60 seconds builder drain overlap gives a conservative
+3,300-second compute envelope. Outbound interface counters stop build stages
+above 768 MiB; the 1 GiB network allowance includes 128 MiB estimated new image
+layer traffic and 128 MiB bootstrap/protocol/overrun allowance. Image capture
+traffic is provider-managed, so this is an estimated allowance, not a provider
+dollar cap or a finalized bill.
 
-The executable live bundle remains blocked on binding the exact selected
-wheels, proving bounded source delivery without an extra image build, and
-new budget authorization. If current inventory reveals a changed native
-base or conflicting simulator versions, return the complete findings before
-choosing a repair. Successful repair must yield a new immutable image identity
-and gate receipt before any separately approved GPU evaluation.
+At [Modal's published pricing](https://modal.com/pricing), using the maximum
+1.75 [regional multiplier](https://modal.com/docs/guide/region-selection),
+compute is estimated at $0.202587 plus $0.04 for 1 GiB
+[network egress](https://modal.com/docs/guide/network-egress-billing): $0.242587.
+Propose a **$0.25 additional reservation and $48.32 cumulative ceiling**;
+retaining every previous hold gives $48.31459248. This replaces the earlier
+incomplete $0.20/$48.27 proposal by accounting for the full controller, cleanup,
+image/network allowance and margin. Neither proposal has been approved.
+No credits or release of existing holds are assumed.
+
+Validation reruns the native gate and the existing complete simulator pin,
+`pip check`, import, source and cached-assets CPU gate with network blocked.
+A strict receipt binds those checks to the plan and new image. It does not
+instantiate the model, execute CUDA or reset/render a simulator. Metadata and
+local tests remain insufficient to establish live import/ABI integrity.
+Any unexpected native base, source, simulator version or footprint stops the
+attempt without broader repair. The owned App is stopped and audited even if
+context exit fails; the full reservation remains held.
+
+The first remaining gate is new explicit approval of the exact prepared hash
+and budget, followed by live native/simulator validation. GPU evaluation needs
+its own later approval and a passing simulator gate. Paired real RoboCasa
+rollouts remain **0/4**.
