@@ -151,6 +151,19 @@ def asset_gate():
             'verification': 'immutable image provenance plus completed CRC extraction receipt and every cached file length'}
 
 
+def publish_listener_ready(module, path, metadata):
+    """Publish readiness only after the pinned server successfully listens."""
+    import socket
+    from types import SimpleNamespace
+    class ReadySocket(socket.socket):
+        def listen(self, *args, **kwargs):
+            result=super().listen(*args, **kwargs)
+            save(path, metadata)
+            return result
+    module.socket=SimpleNamespace(socket=ReadySocket, AF_INET=socket.AF_INET,
+        SOCK_STREAM=socket.SOCK_STREAM, SOL_SOCKET=socket.SOL_SOCKET, SO_REUSEADDR=socket.SO_REUSEADDR)
+
+
 def serve(args):
     from .image_check import require_native_interpreter, require_dependencies, pinned_dependencies
     from .smoke_runtime import verify_snapshot
@@ -180,11 +193,13 @@ def serve(args):
     load_seconds = time.monotonic()-began
     # Each arm/episode gets the same initial diffusion RNG after model loading.
     torch.manual_seed(p['policy_seed']); torch.cuda.manual_seed_all(p['policy_seed'])
-    official_server = load_official('server').Server
+    official_module = load_official('server')
+    publish_listener_ready(official_module, args.output/'ready.json', {
+        'arm':args.arm, 'model_load_seconds':load_seconds,
+        'policy_seed':p['policy_seed'], 'host':'127.0.0.1'})
+    official_server = official_module.Server
     server = official_server.__new__(official_server)
     server.host, server.port, server.model = '127.0.0.1', PORT, model
-    save(args.output/'ready.json', {'arm': args.arm, 'model_load_seconds': load_seconds,
-                                  'policy_seed': p['policy_seed'], 'host': '127.0.0.1'})
     # Stock local client/server transport. No listener is exposed outside the job.
     server.serve()
 

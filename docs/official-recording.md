@@ -108,3 +108,17 @@ video timestamps, release closure/forks, safe failures and source-byte preservat
 An optional test executes the pinned official evaluator with fake physics/model;
 it is not real RoboCasa/CUDA execution. Actual simulation/model recording,
 cloud publication and live cleanup remain unrun for this new path.
+
+The launch binding is `coppertop.mechanism_cloud --workload official_recording`.
+It reuses the existing three sequential phases: cached CPU gate, one bounded GPU
+worker, then CPU publication with complete immutable byte readback. The worker
+starts only its own frozen official server, waits for successful socket listen,
+runs the upstream evaluator once, and stops its server process group in `finally`.
+The native response is attributed back to Parquet actions and raw states; all
+three encoded camera streams are decoded to check frame counts and timestamps
+before the acceptance result is committed. No extra model query validates it.
+
+Preparing a plan reads source hashes and a proposed ledger only. This distinct
+attempt needs a fresh $6 additional / $70.82 cumulative budget, preserving all
+previous holds, before signing its one-hour CPU-only R2 session or allocating
+resources. The historical consumed mechanism attempt cannot be replayed.

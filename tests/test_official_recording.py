@@ -271,6 +271,31 @@ class RecordingTests(unittest.TestCase):
                 if horizon==4:
                     from coppertop.publication import release_objects
                     self.assertLessEqual(len(release_objects(store,key,max_bytes=24*1024**2)),64)
+                    from coppertop.official_recording_worker import validate_recording
+                    (Path(root)/'episode.json').write_bytes(canonical({'status':'completed','model_queries':1,
+                        'seed':1150,'steps':4,'chords_release':key}))
+                    self.assertEqual(validate_recording(Path(root),entry=entry)['source_frames'],5)
+                    corrupted=json.loads(store.get(record['queries']))
+                    corrupted['queries'][0]['history_frames']=['not-a-frame']*4
+                    bad_record=dict(record,queries=store.put(canonical(corrupted)))
+                    bad_manifest=dict(json.loads(store.get(key)),episodes=[store.put(canonical(bad_record))])
+                    bad_release=store.put(canonical(bad_manifest))
+                    (Path(root)/'episode.json').write_bytes(canonical({'status':'completed','model_queries':1,
+                        'seed':1150,'steps':4,'chords_release':bad_release}))
+                    with self.assertRaisesRegex(ValueError,'query history'):
+                        validate_recording(Path(root),entry=entry)
+                    original=json.loads(store.get(record['queries']))
+                    query=original['queries'][0];inputs=json.loads(store.get(query['input']))
+                    ref=inputs['state_view'];value=np.load(io.BytesIO(store.get(ref['object'])),allow_pickle=False).astype(np.float64)
+                    buffer=io.BytesIO();np.save(buffer,value,allow_pickle=False)
+                    inputs['state_view']=dict(ref,object=store.put(buffer.getvalue()),dtype='float64')
+                    query['input']=store.put(canonical(inputs))
+                    bad_record=dict(record,queries=store.put(canonical(original)))
+                    bad_manifest=dict(json.loads(store.get(key)),episodes=[store.put(canonical(bad_record))])
+                    (Path(root)/'episode.json').write_bytes(canonical({'status':'completed','model_queries':1,
+                        'seed':1150,'steps':4,'chords_release':store.put(canonical(bad_manifest))}))
+                    with self.assertRaisesRegex(ValueError,'state history bytes'):
+                        validate_recording(Path(root),entry=entry)
 
 
 class DiagnosticTests(unittest.TestCase):

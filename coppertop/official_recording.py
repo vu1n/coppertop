@@ -22,30 +22,7 @@ STATE_LAYOUT = 'base_position3/base_quaternion_xyzw4/EE_relative_position3/EE_re
 ACTION_LAYOUT = 'EEtranslation3/EErotation3/gripper1/base4/mode1'
 
 
-def acceptance_plan():
-    from .performance_eval import plan, SOURCE_PINS, SOURCE_BLOBS
-    p = plan()
-    from .performance_eval import runtime_sources
-    return {'kind':'official_rollout_recording_acceptance', 'cloud_actions':False,
-        'cached_image':p['cached_image'], 'source_pins':dict(SOURCE_PINS),
-        'source_blobs':dict(SOURCE_BLOBS), 'model':p['model'], 'task':p['task'],
-        'split':'development', 'source_split':'pretrain', 'seed':1150,
-        'constructor_seed':1000, 'task_index':3, 'schedule_trials':50, 'episode_index':0,
-        'recipe':{'obs_history':4,'obs_interval':2,'replan_steps':16,'crop_ratio':.95,
-                  'robot_type':'robocasa365','video_stride':1,'video_fps':20},
-        'limits':{'horizon':4,'query_calls':1,'record_bytes':24*1024**2,
-                  'record_objects':64,'automatic_retries':0},
-        'paid_authorized':False,
-        'compute_proposal':{'gpu':'L40S','cpu':4,'memory_mib':65536,'phase_seconds':270,
-            'session_seconds':240,'owned_server_cleanup_seconds':10,'startup_seconds':300,'retries':0},
-        'publication_proposal':{'cpu_only':True,'objects':64,'requests':256,'bytes':24*1024**2,
-            'temporary_session_seconds':3600,'approval_required':'fresh owned prefix, retention, current pricing and preserved spend ledger'},
-        'acceptance':['one official model query, at most4 controls,5 source observations',
-            'native action/state/query-history byte checks and frame/video alignment',
-            'local immutable release closure; later approved CPU/R2 readback and owned cleanup'],
-        'runtime_sha256':runtime_sources(recording=True),
-        'claim':'Official evaluator recording acceptance, not replay parity, utility or20Hz throughput',
-        'later_comparison':'Separate matched-seed fixed16vs8 cadence experiment; no approval implied'}
+from .performance_eval import recording_acceptance_plan as acceptance_plan
 
 
 class Recorder:

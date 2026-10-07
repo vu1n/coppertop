@@ -30,20 +30,29 @@ ADDITIONAL = Decimal('6')
 CUMULATIVE = Decimal('64.82')
 
 
-def prepare(ledger, attempt):
+def selected_worker(workload):
+    if workload == 'mechanism': return worker_plan()
+    if workload == 'official_recording':
+        from .official_recording_worker import plan
+        return plan()
+    raise ValueError('Known bounded workload required')
+
+
+def prepare(ledger, attempt, workload='mechanism'):
     """Pure preparation: no credentials, signing, provider calls or allocation."""
     if not re.fullmatch(r'mechanism-[0-9a-f]{16}', attempt):
         raise ValueError('Dedicated mechanism attempt required')
-    if Decimal(str(ledger['cumulative_cap'])) != CUMULATIVE or historical_total(ledger)+ADDITIONAL > CUMULATIVE:
-        raise ValueError('Preserved holds plus $6 must fit proposed $64.82')
-    worker = worker_plan()
+    worker = selected_worker(workload)
+    cumulative = CUMULATIVE if workload == 'mechanism' else Decimal('70.82')
+    if Decimal(str(ledger['cumulative_cap'])) != cumulative or historical_total(ledger)+ADDITIONAL > cumulative:
+        raise ValueError('Preserved holds plus $6 must fit proposed cumulative ceiling')
     scope = SessionScope('mechanism', 'coppertop', 'chords/mechanism/'+attempt)
     p = {'kind': 'frozen_mechanism_cloud_feasibility', 'attempt_id': attempt,
         'app_name': 'coppertop-'+attempt, 'volume_name': 'coppertop-'+attempt+'-outputs',
         'environment': 'main', 'region': 'us', 'image': worker['image'],
         'worker': worker, 'worker_sha256': digest(canonical(worker)),
         'ledger_sha256': digest(canonical(ledger)), 'retained_holds_usd': str(historical_total(ledger)),
-        'additional_cap_usd': str(ADDITIONAL), 'cumulative_cap_usd': str(CUMULATIVE),
+        'additional_cap_usd': str(ADDITIONAL), 'cumulative_cap_usd': str(cumulative),
         'resources': {'gpu': 'L40S', 'gpu_cpu': 4, 'gpu_memory_mib': 65536,
             'gate_cpu': 4, 'gate_memory_mib': 16384, 'publisher_cpu': 2, 'publisher_memory_mib': 4096,
             'single_use_containers': True, 'retries': 0, 'scaledown_seconds': 2,
@@ -59,6 +68,8 @@ def prepare(ledger, attempt):
             'r2_first_month_storage_unit_usd': '.015', 'compute_storage_egress_envelope_usd': '1.00'},
         'retention': 'Keep ≤24MiB immutable R2 evidence in Standard storage; no R2 deletion. Delete only new owned Volume after publication attempt and zero-active audit. Preserve cached images and all prior artifacts.',
         'paid_authorized': False, 'new_image_builds': False, 'new_model_or_asset_downloads': False}
+    if workload != 'mechanism':
+        p.update(kind='official_recording_cloud_acceptance', workload=workload)
     return {'cloud_plan': p, 'cloud_plan_sha256': digest(canonical(p)), 'scope': scope}
 
 
@@ -109,7 +120,7 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
     common = dict(image=image, region='us', serialized=True, retries=0, single_use_containers=True,
         min_containers=0, buffer_containers=0, max_containers=1, scaledown_window=2, startup_timeout=300)
     def binding():
-        if worker_plan() != p['worker']: raise ValueError('Mounted worker plan differs')
+        if selected_worker(p.get('workload','mechanism')) != p['worker']: raise ValueError('Mounted worker plan differs')
     @app.function(**dict(common, name='mechanism-cache-gate', cpu=(4,4), memory=(16384,16384),
         gpu=None, timeout=610, secrets=[], block_network=True, volumes={}))
     def gate():
@@ -129,15 +140,19 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
         env.update(HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1', MUJOCO_GL='egl', PYTHONPATH='/app')
         with (Path('/tmp')/(p['attempt_id']+'-worker.log')).open('wb') as log:
             try:
-                process = runner([SIMULATOR, '-m', 'coppertop.mechanism_runtime', '--execute-local',
-                    '--plan-sha256', p['worker_sha256'], '--output', str(target)],
+                module = 'coppertop.official_recording_worker' if p.get('workload') == 'official_recording' else 'coppertop.mechanism_runtime'
+                identity_args = ['--run-id',p['attempt_id']] if p.get('workload') == 'official_recording' else []
+                process = runner([SIMULATOR, '-m', module, '--execute-local',
+                    '--plan-sha256', p['worker_sha256'], '--output', str(target), *identity_args],
                     stdout=log, stderr=log, env=env, timeout=250)
                 passed = process.returncode == 0
             except subprocess.TimeoutExpired:
                 passed = False
         result_path = target/('result.json' if passed else 'failure.json')
         result = read_json(result_path, 65536) if result_path.is_file() else {'status':'failed','comparison_valid':False}
-        if passed and (result.get('status') != 'bounded_feasibility' or result.get('query_calls') != 5):
+        recording = p.get('workload') == 'official_recording'
+        expected_status, expected_queries = ('recording_acceptance',1) if recording else ('bounded_feasibility',5)
+        if passed and (result.get('status') != expected_status or result.get('query_calls') != expected_queries):
             raise ValueError('Feasibility gate result differs')
         record = {'container_id': _container(os.environ.get('MODAL_TASK_ID')),
             'plan_sha256': prepared['cloud_plan_sha256'], 'attempt_id': p['attempt_id'],
@@ -223,7 +238,7 @@ def execute_phases(functions, prepared, output, *, admission, invoke, stopped, c
 
 def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runner=subprocess.run):
     """One exact approval, one retained hold, no fallback/retry or shared cleanup."""
-    checked = prepare(ledger, prepared['cloud_plan']['attempt_id'])
+    checked = prepare(ledger, prepared['cloud_plan']['attempt_id'], prepared['cloud_plan'].get('workload','mechanism'))
     if (approved_sha256 != prepared['cloud_plan_sha256']
             or digest(canonical(prepared['cloud_plan'])) != approved_sha256
             or checked['cloud_plan_sha256'] != approved_sha256):
@@ -338,10 +353,11 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ledger',type=Path,required=True)
     parser.add_argument('--attempt',required=True)
+    parser.add_argument('--workload',choices=('mechanism','official_recording'),default='mechanism')
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--approved-cloud-plan-sha256')
     parser.add_argument('--env-file',type=Path,default=Path.home()/'code/coppertop/.env.local')
-    args=parser.parse_args(); ledger=read_json(args.ledger); prepared=prepare(ledger,args.attempt)
+    args=parser.parse_args(); ledger=read_json(args.ledger); prepared=prepare(ledger,args.attempt,args.workload)
     if not args.execute:
         print(json.dumps({key:value for key,value in prepared.items() if key!='scope'})); return 0
     result = execute(prepared,ledger,Path(__file__).resolve().parent.parent,args.env_file,args.approved_cloud_plan_sha256)
