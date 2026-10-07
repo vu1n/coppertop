@@ -71,6 +71,8 @@ class Tape:
     seed: int
     actions: tuple[tuple[float, ...], ...]
     frames: tuple[Frame, ...]
+    parent_episode_id: str | None = None
+    inherited_frames: int = 0
 
     def __post_init__(self):
         if not isinstance(self.episode_id, str) or not self.episode_id or type(self.seed) is not int or self.seed < 0:
@@ -78,6 +80,11 @@ class Tape:
         if (type(self.actions) is not tuple or type(self.frames) is not tuple
                 or len(self.frames) != len(self.actions) + 1 or not self.frames):
             raise ValueError('Tape requires reset and every post-control frame')
+        if (type(self.inherited_frames) is not int or not 0 <= self.inherited_frames <= len(self.frames)
+                or (self.parent_episode_id is None and self.inherited_frames != 0)
+                or (self.parent_episode_id is not None and (not isinstance(self.parent_episode_id, str)
+                    or not self.parent_episode_id or self.parent_episode_id == self.episode_id))):
+            raise ValueError('Explicit parent identity and inherited frame range required')
         for index, frame in enumerate(self.frames):
             if not isinstance(frame, Frame):
                 raise ValueError('Audited Frame instances required')
@@ -90,12 +97,18 @@ class Tape:
                     or native_actions(action) != action):
                 raise ValueError('Tape actions must already be immutable float32 controls')
 
+    def identity(self, index):
+        episode = self.parent_episode_id if index < self.inherited_frames else self.episode_id
+        return frame_id(episode, index)
+
     def publish(self, store: ObjectStore, provenance: dict) -> str:
         """Small immutable audit sidecar; camera/signal objects stay external."""
         return store.put(canonical({'schema_version': 1, 'kind': 'mechanism_replay_tape',
             'episode_id': self.episode_id, 'seed': self.seed,
+            'parent_episode_id': self.parent_episode_id, 'inherited_frames': self.inherited_frames,
             'action_order': ACTION_ORDER, 'actions': self.actions,
-            'frames': [frame.record(self.episode_id) for frame in self.frames],
+            'frames': [dict(frame.record(self.episode_id), frame_id=self.identity(index))
+                       for index, frame in enumerate(self.frames)],
             'provenance': provenance}))
 
 

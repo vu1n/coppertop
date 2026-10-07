@@ -1,9 +1,10 @@
 # Frozen policy, delayed replanning: preparation gates
 
-Status: local contracts only. No new compute, model loads, cloud provisioning,
-credential changes, learned gate, cache, or world model. This is not a runnable
-paid experiment bundle. Official simulator replay and decoded candidate diversity
-remain unverified. Do not merge or launch this draft on the strength of toy tests.
+Status: minimal executable feasibility harness on an already allocated cached
+worker. No live model/simulator execution, new compute, provisioning, credential
+changes, learned gate, cache or world model were performed during preparation.
+Official simulator replay and decoded candidate diversity remain unverified.
+This draft does not authorize a merge or paid launch.
 
 ## What the completed pilot can support
 
@@ -71,41 +72,71 @@ testable baseline; it is not RTC prefix conditioning. Reject experiments whose
 old queue expires before arrival or whose comparison window has no post-arrival
 control. No invented holds or free paused physics.
 
-This helper plans an offline schedule; it neither invokes a query nor advances a
-real simulator concurrently. A future runner must prove that implementation.
+This helper plans an offline schedule. `mechanism_runner.delayed_rollout` now
+implements the asynchronous schedule with one owned query thread and bounded
+transport cancellation. It advances old native controls while the query runs,
+hands off only at a completed-control boundary, and discards stale candidate
+indices. Per-control start/finish and query submit/finish times are logged.
+Controls that exceed the real-time period or final deadline invalidate the run;
+slow rendering/audit cannot make inference look cheaper in simulated time.
 `candidate_diagnostics` compares a same-input/same-seed repeat and different-seed
 chunk, reports hashes and counts all three diagnostic calls (two discarded).
 The caller must independently log inputs and seeds; array equality alone cannot
 authenticate them. Also compare converted executable controls and the actually
 used suffix: diversity confined to discarded timesteps provides no intervention.
 
-## Missing code and blocking gates
+## Runnable harness and remaining live gates
 
-1. A pinned CoffeeSetupMug adapter implementing `ReplayEnvironment`: explicit
-   per-field coverage of MuJoCo integration state, mutable model arrays, fixtures,
-   episode metadata/clock, controller/interpolator/buffers, Python and NumPy RNG,
-   observable caches and the seven-entry policy history. Audit unsupported fields
-   rather than silently dropping them. Capture data without mutating state.
-2. A baseline tape collector and isolated prefix-replay process with render parity,
-   real identical-action continuation, and explicit maximum replay budget.
-3. An owned inference wrapper controlling per-query CPU/CUDA RNG without modifying
-   frozen weights or pinned official forward/processor semantics. Verify same
-   inputs/seed replay and actual decoded/converted different-seed diversity.
-4. An asynchronous query runner: immutable query-start instruction/history/camera
-   references, monotonic submit/start/finish timestamps, result/input hashes and
-   seed. Continue physics with the logged pending queue while inference runs.
-   Result arrival at the next control boundary must be recorded, including
-   process/transport overhead. Never supply a later observation to that query.
-5. Native canonical signals/index export to Parquet and per-camera compressed video
-   with clock, frame identity, checksums, provenance and immutable release refs.
-   Audit sidecars and fork overlays share prefix objects; no duplicate raw prefix.
-   R2 publication stays CPU staged, with bounded output and cleanup receipts.
-6. Per-call compute accounting including repeats, discarded candidates, monitor,
-   resets/replay and both branches. Stable root episode/seed/scene grouping keeps
-   all sibling branches in the same train/validation/test partition.
+`mechanism_robocasa.RoboCasaReplay` verifies the existing pinned dependency/source/
+asset gates before importing the official evaluator. It reproduces global Python
+and NumPy episode seeds, constructor seed1000, official pretrain task and episode
+seed1150. It hashes MuJoCo `mjSTATE_INTEGRATION`, all exposed model arrays,
+readable task/fixture/controller/buffer/RNG/observable fields, native observations
+and detached seven-entry history. It records opaque/depth-limited fields as
+omissions; `complete_state_certified` stays false. Fresh replay is the strategy,
+not serializing those audit hashes as restorable snapshots.
 
-These are live feasibility blockers, not failures of the independent CPU tests.
-No official simulator or official policy execution is claimed by this draft.
+`mechanism_policy.OfficialQuery` uses the pinned official processor, prompt/crop/
+state-padding/decode path and trusted job-local loopback client/server protocol.
+The owned wrapper injects a per-call seed, strips it before official forward, and
+restores CPU/CUDA RNG with `fork_rng` on the single native GPU. There are no weight
+updates. Connection/read timeouts are five seconds; cancellation shuts down only
+that socket. The native process receives an environment allowlist without storage
+credentials and is terminated as an owned process group on every exit.
+
+`mechanism_runtime.experiment` executes one baseline chunk, saves the query-start
+snapshot after four controls, collects its remaining12 controls, and makes three
+same-input diagnostic calls (same-seed pair and distinct seed). A fresh simulator
+must match reset, prefix4 and identical continuation12 exactly. A third fresh
+simulator then reconstructs the prefix and executes a same-seed async candidate.
+Its committed prefix must match the baseline and its executed suffix must differ.
+All five calls, including three discarded diagnostics, have input/chunk hashes,
+seed and monotonic timings. Submitted/failed calls remain in a durable journal.
+This is one-boundary feasibility, not episode success or utility evidence.
+
+The collector saves native state/action/index signals in Parquet, compressed
+per-camera H264 videos and immutable audit sidecars in a single ObjectStore.
+Both suffix manifests reference one shared prefix object set; no duplicated full
+prefix videos. Video timestamps map through segment start/control clock; lossy
+encoding is documented while exact source-camera hashes remain in the tape.
+All siblings use the same root episode grouping for later split assignment.
+
+Actual RoboCasa and CUDA execution is still unrun. Blocking live gates:
+
+1. Exact reset/prefix/continuation parity across fresh adapter instances, including
+   physics, camera/state, success, latent-state audit and query-input hashes.
+   Audit omissions are retained for review; this is bounded empirical parity,
+   never a claim of complete restoration for arbitrary future actions.
+2. Pinned official CPU/CUDA seed-repeat behavior and decoded distinctness; async
+   candidate must reproduce the diagnostic seed and differ in the used suffix.
+3. Actual simulation/render/audit throughput within the native control period;
+   actual transport/inference delay must leave a usable suffix. Failure stops
+   the session without retries or queue-holding fallback.
+4. Provider binding to the retained image plus this exact code/plan, a secretfree
+   worker and CPU-staged immutable R2 publication. This local harness writes
+   content-addressed outputs; it does not allocate a provider job or publish R2.
+5. Fresh provider rates/retained holds, explicit cumulative spend ceiling and
+   cleanup receipts before any paid launch. No dollar figure is invented here.
 
 ## Scientific gate and first bounded proposal
 
@@ -115,18 +146,19 @@ Measure success, completion steps, elapsed time and total compute independently;
 predeclare the cost penalty before using a combined utility. A short branch's
 geometric progress is not evidence of episode success or training benefit.
 
-Once the missing runner is reviewable, propose a *feasibility-only* session using
-the retained repaired image: one DEV episode, one boundary after four completed
-controls, three diagnostic inference calls, one full-prefix replay with four
-identical continuation controls, then one short matched continue/replan pair
-with measured delay. Cap each comparison at four controls after query start;
-if measured latency leaves no usable suffix, record infeasible and stop. No
+The runnable workload is a *feasibility-only* session using the retained repaired
+image: one DEV episode, one boundary after four completed controls, five total
+inference calls, one reset/prefix4/continuation12 parity replay, and one matched
+continue/replan comparison of at most12 controls after query start. If delay
+leaves no usable suffix or a pacing gate fails, record infeasible and stop. No
 training, no retries, no asset/model downloads or rebuilds. All outputs need a
 size cap and durable receipts before temporary storage cleanup.
 
-This is a workload bound, not a spend authorization. An exact image/code/plan
-binding, provider rate, time limits, current retained holds, output/storage cap,
-and cumulative dollar ceiling are still needed before a paid proposal is ready.
+This is a workload bound, not a spend authorization. The prepared manifest binds
+all package source files, dependency locks and model pins, with a240-second
+session,90-second server startup,5-second query timeout,24MiB output limit and
+zero retries. Cleanup can consume an additional10 seconds. Provider binding,
+current rates/holds and a cumulative dollar ceiling remain prerequisites.
 No dollar figure is invented here. Gate on replay, diversity and latency first;
 do not spend on the headroom experiment until those pass.
 
@@ -151,9 +183,39 @@ in a toy environment, per-component mismatch detection, closure on failure,
 native action preservation, boundary/delay guards and immutable sidecar identity.
 They do not execute RoboCasa, official Xiaomi, or live async inference.
 
-Preparation verification: 10 mechanism tests passed; the complete CPU suite with
-the acquired official source enabled ran 258 tests, 256 passed and two optional
-SDK checks skipped. Independent structure, correctness and static security review
-completed. Component ordering and tape identity/frame/scalar validation findings
-were fixed and rechecked; no remaining findings in this draft's scope. No new
-dependencies were installed. The live blockers above remain open.
+Preparation verification is recorded in the PR and local handoff. Tests include
+full fake collector/replay/async integration, real Parquet/video output, shared
+prefix references, failed-call accounting, fast-query handoff, final-control
+pacing/deadline rejection and owned cancellation. These are not official live
+simulator/CUDA checks.
+
+## Commands on a future approved existing worker
+
+Preparation is CPU-only and allocates nothing:
+
+```sh
+/work/sim/bin/python -m coppertop.mechanism_runtime --prepare > mechanism-plan.json
+```
+
+After a separately approved provider session stages the reviewed package at
+`/app` over the retained image, the following is the executable worker payload.
+It consumes the prepared manifest's SHA, validates it against the staged code,
+and starts only its own native model server. The output directory must be new.
+
+```sh
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 MUJOCO_GL=egl PYTHONPATH=/app \
+  /work/sim/bin/python -m coppertop.mechanism_runtime --execute-local \
+  --plan-sha256 <SHA256_FROM_PREPARED_MANIFEST> --output /tmp/mechanism-feasibility
+```
+
+No command above creates cloud infrastructure, uploads data, or authorizes spend.
+CPU stage/publication and provider cleanup must wrap this payload before launch.
+
+Local verification:20 mechanism tests passed. The source-enabled CPU suite ran
+268 tests:266 passed, two optional SDK checks skipped. Tighten and independent
+structure/correctness/security review completed. Timing, inherited-frame identity,
+startup readiness and nullable Parquet readback findings were fixed and rechecked.
+The security recursion candidate was independently refuted: its production caller
+only traverses trusted pinned simulator state. Cached-model loader extraction is
+deferred as advisory; existing paid-run code was preserved. No dependencies were
+installed locally. Actual simulator/CUDA behavior and all live gates remain unrun.
