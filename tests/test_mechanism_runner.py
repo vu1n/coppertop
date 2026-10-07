@@ -24,7 +24,7 @@ class FakeEnv(LatentEnv):
     def __init__(self, on_step=lambda index: None):
         super().__init__()
         self.on_step = on_step
-        self.control_ns = 5_000_000
+        self.control_ns = 20_000_000
         self.coverage = {'complete_state_certified': False, 'fixture': True}
         self.entry = SimpleNamespace(CAMERA_KEYS=('camera',),
             observation_to_state=lambda obs: obs['state'])

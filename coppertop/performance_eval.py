@@ -25,12 +25,14 @@ RUNTIME_FILES = ('coppertop/performance_eval.py', 'coppertop/performance_runtime
                  'coppertop/performance_cloud.py', 'coppertop/reload_launch.py',
                  'coppertop/dependency_gate.py', 'coppertop/image_check.py',
                  'requirements-simulator.lock')
+RECORDING_FILES=('coppertop/official_recording.py','coppertop/diagnostics.py',
+                 'coppertop/chords.py','coppertop/streams.py')
 
 
-def runtime_sources():
+def runtime_sources(*, recording=False):
     root = Path(__file__).resolve().parents[1]
     return {name: hashlib.sha256((root/name).read_bytes()).hexdigest()
-            for name in RUNTIME_FILES}
+            for name in RUNTIME_FILES+(RECORDING_FILES if recording else ())}
 
 
 def plan():
@@ -68,12 +70,12 @@ def validate_plan(value):
     return hashlib.sha256(canonical(value)).hexdigest()
 
 
-def runtime_image(sdk, image, root):
+def runtime_image(sdk, image, root, *, recording=False):
     """Mount reviewed source onto the existing image; no build/install/lookup."""
     if sdk.__version__ != '1.6.1' or image.object_id != CACHED_IMAGE:
         raise ValueError('Exact previously verified warm image and SDK required')
     root = Path(root)
-    for name, expected in runtime_sources().items():
+    for name, expected in runtime_sources(recording=recording).items():
         path = root/name
         if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError('Runtime upload source differs')

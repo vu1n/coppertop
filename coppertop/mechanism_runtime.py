@@ -239,8 +239,9 @@ def execute(output):
             if sum(f.stat().st_size for f in output.rglob('*') if f.is_file()) > p['limits']['output_bytes']:
                 raise ValueError('Bounded output size exceeded; no publication')
     except BaseException as error:
+        from .diagnostics import failure
         (output/'failure.json').write_bytes(canonical({'status': 'failed', 'error_type': type(error).__name__,
-            'comparison_valid': False, 'automatic_retries': 0}))
+            'comparison_valid': False, 'automatic_retries': 0, 'failure':failure(error,'mechanism.execute')}))
         raise
     finally:
         if query is not None: query.cancel()

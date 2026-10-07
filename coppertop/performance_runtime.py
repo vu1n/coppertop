@@ -221,12 +221,24 @@ def rollout(args):
     settings = entry.parse_args(['--model-path', str(MODEL), '--task-name', p['task'],
         '--seed', str(p['base_seed']), '--num-trials', str(p['schedule_trials']),
         '--split', p['split'], '--task-set', p['task_set']])
+    recording = getattr(args,'record_chords',False)
+    if recording:
+        if args.arm != 'official' or not args.record_run_id or not 1 <= args.record_horizon <= 600:
+            raise ValueError('Recording requires bounded official DEV rollout identity')
+        settings.replan_steps=args.replan_steps
+        settings.horizon=args.record_horizon
+        settings.save_videos=True; settings.video_stride=1; settings.video_fps=20
+        ready=read_json(args.output/'ready.json')
+        if ready.get('arm')!='official' or ready.get('policy_seed')!=p['policy_seed'] or ready.get('host')!='127.0.0.1':
+            raise ValueError('Owned frozen official server readiness differs')
     entry.validate_args(settings)
     record = {'arm': args.arm, 'seed': args.seed, 'task': p['task'], 'status': 'started'}
     inference_seconds = 0.; queries = 0
 
     class TracedEnvironment:
         def __init__(self, env): self.env = env
+        @property
+        def unwrapped(self): return self.env.unwrapped
         def reset(self, **kwargs):
             observation, info = self.env.reset(**kwargs)
             record['initial_observation_sha256'] = observation_fingerprint(observation, entry, self.env.unwrapped.env)
@@ -253,11 +265,25 @@ def rollout(args):
     client.infer = infer
     began = time.monotonic()
     try:
-        stats = entry.evaluate_task(p['task'], p['task_index'], settings, client, TracedGym(),
-            get_task_horizon, convert_action, args.output, episode_indices=[episode],
-            show_progress=False, write_task_stats=True)
+        if recording:
+            from .official_recording import evaluate_recorded
+            from .chords import LocalStore
+            from .performance_eval import runtime_sources
+            stats,chords_release=evaluate_recorded(entry,TracedGym(),client,settings,get_task_horizon,
+                convert_action,args.output,task=p['task'],task_index=p['task_index'],episode_index=episode,
+                seed=args.seed,run_id=args.record_run_id,store=LocalStore(args.output/'store'),
+                provenance={'source_pins':p['source_pins'],'source_blobs':p['source_blobs'],
+                    'model':p['model'],'runtime_sha256':runtime_sources(recording=True),
+                    'cached_image':p['cached_image'],'image_validation':p['image_validation'],
+                    'policy_seed':p['policy_seed'],'real_simulation':True,
+                    'recipe':dict(p['recipe'],replan_steps=settings.replan_steps)})
+            record['chords_release']=chords_release
+        else:
+            stats = entry.evaluate_task(p['task'], p['task_index'], settings, client, TracedGym(),
+                get_task_horizon, convert_action, args.output, episode_indices=[episode],
+                show_progress=False, write_task_stats=True)
         result = stats['episodes'][0]
-        if result['seed'] != args.seed or stats['horizon'] != p['horizon']:
+        if result['seed'] != args.seed or stats['horizon'] != (settings.horizon or p['horizon']):
             raise ValueError('Official seed/horizon differs')
         record.update(status='completed', success=result['success'], steps=result['steps'],
             wall_seconds=time.monotonic()-began, inference_seconds=inference_seconds, model_queries=queries,
@@ -342,6 +368,10 @@ def main(argv=None):
     parser.add_argument('--output', type=Path)
     parser.add_argument('--arm', choices=plan()['arms'])
     parser.add_argument('--seed', type=int)
+    parser.add_argument('--record-chords',action='store_true')
+    parser.add_argument('--record-run-id')
+    parser.add_argument('--record-horizon',type=int,default=4)
+    parser.add_argument('--replan-steps',type=int,choices=(8,16),default=16)
     args = parser.parse_args(argv)
     if args.prepare: print(json.dumps({'plan': plan(), 'plan_sha256': validate_plan(plan()), 'cloud_actions': False}))
     elif args.simulator_gate:
@@ -349,7 +379,15 @@ def main(argv=None):
         print(json.dumps(receipt))
         if receipt['status'] != 'passed': raise SystemExit(1)
     elif args.serve: serve(args)
-    elif args.rollout: rollout(args)
+    elif args.rollout:
+        try: rollout(args)
+        except BaseException as error:
+            if args.record_chords and args.output is not None:
+                from .diagnostics import failure
+                raw=canonical({'status':'failed','comparison_valid':False,
+                    'failure':failure(error,'official.rollout_entrypoint')})
+                with (args.output/'recording-failure.json').open('xb') as sink: sink.write(raw)
+            raise
     else: run(args)
 
 
