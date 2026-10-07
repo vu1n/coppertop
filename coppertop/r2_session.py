@@ -17,7 +17,7 @@ from urllib.parse import unquote, urlsplit
 from .s3 import S3Store
 
 LIMITS = {'source': (128, 3 * 1024**3), 'checkpoint': (512, 3 * 1024**3),
-          'report': (8, 65536)}
+          'report': (8, 65536), 'mechanism': (256, 24*1024**2)}
 READ_ACTIONS = ('GetObject', 'HeadObject')
 ENV_NAMES = ('COPPERTOP_R2_ACCESS_KEY_ID', 'COPPERTOP_R2_SECRET_ACCESS_KEY',
              'COPPERTOP_R2_SESSION_TOKEN')
@@ -51,8 +51,10 @@ class SessionScope:
             raise ValueError('Explicit role and bucket required')
         _path(self.prefix)
         object.__setattr__(self, 'object_paths', tuple(self.object_paths))
-        if self.role == 'report':
-            if (self.object_paths or not re.fullmatch(r'chords/gpu-reload/(?:reload-[0-9a-f]{16}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', self.prefix)):
+        if self.role in ('report', 'mechanism'):
+            pattern = (r'chords/mechanism/mechanism-[0-9a-f]{16}' if self.role == 'mechanism' else
+                r'chords/gpu-reload/(?:reload-[0-9a-f]{16}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})')
+            if self.object_paths or not re.fullmatch(pattern, self.prefix):
                 raise ValueError('Report requires one dedicated reload prefix')
         else:
             maximum = 17 if self.role == 'source' else 5
@@ -68,16 +70,16 @@ class SessionScope:
 
     @property
     def actions(self):
-        return READ_ACTIONS + (('PutObject',) if self.role == 'report' else ())
+        return READ_ACTIONS + (('PutObject',) if self.role in ('report', 'mechanism') else ())
 
     @property
     def paths(self):
         return {'objectPaths': list(self.object_paths),
-                'prefixPaths': [self.prefix + '/objects/'] if self.role == 'report' else []}
+                'prefixPaths': [self.prefix + '/objects/'] if self.role in ('report', 'mechanism') else []}
 
     def allows(self, key):
         _path(key)
-        if self.role != 'report':
+        if self.role not in ('report', 'mechanism'):
             return key in self.object_paths
         suffix = key.removeprefix(self.prefix + '/objects/')
         return (key == self.prefix + '/objects/' + suffix
@@ -191,7 +193,7 @@ class BoundedClient:
         key = unquote(url.path).removeprefix('/' + self.scope.bucket + '/')
         if (url.scheme != 'https' or url.netloc != host or url.query or url.fragment
                 or url.path == '/' + self.scope.bucket + '/' or not self.scope.allows(key)
-                or request.method not in (('GET', 'HEAD', 'PUT') if self.scope.role == 'report' else ('GET', 'HEAD'))):
+                or request.method not in (('GET', 'HEAD', 'PUT') if self.scope.role in ('report', 'mechanism') else ('GET', 'HEAD'))):
             raise ValueError('Unexpected R2 destination or operation')
         self.live()
 
@@ -220,9 +222,11 @@ class BoundedClient:
 
     def put_object(self, **kwargs):
         body = kwargs.get('Body')
-        if type(body) is not bytes or self.write_bytes + len(body) > 65536 or kwargs.get('IfNoneMatch') != '*':
+        if type(body) is not bytes or self.write_bytes + len(body) > LIMITS[self.scope.role][1] or kwargs.get('IfNoneMatch') != '*':
             raise ValueError('Only bounded immutable report bytes can be written')
         self.write_bytes += len(body)  # Reserve before attempt, including failed PUT.
+        if self.scope.role == 'mechanism':
+            kwargs = dict(kwargs, StorageClass='STANDARD')
         return self._call('PutObject', kwargs)
 
 

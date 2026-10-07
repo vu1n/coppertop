@@ -1,10 +1,10 @@
 # Frozen policy, delayed replanning: preparation gates
 
-Status: minimal executable feasibility harness on an already allocated cached
-worker. No live model/simulator execution, new compute, provisioning, credential
+Status: executable one-episode feasibility harness with reviewed provider binding
+to the retained cached image. No live model/simulator execution, new compute, provisioning, credential
 changes, learned gate, cache or world model were performed during preparation.
 Official simulator replay and decoded candidate diversity remain unverified.
-This draft does not authorize a merge or paid launch.
+Merge and launch require explicit user authorization. Preparation alone allocates nothing.
 
 ## What the completed pilot can support
 
@@ -132,11 +132,8 @@ Actual RoboCasa and CUDA execution is still unrun. Blocking live gates:
 3. Actual simulation/render/audit throughput within the native control period;
    actual transport/inference delay must leave a usable suffix. Failure stops
    the session without retries or queue-holding fallback.
-4. Provider binding to the retained image plus this exact code/plan, a secretfree
-   worker and CPU-staged immutable R2 publication. This local harness writes
-   content-addressed outputs; it does not allocate a provider job or publish R2.
-5. Fresh provider rates/retained holds, explicit cumulative spend ceiling and
-   cleanup receipts before any paid launch. No dollar figure is invented here.
+4. Provider binding, publication readback and owned cleanup must pass in the live
+   attempt; their local tests cannot establish actual provider behavior.
 
 ## Scientific gate and first bounded proposal
 
@@ -157,9 +154,8 @@ size cap and durable receipts before temporary storage cleanup.
 This is a workload bound, not a spend authorization. The prepared manifest binds
 all package source files, dependency locks and model pins, with a240-second
 session,90-second server startup,5-second query timeout,24MiB output limit and
-zero retries. Cleanup can consume an additional10 seconds. Provider binding,
-current rates/holds and a cumulative dollar ceiling remain prerequisites.
-No dollar figure is invented here. Gate on replay, diversity and latency first;
+zero retries. Cleanup can consume an additional10 seconds. The cloud bundle below adds provider binding and a bounded spend envelope.
+Gate on replay, diversity and latency first;
 do not spend on the headroom experiment until those pass.
 
 If feasibility passes, collect episode-length paired outcomes and compare native
@@ -219,3 +215,73 @@ The security recursion candidate was independently refuted: its production calle
 only traverses trusted pinned simulator state. Cached-model loader extraction is
 deferred as advisory; existing paid-run code was preserved. No dependencies were
 installed locally. Actual simulator/CUDA behavior and all live gates remain unrun.
+
+
+## Provider bundle
+
+`coppertop.mechanism_cloud` reuses the existing Modal1.6.1 controller, pinned
+image `im-uMab88d0cwA6MALkcTf5VW`, billing reconciliation, temporary R2 signer,
+immutable ObjectStore and owned cleanup. Pure preparation requires neither
+credentials nor scientific dependencies; local SDK registration allocates nothing.
+The approved plan binds every package source file, locks, pins and ledger.
+
+Exactly three sequential single-use Functions, no retries:
+
+* CPU cache/simulator gate:4cores,16GiB,610seconds; no transfer credentials.
+* L40S feasibility worker:4cores,64GiB,270seconds including20seconds for result
+  commit after the250-second subprocess bound. The worker itself has240seconds
+  plus10seconds for owned server shutdown. Network blocked, no R2 credentials.
+* CPU publisher:2cores,4GiB,300seconds, read-only dedicated Volume. It uploads
+  at most64 content-addressed objects and a small report, then verifies complete
+  byte/hash readback. Failed live gates produce failure evidence; failed GPU RPCs
+  get one recovery publication after the exact App becomes idle. No GPU retry.
+
+Each Function has300seconds startup and2seconds scaledown allowance. Controller
+wall time is2700seconds. The owned Volume holds at most32MiB; output/report
+publication is capped at24MiB. The retained model/assets stay in the cached image.
+Bulk data moves GPU Volume→CPU→R2; only bounded metadata returns to the Mac.
+
+Only the CPU publisher receives one temporary R2 session, TTL3600seconds, for
+`coppertop/chords/mechanism/<attempt>/objects/`. It permits Get/Head/immutable Put,
+256requests and24MiB reads/writes, forces Standard storage, and forbids Delete,
+List and multipart. Existing user-managed parent credentials are consumed only
+by the approved local signer; no permanent keys are created or configured.
+
+The proposed additional hold is$6 and cumulative ceiling$64.82, preserving all
+previous holds. Read-only billing through2026-10-07 reported$6.09975749 across
+tracked Apps; conservative retained holds total$58.81459248. Reported usage is
+not a final invoice and does not release a hold.
+
+[Modal rates](https://modal.com/pricing) checked2026-10-07T12:04:04Z:
+L40S$0.000542/s, CPU$0.0000131/core/s, memory$0.00000222/GiB/s. Startup, idle
+and an upper1.75region multiplier are included. Compute, temporary Volume and
+egress fit a$1 envelope. [R2 pricing](https://developers.cloudflare.com/r2/pricing/)
+rounds billing units: crossing account-wide request units can add$4.50 ClassA
+and$0.36 ClassB even for this small attempt; a Standard storage unit is$0.015/month.
+$6 covers that conservative incremental envelope. Pricing approval expires after24hours.
+
+R2 evidence≤24MiB remains immutable in Standard storage; no R2 deletion or
+lifecycle provisioning. Storage may continue to accrue at the documented rate.
+Cleanup stops only the newly owned App, verifies zero active containers/sandboxes,
+then deletes only the new Volume by bound name and provider ID. Cached images,
+prior artifacts and all previous holds are preserved. Publication/cleanup failures
+remain explicit failure receipts; they cannot turn a scientific failure into success.
+
+Prepare with the existing controller interpreter:
+
+```sh
+python -m coppertop.mechanism_cloud --ledger <PROPOSED_LEDGER> --attempt <ATTEMPT>
+```
+
+Execute only the exact approved prepared SHA with the same ledger and code:
+
+```sh
+python -m coppertop.mechanism_cloud --ledger <PROPOSED_LEDGER> --attempt <ATTEMPT> \
+  --execute --approved-cloud-plan-sha256 <PREPARED_SHA> \
+  --env-file ~/code/coppertop/.env.local
+```
+
+Provider validation adds10 local fake tests for credential isolation, exact plan
+binding, billing holds, scoped immutable publication/readback, failed RPC evidence
+recovery and cleanup failure. Actual model/simulator/provider gates require the
+approved live attempt. No new framework, model training or downloads are involved.

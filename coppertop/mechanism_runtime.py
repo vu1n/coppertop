@@ -7,11 +7,7 @@ from pathlib import Path
 import subprocess
 import time
 
-import numpy as np
-
 from .chords import LocalStore, canonical, digest
-from .mechanism import Tape, candidate_diagnostics, native_actions, replay
-from .mechanism_runner import delayed_rollout
 from .performance_runtime import NATIVE, MODEL, SOURCE_PINS, stop_owned
 from .streams import ObjectRef, CHUNK_BYTES
 
@@ -38,6 +34,7 @@ def plan():
 
 
 def input_hash(inputs):
+    import numpy as np
     states, images, instruction = inputs
     h = hashlib.sha256(canonical({'instruction': instruction}))
     for key, value in [('state', states), *sorted(images.items())]:
@@ -54,6 +51,7 @@ class Trace:
         self.rows, self.cameras = [], {}
 
     def capture(self, frame):
+        import numpy as np
         self.rows.append({'step': frame.step, 'time_ns': frame.time_ns,
                           'state': self.env.entry.observation_to_state(self.env.observation).tolist()})
         for key in self.env.entry.CAMERA_KEYS:
@@ -74,6 +72,7 @@ class Trace:
 
 
 def save_trace(trace, tape, target, provenance, *, start=0, stop=None, store=None, parent=None):
+    import numpy as np
     import av
     import pyarrow as pa
     import pyarrow.parquet as pq
@@ -126,6 +125,8 @@ def save_trace(trace, tape, target, provenance, *, start=0, stop=None, store=Non
 
 def experiment(factory, query, *, seed=1150, policy_seed=20261006, log_sink=lambda records: None):
     """Three fresh adapters, five counted calls, one bounded branch, no training."""
+    from .mechanism import Tape, candidate_diagnostics, native_actions, replay
+    from .mechanism_runner import delayed_rollout
     count, logs = 0, []
 
     def ask(inputs, chosen_seed):
