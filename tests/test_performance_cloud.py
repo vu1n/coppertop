@@ -21,9 +21,9 @@ ATTEMPT = 'reload-abcdef0123456789'
 
 
 def ledger():
-    return {'schema_version': 2, 'billing_start_utc': '2026-10-01', 'cumulative_cap': '48',
+    return {'schema_version': 2, 'billing_start_utc': '2026-10-01', 'cumulative_cap': '58.82',
             'unbounded_spend': [], 'apps': {'ap-old': {'state': 'unsettled_bounded',
-             'known_reported_usd': '1', 'reservation_usd': '37.86459248', 'description': 'coppertop-old'}}}
+             'known_reported_usd': '1', 'reservation_usd': '48.81459248', 'description': 'coppertop-old'}}}
 
 
 def envelope(prepared):
@@ -37,6 +37,16 @@ def envelope(prepared):
 
 class PerformanceCloudTests(unittest.TestCase):
     def prepare(self, root=ROOT): return module.prepare(INPUTS, ledger(), ATTEMPT, root)
+
+    def test_nonstandard_storage_stops_before_bulk_get(self):
+        client = SimpleNamespace(head_object=Mock(return_value={'StorageClass': 'STANDARD'}), get_object=Mock())
+        store = SimpleNamespace(client=client, bucket='coppertop', key=lambda key: 'chords/objects/'+key)
+        factory = Mock(return_value=store)
+        self.assertIs(module.standard_input_store(factory, 'source', ['public-digest']), store)
+        client.head_object.assert_called_once_with(Bucket='coppertop', Key='chords/objects/public-digest')
+        client.head_object.return_value = {'StorageClass': 'INFREQUENT_ACCESS'}
+        with self.assertRaises(ValueError): module.standard_input_store(factory, 'source', ['public-digest'])
+        client.get_object.assert_not_called()
 
     def test_subprocess_failure_receipt_survives_but_raw_output_and_credentials_do_not(self):
         diagnostic = {'check': 'task_registry', 'error_type': 'ModuleNotFoundError',
@@ -93,7 +103,7 @@ class PerformanceCloudTests(unittest.TestCase):
             prepared = self.prepare()
         p = prepared['cloud_plan']
         self.assertEqual(p['additional_cap_usd'], '10')
-        self.assertEqual(p['cumulative_cap_usd'], '48')
+        self.assertEqual(p['cumulative_cap_usd'], '58.82')
         self.assertEqual([len(s.object_paths) for s in prepared['scopes']], [17, 5, 0])
         self.assertEqual(p['auth']['ttl_seconds'], 7200)
         self.assertFalse(p['new_image_builds'])
@@ -104,7 +114,7 @@ class PerformanceCloudTests(unittest.TestCase):
     def test_wrong_inputs_holds_and_cap_are_rejected(self):
         changed = copy.deepcopy(INPUTS); changed['exact_input_objects'][0]['path'] = 'unrelated/object'
         with self.assertRaises(ValueError): module.prepare(changed, ledger(), ATTEMPT, ROOT)
-        for cap, hold in (('38', '37.86459248'), ('49', '37.86459248'), ('48', '38.01')):
+        for cap, hold in (('48.82', '48.81459248'), ('58.83', '48.81459248'), ('58.82', '48.83')):
             value = ledger(); value['cumulative_cap'] = cap; value['apps']['ap-old']['reservation_usd'] = hold
             with self.assertRaises(ValueError): module.prepare(INPUTS, value, ATTEMPT, ROOT)
 
@@ -118,7 +128,7 @@ class PerformanceCloudTests(unittest.TestCase):
         value['apps']['ap-new'] = {'state': 'unsettled_bounded', 'known_reported_usd': '0',
                                   'reservation_usd': '10', 'description': 'coppertop-performance'}
         updated, _ = reconcile(value, [], app_id='ap-new', reservation_key='ap-new', additional_cap=10)
-        self.assertEqual(module.historical_total(updated), module.Decimal('47.86459248'))
+        self.assertEqual(module.historical_total(updated), module.Decimal('58.81459248'))
         with self.assertRaises(ValueError): reconcile(value, [], additional_cap=10)
 
     def test_gpu_has_no_secrets_network_or_writable_mount_and_functions_have_hard_limits(self):

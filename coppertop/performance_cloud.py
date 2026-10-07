@@ -29,6 +29,9 @@ from .reload_launch import (read_json, save, cli_json, hard_deadline, delete_own
 from .smoke_artifacts import fetch_smoke_checkpoint
 from .streams import ObjectRef, read_small
 
+CUMULATIVE_CAP = Decimal('58.82')
+ADDITIONAL_CAP = Decimal('10')
+
 INPUTS_SHA256 = 'efdace4feef64de66d12eca2d4c159d06672115f749109b9e11f9523ebf91578'
 LIMITS = {'controller_seconds': 5400, 'app_startup_seconds': 300,
           'source_seconds': 600, 'checkpoint_seconds': 1800, 'cache_gate_seconds': 1200,
@@ -44,9 +47,9 @@ def prepare(inputs, ledger, attempt, root):
     bundle = {name: inputs[name] for name in ('exact_input_objects', 'checkpoint_artifacts')}
     if digest(canonical(bundle)) != INPUTS_SHA256:
         raise ValueError('Exact previously verified source/checkpoint object bundle required')
-    if (Decimal(str(ledger.get('cumulative_cap', '0'))) != 48
-        or historical_total(ledger)+10 > 48):
-        raise ValueError('Retained holds plus full $10 must fit proposed $48 cap')
+    if (Decimal(str(ledger.get('cumulative_cap', '0'))) != CUMULATIVE_CAP
+        or historical_total(ledger)+ADDITIONAL_CAP > CUMULATIVE_CAP):
+        raise ValueError('Retained holds plus full $10 must fit proposed $58.82 cap')
     source_refs = {item['path'].removeprefix('chords/'): ObjectRef(item['sha256'], item['size'])
                    for item in bundle['exact_input_objects'] if item['path'].startswith('chords/objects/')}
     checkpoint_refs = {name: ObjectRef(value['sha256'], value['size'])
@@ -69,7 +72,7 @@ def prepare(inputs, ledger, attempt, root):
          'input_bundle': bundle,
          'source_manifest': source.to_dict(), 'checkpoint_manifest': checkpoint.to_dict(),
          'checkpoint_receipt': RECEIPT, 'training_container_id': ORIGINAL_CONTAINER_ID,
-         'limits': dict(LIMITS), 'additional_cap_usd': '10', 'cumulative_cap_usd': '48',
+         'limits': dict(LIMITS), 'additional_cap_usd': str(ADDITIONAL_CAP), 'cumulative_cap_usd': str(CUMULATIVE_CAP),
          'prior_conservative_holds_usd': str(historical_total(ledger)), 'holds_released_usd': '0',
          'ledger_sha256': digest(canonical(ledger)), 'operator_sources_sha256': code,
          'auth': {'ttl_seconds': 7200, 'session_count': 3, 'bucket': 'coppertop',
@@ -180,6 +183,16 @@ def simulator_preflight(runner=subprocess.run):
         return fallback
 
 
+def standard_input_store(factory, role, keys):
+    """Keep the reviewed Standard-storage cost model before bulk reads."""
+    store = factory(role)
+    for key in keys:
+        response = store.client.head_object(Bucket=store.bucket, Key=store.key(key))
+        if response.get('StorageClass', 'STANDARD') != 'STANDARD':
+            raise ValueError('Non-Standard source storage requires a new cost review')
+    return store
+
+
 def create_functions(sdk, prepared, *, image, volume, store_factory, sessions, runner=subprocess.run):
     """Define five single-use phases. This function performs no allocation."""
     if sdk.__version__ != '1.6.1' or set(sessions) != {'source', 'checkpoint', 'report'}:
@@ -197,7 +210,8 @@ def create_functions(sdk, prepared, *, image, volume, store_factory, sessions, r
     @app.function(**dict(cpu, name='performance-source-stage', timeout=600,
         secrets=list(sessions['source']), volumes={INPUT_MOUNT: mount}))
     def stage_source():
-        receipt = stage_objects(DeadlineStore(store_factory('source'), 600), source,
+        store = standard_input_store(store_factory, 'source', [ref.sha256 for ref in source.objects.values()])
+        receipt = stage_objects(DeadlineStore(store, 600), source,
             Path(INPUT_MOUNT)/source.key, max_seconds=600, commit=volume.commit)
         return {'container_id': _container(os.environ.get('MODAL_TASK_ID')), 'receipt': receipt}
 
@@ -206,7 +220,8 @@ def create_functions(sdk, prepared, *, image, volume, store_factory, sessions, r
     def stage_checkpoint():
         directory = Path(INPUT_MOUNT)/checkpoint.key
         partial = Path(INPUT_MOUNT)/(checkpoint.key+'-fetch')
-        receipt = fetch_smoke_checkpoint(DeadlineStore(store_factory('checkpoint'), 1800), RECEIPT, partial, CHECKPOINT_RUN_ID)
+        store = standard_input_store(store_factory, 'checkpoint', [RECEIPT]+[ref.sha256 for ref in checkpoint.objects.values()])
+        receipt = fetch_smoke_checkpoint(DeadlineStore(store, 1800), RECEIPT, partial, CHECKPOINT_RUN_ID)
         if receipt['artifacts'] != {name: ref.to_dict() for name, ref in checkpoint.objects.items()}:
             raise ValueError('Pinned checkpoint manifest differs')
         if directory.exists():
@@ -445,7 +460,7 @@ def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runn
                 'reservation_usd': '10', 'description': 'coppertop-performance',
                 'acceptance_basis': 'Full approved paired evaluation hold; preserve every historical hold'}
             save(output/'ledger.json', current)
-            save(output/'reservation.json', {'additional_usd': '10', 'overall_usd': '48',
+            save(output/'reservation.json', {'additional_usd': '10', 'overall_usd': str(CUMULATIVE_CAP),
                 'prior_holds_usd': p['prior_conservative_holds_usd'], 'released_usd': '0', 'cloud_plan_sha256': approved_sha256})
             return _live(prepared, current, env_file, output, root, deadline=deadline, sdk=sdk, runner=runner)
     except BaseException as caught:
