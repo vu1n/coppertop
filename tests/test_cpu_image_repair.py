@@ -21,9 +21,9 @@ ATTEMPT = 'repair-61d8ca278e0543bf'
 
 
 def ledger():
-    return {'schema_version': 2, 'cumulative_cap': '48.32', 'billing_start_utc': '2026-10-01',
+    return {'schema_version': 2, 'cumulative_cap': '48.57', 'billing_start_utc': '2026-10-01',
         'unbounded_spend': [], 'apps': {'ap-old': {'state': 'unsettled_bounded',
-            'known_reported_usd': '0', 'reservation_usd': '48.31459248'}}}
+            'known_reported_usd': '0', 'reservation_usd': '48.56459248'}}}
 
 
 def receipt(p):
@@ -45,14 +45,16 @@ class CpuRepairTests(unittest.TestCase):
             prepared = self.prepare()
         p = prepared['plan']
         self.assertEqual(prepared['plan_sha256'], module.sha(p))
-        self.assertEqual(p['prior_holds_usd'], '48.31459248')
+        self.assertEqual(p['prior_holds_usd'], '48.56459248')
         self.assertEqual(p['additional_cap_usd'], '0.25')
-        self.assertEqual(p['cumulative_cap_usd'], '48.57')
+        self.assertEqual(p['cumulative_cap_usd'], '48.82')
         self.assertFalse(p['paid_authorized']); self.assertFalse(p['static_audit_is_runtime_proof'])
         self.assertEqual(p['secrets'], []); self.assertEqual(p['volumes'], {})
-        self.assertEqual(p['maximum_wheel_download_bytes'], 32*1024**2)
+        self.assertEqual(p['maximum_wheel_download_bytes'], sum(w['bytes'] for w in p['wheel_selection'].values()))
+        self.assertLessEqual(p['maximum_wheel_download_bytes'], 32*1024**2)
         self.assertFalse(module.PROTECTED.intersection(p['wheel_selection']))
-        self.assertFalse({'cbor2', 'grpclib', 'h2', 'hpack', 'hyperframe'}.intersection(p['repair_allowlist']))
+        self.assertEqual(set(p['repair_allowlist']), module.OBSERVED_MISSING)
+        self.assertEqual(len(p['wheel_selection']), 15)
         self.assertEqual(len(p['source_payload']), 7)
         self.assertLess(len(module.encoded(p)), 512*1024)
         rate = (Decimal('0.0000131')*2+Decimal('0.00000222')*4)*Decimal('1.75')
@@ -62,22 +64,26 @@ class CpuRepairTests(unittest.TestCase):
         self.assertLess(Decimal(p['prior_holds_usd'])+module.CAP, module.CEILING)
 
     def test_new_ceiling_does_not_allow_old_gpu_bundles_or_other_reservations(self):
-        held = ledger(); held['cumulative_cap'] = '48.57'
+        held = ledger(); held['cumulative_cap'] = '48.82'
         reconcile(held, [], additional_cap='0.25')
         for cap in ('0.10', '0.20', '0.26', '8', '10'):
             with self.assertRaises(ValueError): reconcile(held, [], additional_cap=cap)
-        held['cumulative_cap'] = '48.58'
+        held['cumulative_cap'] = '48.83'
         with self.assertRaises(ValueError): reconcile(held, [], additional_cap='0.25')
 
     def test_missing_only_repair_rejects_differences_incomplete_and_large_inventory(self):
         p = self.prepare()['plan']; versions = dict(p['simulator_pins'])
         self.assertEqual(module.select_repair(p, versions), ['idna'])
-        versions['requests'] = None; versions['urllib3'] = None
-        self.assertEqual(module.select_repair(p, versions), ['idna', 'requests', 'urllib3'])
-        for name, value in (('torch', None), ('gym', None), ('h2', None), ('pyarrow', None), ('numpy', '1.0')):
+        versions['aiohttp'] = None; versions['attrs'] = None
+        self.assertEqual(module.select_repair(p, versions), ['aiohttp', 'attrs', 'idna'])
+        for name, value in (('torch', None), ('gym', None), ('requests', None), ('pyarrow', None), ('numpy', '1.0')):
             changed = dict(p['simulator_pins']); changed[name] = value
             with self.assertRaises(ValueError): module.select_repair(p, changed)
         with self.assertRaises(ValueError): module.select_repair(p, {'idna': None})
+        changed = dict(p['simulator_pins'])
+        changed.update({name: None for name in module.OBSERVED_MISSING})
+        self.assertEqual(set(module.select_repair(p, changed)), module.OBSERVED_MISSING)
+        self.assertLess(sum(p['wheel_selection'][name]['bytes'] for name in module.OBSERVED_MISSING), 32*1024**2)
 
     def test_editable_source_failure_stops_before_distribution_inventory(self):
         p = self.prepare()['plan']
