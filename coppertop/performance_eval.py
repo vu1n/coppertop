@@ -18,7 +18,9 @@ SOURCE_BLOBS = {
 }
 ARMS = ('official', 'one_update')
 DEV_SEEDS = (8, 9, 12, 15, 23)
-CACHED_IMAGE = 'im-jSDPqh8D8lT4vK8OLVkOvP'
+CACHED_IMAGE = 'im-uMab88d0cwA6MALkcTf5VW'
+CPU_REPAIR_PLAN = 'ba018f0d7a8f88f55df8a6d4ac53c9ed7a0758d585bdaa4364bbf0d7434fd78f'
+CPU_REPAIR_RECEIPT = 'ac3276dc2a381ee4b72c129557d920b67e2f1b920e133a68a315e6d86470bbf2'
 RUNTIME_FILES = ('coppertop/performance_eval.py', 'coppertop/performance_runtime.py',
                  'coppertop/performance_cloud.py', 'coppertop/reload_launch.py',
                  'coppertop/dependency_gate.py', 'coppertop/image_check.py',
@@ -36,6 +38,11 @@ def plan():
     return {
         'schema_version': 1, 'kind': 'paired_robocasa365_pilot',
         'cached_image': CACHED_IMAGE, 'runtime_sources_sha256': runtime_sources(),
+        'image_validation': {'cpu_repair_plan_sha256': CPU_REPAIR_PLAN,
+            'cpu_validation_receipt_sha256': CPU_REPAIR_RECEIPT,
+            'native_interpreter': '/opt/conda/bin/python',
+            'simulator_interpreter': '/work/sim/bin/python',
+            'gpu_execution_verified': False},
         'model': {'repo': MODEL_REPO, 'revision': MODEL_REVISION},
         'source_pins': dict(SOURCE_PINS), 'source_blobs': dict(SOURCE_BLOBS),
         'checkpoint': {'sha256': HEAD, 'bytes': 1230711168, 'receipt': RECEIPT,

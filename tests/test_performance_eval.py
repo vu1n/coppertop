@@ -38,6 +38,10 @@ class PerformanceTests(unittest.TestCase):
         self.assertNotEqual(value['task'], value['training_task_excluded'])
         self.assertFalse(set(value['episode_seeds']) & set(value['dev_seeds_excluded']))
         self.assertEqual(value['horizon'], 600)
+        self.assertEqual(value['cached_image'], 'im-uMab88d0cwA6MALkcTf5VW')
+        self.assertFalse(value['image_validation']['gpu_execution_verified'])
+        self.assertEqual(value['image_validation']['native_interpreter'], runtime.NATIVE)
+        self.assertEqual(value['image_validation']['simulator_interpreter'], runtime.SIMULATOR)
         self.assertEqual(value['limits']['automatic_retries'], 0)
         for key in ('horizon', 'model', 'episode_seeds', 'recipe', 'checkpoint'):
             changed = copy.deepcopy(value); changed[key] = None

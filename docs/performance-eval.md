@@ -50,13 +50,17 @@ python tools/run_performance_eval.py --prepare > .local/performance-plan.json
 ```
 
 Preparation imports no simulator/model, reads no credentials and performs no
-provider calls. It returns the exact plan and SHA-256 binding, including all four
-reviewed runtime module hashes. CPU fixtures exercise schedules, metrics, integrity,
+provider calls. It returns the exact plan and SHA-256 binding, including all seven
+reviewed runtime source/lock hashes. CPU fixtures exercise schedules, metrics, integrity,
 pair guards and failures; they are not simulator execution.
 
-The existing aligned image `im-jSDPqh8D8lT4vK8OLVkOvP` was read from the completed
-verifier's provider metadata. `performance_eval.runtime_image` adds the four
-reviewed modules with `copy=False` as runtime files. It performs no lookup,
+The evaluation now uses retained immutable repaired image
+`im-uMab88d0cwA6MALkcTf5VW`. Approved CPU repair plan
+`ba018f0d7a8f88f55df8a6d4ac53c9ed7a0758d585bdaa4364bbf0d7434fd78f`
+installed only 15 missing exact pins and passed both native and simulator
+checks. It preserved original image `im-jSDPqh8D8lT4vK8OLVkOvP`, cached
+models/assets and the native CUDA stack. `performance_eval.runtime_image` adds
+seven reviewed source/lock files with `copy=False` as runtime files. It performs no lookup,
 image build, package installation or download. Its caller must supply the
 already verified image handle. Preserve `/app` on PYTHONPATH for both interpreters.
 
@@ -72,12 +76,12 @@ path; no performance comparison is valid unless all four rollouts finish.
 
 The cloud controller is executable locally with the pinned Modal 1.6.1 controller
 Python. Prepare an exact attempt against a local proposal ledger preserving every
-historical hold and setting its cumulative cap to 48:
+historical hold and setting its proposed cumulative cap to 58.82:
 
 ```sh
 python tools/run_performance_cloud.py --prepare \
   --inputs containers/performance-inputs.json \
-  --ledger /path/to/proposed-ledger-48.json --attempt reload-16_HEX_DIGITS
+  --ledger /path/to/proposed-ledger-58.82.json --attempt reload-16_HEX_DIGITS
 ```
 
 Preparation reads public object references and code hashes only. It returns
@@ -110,7 +114,10 @@ partial result counts as policy failure or comparison success.
 The first approved attempt stopped at CPU simulator validation, before GPU
 admission; its four-rollout approval is consumed and cannot be reused. Its approved
 additional maximum was $10;
-with $37.86459248 in retained holds, request a cumulative ceiling of $48.
+with $48.81459248 now retained after the diagnostics/repairs, the next $10
+reservation requires a proposed cumulative ceiling of $58.82 ($58.81459248
+full holds). Current approved ceiling remains $48.82. The next evaluation is
+not approved or executed.
 Holds are reservations, not actual spent charges. No old hold is released.
 
 One US L40S Function, `(4,4)` CPU cores and `(65536,65536)` MiB memory, timeout
@@ -130,6 +137,8 @@ One newly owned input Volume, at most 3GiB. CPU verifies/commits before GPU;
 GPU mounts read-only with empty secrets and blocked external networking.
 Source/checkpoint permissions use separate two-hour
 CPU-only sessions, limited to the 17 source and five checkpoint object paths;
+HEAD each existing object before bulk reads and reject non-Standard storage
+before GET, preserving the Standard storage cost envelope;
 report access is limited to one new attempt prefix. No listing, deleting,
 multipart, renewal, permanent credential or parent credential in compute.
 Bound aggregate R2 requests to 2000, new report bytes to 64KiB and provider
@@ -139,20 +148,21 @@ narrow access contract; its record kind identifies this performance evaluation. 
 exact App and zero active containers/Sandboxes before deleting only the captured
 new Volume identity. Retain original checkpoint and immutable report in R2.
 
-Conservative estimate at current prices, reserving a 1.75 region factor:
+Conservative estimate at current published prices, reserving a 1.75 region
+factor and 120 extra billed seconds per phase for drain/audit overlap:
 
 | Item | Upper reservation, USD |
 | --- | ---: |
-| L40S+4 cores+64GiB, 2100 seconds | 2.706564 |
-| CPU source stage, 900 seconds | .055251 |
-| CPU gate, 1500 seconds | .230790 |
-| CPU transfer, 2100 seconds | .128919 |
-| CPU publisher, 600 seconds | .036834 |
+| L40S+4 cores+64GiB, 2220 seconds | 2.8612248 |
+| CPU source stage, 1020 seconds | .0626178 |
+| CPU gate, 1620 seconds | .2492532 |
+| CPU transfer, 2220 seconds | .1362858 |
+| CPU publisher, 720 seconds | .0442008 |
 | 3GiB Volume for a full month | .270000 |
 | Provider egress, 1GiB | .040000 |
 | R2 rounded Class A and B request units | 4.860000 |
 | R2 storage, conservatively 1GB-month | .015000 |
-| Total envelope | 8.343358 |
+| Total envelope | 8.6385824 |
 
 Reserve $10 to cover this envelope; assume no credits or free tier. Runtime
 mounts avoid the unbounded implicit COPY-build charge issue. These are proposal
@@ -257,3 +267,31 @@ The diagnostic launcher now waits through up to three exact-App metadata audits
 within 180 seconds, without repeating diagnostic work. Persistent activity still
 fails cleanup. Retained holds total $47.96459248, and the consumed diagnostic
 approval cannot be reused for changed code or another job.
+
+
+## Verified CPU repair and remaining GPU gates
+
+The retained repaired snapshot is shared by the CPU gate and L40S function.
+The evaluation's model server explicitly executes `/opt/conda/bin/python`;
+its official rollout executes `/work/sim/bin/python`. The repair altered only
+the latter's 15 missing wheel installations plus reviewed runtime files.
+Post-repair live validation confirmed the native active closure, all 30 overlay
+pins, pip check, Torch 2.8.0+cu128/Torchvision .23/FlashAttention 2.8.3 imports
+and CUDA12.8/CXX11 ABI, then full simulator 129-pin admission, pip/import,
+source and cached-assets checks. No additional image build/install is needed.
+The CPU receipt hash and repair-plan hash are bound into evaluation provenance.
+
+This is userland compatibility, not GPU execution proof. The paid CPU cache
+gate must reverify offline model snapshots, processor/entrypoint parity,
+checkpoint/source transfers and loopback before GPU admission. The L40S job
+then must establish CUDA device availability, cached model loading, Flash
+Attention execution, and real EGL simulator reset/render/camera/action paths.
+Those checks are not established by CPU import success. Four complete matched
+rollouts remain required; timeout/error/mismatched initialization yields no
+valid comparison. Current real paired evaluation remains 0/4.
+
+Read-only current billing reconciliation retained all $48.81459248 holds;
+reported charges and credits do not release reservations. Local rebinding,
+tests and a draft PR authorize no new paid execution, scoped R2 session minting,
+Volume creation, model loading or GPU allocation. The exact next plan, fresh
+ledger, code hashes and $10/$58.82 envelope need separate approval.
