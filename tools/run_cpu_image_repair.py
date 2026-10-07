@@ -17,7 +17,7 @@ NATIVE = '/opt/conda/bin/python'
 SIMULATOR = '/work/sim/bin/python'
 # Proposed budget only: execution must bind a separately approved plan hash.
 CAP = Decimal('0.25')
-CEILING = Decimal('48.32')
+CEILING = Decimal('48.57')
 PROTECTED = {'torch', 'torchvision', 'gym', 'evdev'}
 LIMITS = {'cpu': [2, 2], 'memory_mib': [4096, 4096], 'gpu': None,
           'build_seconds': 600, 'build_startup_seconds': 600,
@@ -72,7 +72,7 @@ def prepare(ledger, attempt, root):
     from coppertop.performance_eval import CACHED_IMAGE, RUNTIME_FILES, SOURCE_PINS
     if (not re.fullmatch(r'repair-[0-9a-f]{16}', attempt)
         or 'pending-'+attempt in ledger['apps']
-        or Decimal(str(ledger['cumulative_cap'])) != Decimal('48.07')):
+        or Decimal(str(ledger['cumulative_cap'])) != Decimal('48.32')):
         raise ValueError('Dedicated repair identity and retained prior ceiling required')
     total = historical_total(ledger)
     if total+CAP > CEILING:
@@ -263,7 +263,28 @@ def select_repair(p, versions):
 
 
 def network_tx():
-    interfaces = list(Path('/sys/class/net').iterdir())
+    # Modal containers may omit sysfs; procfs exposes the same byte counters.
+    sysfs = Path('/sys/class/net')
+    if not sysfs.exists():
+        with Path('/proc/net/dev').open() as source:
+            raw = source.read(65537)
+        if len(raw) > 65536:
+            raise ValueError('Network inventory exceeds bound')
+        lines = raw.splitlines()
+        if (len(lines) < 3 or 'Receive' not in lines[0] or 'Transmit' not in lines[0]
+            or not 1 <= len(lines[2:]) <= 64):
+            raise ValueError('Bounded Linux network counters required')
+        total = 0
+        for line in lines[2:]:
+            interface, separator, counters = line.partition(':')
+            fields = counters.split()
+            if (separator != ':' or not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', interface.strip())
+                or len(fields) != 16 or any(not re.fullmatch(r'[0-9]{1,24}', value) for value in fields)):
+                raise ValueError('Network counter differs')
+            if interface.strip() != 'lo':
+                total += int(fields[8])
+        return total
+    interfaces = list(sysfs.iterdir())
     if not 1 <= len(interfaces) <= 64:
         raise ValueError('Bounded Linux network counters required')
     total = 0

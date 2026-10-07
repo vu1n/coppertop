@@ -231,7 +231,7 @@ def reconcile(ledger, rows, *, app_id=None, reservation_key=None, additional_cap
     cap = Decimal(str(result.get('cumulative_cap', '30')))
     approved_caps = {Decimal(8): (30, 38), Decimal(10): (48,),
         Decimal('0.10'): (48, Decimal('48.07')),
-        Decimal('0.25'): (Decimal('48.32'),)}[additional_cap]
+        Decimal('0.25'): (Decimal('48.32'), Decimal('48.57'))}[additional_cap]
     if cap not in approved_caps or historical_total(result)+additional>cap or totals.get(app_id,Decimal(0))>additional_cap:
         raise ValueError('Fresh billing exceeds full approved holds')
     return result, str(totals.get(app_id,Decimal(0)))

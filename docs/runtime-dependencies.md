@@ -69,8 +69,15 @@ base and the full live closure checks; it is not a dependency resolver.
 `tools/run_cpu_image_repair.py` prepares the exact approval plan offline. Its
 `--execute --approved-plan-sha256` mode is for a separately approved single
 attempt; preparation, tests and publication do not authorize that mode.
-No repair/build/retry has run. Retained holds are $48.06459248 against the
-currently approved $48.07 ceiling, leaving $0.00540752.
+The approved $0.25 attempt `repair-61d8ca278e0543bf` ran once. The build
+failed before native/simulator checks or installation: Modal did not expose
+`/sys/class/net`. Its App `ap-bgpLSj2Ey6bgOIipV0C2pA` is stopped, with zero
+active containers/sandboxes. Failed image `im-scs1svNJArZhOTcffmUham` is
+unusable; it is not the GPU selector. The local fix reads bounded
+`/proc/net/dev` counters when sysfs is absent and still fails if neither
+source is available. The fallback is locally tested, not live verified.
+Retained holds are now $48.31459248 against the approved $48.32 ceiling,
+leaving $0.00540752. Another attempt requires new exact approval.
 
 The tool first runs the cached native interpreter's active dependency closure,
 30 overlay pins, `pip check`, imports and CUDA ABI checks on CPU. It then checks
@@ -108,10 +115,11 @@ At [Modal's published pricing](https://modal.com/pricing), using the maximum
 1.75 [regional multiplier](https://modal.com/docs/guide/region-selection),
 compute is estimated at $0.202587 plus $0.04 for 1 GiB
 [network egress](https://modal.com/docs/guide/network-egress-billing): $0.242587.
-Propose a **$0.25 additional reservation and $48.32 cumulative ceiling**;
-retaining every previous hold gives $48.31459248. This replaces the earlier
+Propose a **$0.25 additional reservation and $48.57 cumulative ceiling**;
+retaining every previous hold gives $48.56459248. This replaces the earlier
 incomplete $0.20/$48.27 proposal by accounting for the full controller, cleanup,
-image/network allowance and margin. Neither proposal has been approved.
+image/network allowance and margin. The original $0.25/$48.32 attempt was approved and consumed; this new
+$0.25/$48.57 retest is not approved.
 No credits or release of existing holds are assumed.
 
 Validation reruns the native gate and the existing complete simulator pin,

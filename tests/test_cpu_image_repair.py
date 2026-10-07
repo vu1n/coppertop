@@ -21,9 +21,9 @@ ATTEMPT = 'repair-61d8ca278e0543bf'
 
 
 def ledger():
-    return {'schema_version': 2, 'cumulative_cap': '48.07', 'billing_start_utc': '2026-10-01',
+    return {'schema_version': 2, 'cumulative_cap': '48.32', 'billing_start_utc': '2026-10-01',
         'unbounded_spend': [], 'apps': {'ap-old': {'state': 'unsettled_bounded',
-            'known_reported_usd': '0', 'reservation_usd': '48.06459248'}}}
+            'known_reported_usd': '0', 'reservation_usd': '48.31459248'}}}
 
 
 def receipt(p):
@@ -45,9 +45,9 @@ class CpuRepairTests(unittest.TestCase):
             prepared = self.prepare()
         p = prepared['plan']
         self.assertEqual(prepared['plan_sha256'], module.sha(p))
-        self.assertEqual(p['prior_holds_usd'], '48.06459248')
+        self.assertEqual(p['prior_holds_usd'], '48.31459248')
         self.assertEqual(p['additional_cap_usd'], '0.25')
-        self.assertEqual(p['cumulative_cap_usd'], '48.32')
+        self.assertEqual(p['cumulative_cap_usd'], '48.57')
         self.assertFalse(p['paid_authorized']); self.assertFalse(p['static_audit_is_runtime_proof'])
         self.assertEqual(p['secrets'], []); self.assertEqual(p['volumes'], {})
         self.assertEqual(p['maximum_wheel_download_bytes'], 32*1024**2)
@@ -62,11 +62,11 @@ class CpuRepairTests(unittest.TestCase):
         self.assertLess(Decimal(p['prior_holds_usd'])+module.CAP, module.CEILING)
 
     def test_new_ceiling_does_not_allow_old_gpu_bundles_or_other_reservations(self):
-        held = ledger(); held['cumulative_cap'] = '48.32'
+        held = ledger(); held['cumulative_cap'] = '48.57'
         reconcile(held, [], additional_cap='0.25')
         for cap in ('0.10', '0.20', '0.26', '8', '10'):
             with self.assertRaises(ValueError): reconcile(held, [], additional_cap=cap)
-        held['cumulative_cap'] = '48.33'
+        held['cumulative_cap'] = '48.58'
         with self.assertRaises(ValueError): reconcile(held, [], additional_cap='0.25')
 
     def test_missing_only_repair_rejects_differences_incomplete_and_large_inventory(self):
@@ -94,6 +94,20 @@ class CpuRepairTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'editable source differs'):
                 module.simulator_inventory(p)
         version.assert_not_called()
+
+    def test_proc_network_fallback_is_bounded_and_counts_only_transmit(self):
+        header = 'Inter-| Receive | Transmit\n face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n'
+        raw = header+'lo: '+ ' '.join(['999']*16)+'\neth0: '+ ' '.join(['1']*8+['123']+['2']*7)+'\n'
+        with patch.object(module.Path, 'exists', return_value=False), \
+             patch.object(module.Path, 'open', return_value=io.StringIO(raw)):
+            self.assertEqual(module.network_tx(), 123)
+        for invalid in ('x'*65537, header+'eth0: malformed\n', header):
+            with patch.object(module.Path, 'exists', return_value=False), \
+                 patch.object(module.Path, 'open', return_value=io.StringIO(invalid)):
+                with self.assertRaises(ValueError): module.network_tx()
+        with patch.object(module.Path, 'exists', return_value=False), \
+             patch.object(module.Path, 'open', side_effect=FileNotFoundError):
+            with self.assertRaises(FileNotFoundError): module.network_tx()
 
     def test_native_failure_cannot_reach_download_or_install(self):
         p = self.prepare()['plan']; opener = Mock()
