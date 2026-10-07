@@ -15,7 +15,9 @@ class ImageRecipeTests(unittest.TestCase):
   self.assertIn('CMD ["python", "-m", "coppertop.smoke_runtime"]',recipe)
   self.assertIn('HF_HOME=/tmp/coppertop-hf',recipe)
   self.assertIn('--no-deps -r requirements-gpu-smoke.lock',recipe)
-  self.assertIn('python -m pip check',recipe)
+  self.assertIn('python -m pip --isolated check',recipe)
+  self.assertIn('--only-binary=:all:',recipe)
+  self.assertIn('-r requirements-r2.txt',recipe)
   self.assertIn('sha256sum -c - && python -m pip install',recipe)
  def test_receipt_hash_changes_with_source(self):
   with tempfile.TemporaryDirectory() as d:

@@ -15,6 +15,7 @@ from .chords import canonical
 from .performance_eval import plan, validate_plan, summarize, SOURCE_BLOBS, SOURCE_PINS
 from .reload_launch import hard_deadline, read_json, save, HEAD
 from .smoke_reload import verify_artifact, load_head
+from .dependency_gate import require_pip_check, require_imports, LockMismatch
 
 NATIVE = '/opt/conda/bin/python'
 SIMULATOR = '/work/sim/bin/python'
@@ -24,6 +25,7 @@ PORT = 10086
 MODULE = 'coppertop.performance_runtime'
 SIMULATOR_GIT_SECONDS = 60
 GATE_REASONS = {'Cached simulator package missing', 'Pinned simulator checkout revision differs',
+    'Installed dependency closure failed pip check', 'Pinned simulator lock differs',
     'Pinned simulator tracked content differs',
     'Official task registry/horizon changed', 'Completed six-archive cache receipt required',
     'Cached archive provenance incomplete', 'Cached simulator asset path/length differs',
@@ -70,6 +72,17 @@ def simulator_gate(progress=lambda check: None):
         if dirty:
             raise ValueError('Pinned simulator tracked content differs')
     progress('dependencies')
+    from .image_check import pinned_dependencies, dependency_report, installed_dependencies
+    expected = pinned_dependencies(Path('/app/requirements-simulator.lock'))
+    differences = dependency_report(expected, installed_dependencies(expected))['differences']
+    if differences:
+        raise LockMismatch(differences)
+    require_pip_check()
+    progress('dependency_imports')
+    require_imports(('idna', 'requests', 'huggingface_hub', 'gymnasium', 'mujoco',
+                     'transformers', 'torch', 'torchvision', 'numpy', 'scipy',
+                     'numba', 'h5py', 'cv2', 'PIL', 'imageio', 'imageio_ffmpeg',
+                     'av', 'robosuite', 'robocasa'))
     import gymnasium, mujoco, transformers
     for module, expected in ((gymnasium, '0.29.1'), (mujoco, '3.3.1'), (transformers, '4.57.1')):
         if module.__version__ != expected:
@@ -100,12 +113,14 @@ def simulator_gate_receipt():
     except Exception as error:
         # Third-party messages can contain arbitrary values; only our exact guards
         # and module identifiers are public diagnostic fields.
-        reason = str(error) if type(error) is ValueError and str(error) in GATE_REASONS else 'exception_text_omitted'
+        reason = str(error) if type(error) in (ValueError, LockMismatch) and str(error) in GATE_REASONS else 'exception_text_omitted'
         frames = traceback.extract_tb(error.__traceback__)[-16:]
         trace = [{'file': re.sub(r'[^A-Za-z0-9_.<>-]', '_', Path(frame.filename).name)[:128],
                   'line': frame.lineno, 'function': re.sub(r'[^A-Za-z0-9_.<>-]', '_', frame.name)[:128]}
                  for frame in frames]
         diagnostic = {'check': current, 'error_type': type(error).__name__, 'reason': reason, 'trace': trace}
+        if type(error) is LockMismatch:
+            diagnostic['dependency_differences'] = error.differences
         if isinstance(error, ImportError) and isinstance(error.name, str) and re.fullmatch(r'[A-Za-z0-9_.]{1,128}', error.name):
             diagnostic['missing_module'] = error.name
         if isinstance(error, subprocess.CalledProcessError): diagnostic['exit_code'] = error.returncode

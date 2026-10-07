@@ -26,7 +26,7 @@ INPUT_MOUNT = '/coppertop-inputs'
 EVALUATOR_FILE = '.local/native/evaluator.py'
 PACKAGE_FILES = tuple('coppertop/' + name + '.py' for name in (
     '__init__', '__main__', 'adapter', 'checkpoint', 'chords', 'cloud_roundtrip',
-    'cloud_smoke', 'cloud_stage', 'episode', 'gpu_launch', 'gpu_smoke', 'image_check',
+    'cloud_smoke', 'cloud_stage', 'dependency_gate', 'episode', 'gpu_launch', 'gpu_smoke', 'image_check',
     'ingest', 'lerobot', 'modal_image', 'modal_reload', 'modal_staging', 'multipart', 'publication',
     'reload_launch', 'r2_session', 'runpod_staging', 's3', 'smoke_artifacts', 'smoke_reload',
     'smoke_runtime', 'streams', 'verify_loader', 'worker', 'xiaomi'))

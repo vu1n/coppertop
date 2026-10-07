@@ -146,13 +146,23 @@ def simulator_preflight(runner=subprocess.run):
             if set(receipt) != {'status', 'render_reset_executed', 'diagnostic'}: return fallback
             diagnostic = receipt['diagnostic']
             if (not isinstance(diagnostic, dict) or not {'check', 'error_type', 'reason', 'trace'} <= set(diagnostic)
-                or set(diagnostic)-{'check', 'error_type', 'reason', 'trace', 'missing_module', 'exit_code', 'errno'}
+                or set(diagnostic)-{'check', 'error_type', 'reason', 'trace', 'missing_module', 'exit_code', 'errno', 'dependency_differences'}
                 or diagnostic['reason'] not in GATE_REASONS | {'exception_text_omitted'}): return fallback
             for key in ('check', 'error_type', 'missing_module'):
                 if key in diagnostic and (not isinstance(diagnostic[key], str)
                     or not re.fullmatch(r'[A-Za-z0-9_.]{1,128}', diagnostic[key])): return fallback
             for key in ('exit_code', 'errno'):
                 if key in diagnostic and type(diagnostic[key]) is not int: return fallback
+            if 'dependency_differences' in diagnostic:
+                differences = diagnostic['dependency_differences']
+                if not isinstance(differences, list) or not 1 <= len(differences) <= 256: return fallback
+                for item in differences:
+                    if (not isinstance(item, dict) or set(item) != {'package', 'expected', 'observed', 'status'}
+                        or not isinstance(item['package'], str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,127}', item['package'])
+                        or not isinstance(item['expected'], str) or not re.fullmatch(r'[0-9][A-Za-z0-9.+-]{0,127}', item['expected'])
+                        or (item['observed'] is not None and item['observed'] != 'omitted' and
+                            (not isinstance(item['observed'], str) or not re.fullmatch(r'[0-9][A-Za-z0-9.+-]{0,127}', item['observed'])))
+                        or item['status'] not in ('unknown', 'missing', 'different')): return fallback
             if not isinstance(diagnostic['trace'], list) or len(diagnostic['trace']) > 16: return fallback
             for frame in diagnostic['trace']:
                 if (not isinstance(frame, dict) or set(frame) != {'file', 'line', 'function'}

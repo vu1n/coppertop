@@ -2,7 +2,8 @@
 FROM pytorch/pytorch@sha256:417bd75df6365104c283ea4c1651fb3530d9eb5a4c2fafa51943cff2a94e6385
 WORKDIR /app
 COPY requirements-gpu-smoke.lock /app/requirements-gpu-smoke.lock
-RUN python -m pip install --no-cache-dir --no-deps -r requirements-gpu-smoke.lock && python -m pip check
+COPY requirements-r2.txt /app/requirements-r2.txt
+RUN python -m pip --isolated install --no-input --disable-pip-version-check --no-cache-dir --only-binary=:all: --retries 0 --timeout 15 --index-url https://pypi.org/simple --no-deps -r requirements-gpu-smoke.lock -r requirements-r2.txt && python -m pip --isolated check
 # Prepared outside this build: checksum-verified native snapshot, evaluator and wheel.
 # Deliberate missing inputs prevent an accidental generic source-context build.
 COPY runtime/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl /tmp/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl
