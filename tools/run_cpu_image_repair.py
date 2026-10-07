@@ -17,8 +17,10 @@ NATIVE = '/opt/conda/bin/python'
 SIMULATOR = '/work/sim/bin/python'
 # Proposed budget only: execution must bind a separately approved plan hash.
 CAP = Decimal('0.25')
-CEILING = Decimal('48.57')
+CEILING = Decimal('48.82')
 PROTECTED = {'torch', 'torchvision', 'gym', 'evdev'}
+# Exact missing inventory observed in the approved CPU retest; no blanket repair.
+OBSERVED_MISSING = {'cbor2', 'aiohttp', 'h2', 'frozenlist', 'hyperframe', 'propcache', 'attrs', 'yarl', 'idna', 'aiohappyeyeballs', 'grpclib', 'aiosignal', 'hpack', 'multidict', 'certifi'}
 LIMITS = {'cpu': [2, 2], 'memory_mib': [4096, 4096], 'gpu': None,
           'build_seconds': 600, 'build_startup_seconds': 600,
           'gate_seconds': 900, 'gate_startup_seconds': 300,
@@ -48,15 +50,6 @@ def bounded_json(path, limit):
     return json.loads(raw)
 
 
-def requirement_name(line):
-    # The audited edges are already marker/extras-resolved. Preparation needs
-    # their package names only; pip performs the live compatibility check.
-    match = re.match(r'([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[|[<>=!~ ;]|$)', line)
-    if match is None:
-        raise ValueError('Audited requirement name differs')
-    return re.sub(r'[-_.]+', '-', match[1]).lower()
-
-
 def offline_environment():
     return {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
             'HOME': '/root', 'PYTHONPATH': '/app', 'HF_HUB_OFFLINE': '1',
@@ -72,7 +65,7 @@ def prepare(ledger, attempt, root):
     from coppertop.performance_eval import CACHED_IMAGE, RUNTIME_FILES, SOURCE_PINS
     if (not re.fullmatch(r'repair-[0-9a-f]{16}', attempt)
         or 'pending-'+attempt in ledger['apps']
-        or Decimal(str(ledger['cumulative_cap'])) != Decimal('48.32')):
+        or Decimal(str(ledger['cumulative_cap'])) != Decimal('48.57')):
         raise ValueError('Dedicated repair identity and retained prior ceiling required')
     total = historical_total(ledger)
     if total+CAP > CEILING:
@@ -80,20 +73,9 @@ def prepare(ledger, attempt, root):
     audit_bytes = (root/'containers/simulator-dependency-audit.json').read_bytes()
     audit = json.loads(audit_bytes)
     pins = pinned_dependencies(root/'requirements-simulator.lock')
-    pending = ['transformers', 'imageio', 'imageio-ffmpeg', 'tqdm', 'scipy',
-               'torch', 'torchvision', 'cloudpickle', 'gym-notices']
     for source in audit['editable_sources']:
         if source['revision'] != SOURCE_PINS[source['name']]:
             raise ValueError('Official source dependency revision differs')
-        pending.extend(requirement_name(line) for line in source['active_requirements'])
-    required = set()
-    while pending:
-        name = pending.pop()
-        if name in required:
-            continue
-        required.add(name)
-        pending.extend(requirement_name(line)
-                       for line in audit['packages'][name]['active_requirements'])
     wheels = {}
     if set(audit['packages']) != set(pins):
         raise ValueError('Complete audited simulator baseline required')
@@ -101,7 +83,7 @@ def prepare(ledger, attempt, root):
         if record['version'] != pins[name]:
             raise ValueError('Audit and lock differ')
         wheel = record.get('wheel')
-        if name in PROTECTED or name not in required:
+        if name in PROTECTED or name not in OBSERVED_MISSING:
             continue
         if (not isinstance(wheel, dict) or type(wheel['bytes']) is not int or wheel['bytes'] <= 0
             or not re.fullmatch(r'[0-9a-f]{64}', wheel['sha256'])
@@ -128,7 +110,7 @@ def prepare(ledger, attempt, root):
          'cumulative_cap_usd': str(CEILING), 'limits': dict(LIMITS),
          'native_pins': native, 'simulator_pins': pins, 'wheel_selection': wheels,
          'source_pins': dict(SOURCE_PINS),
-         'repair_allowlist': sorted(required),
+         'repair_allowlist': sorted(OBSERVED_MISSING),
          'static_audit_is_runtime_proof': False,
          'simulator_success': {'status': 'passed', 'task': 'CoffeeSetupMug', 'horizon': 600,
             'render_reset_executed': False, 'assets': {'files': 123236,
@@ -138,7 +120,7 @@ def prepare(ledger, attempt, root):
                                              LIMITS['maximum_wheel_download_bytes']),
          'audit_sha256': hashlib.sha256(audit_bytes).hexdigest(), 'source_payload': payload,
          'source_delivery': 'SDK entrypoint mount plus serialized reviewed bytes; no COPY layer',
-         'repair_policy': 'Native inventory first; reject differing simulator versions; missing wheels plus idna only',
+         'repair_policy': 'Native inventory first; reject differing simulator versions; only the 15 observed missing historical pins plus idna',
          'retained': sorted(PROTECTED), 'secrets': [], 'volumes': {}, 'r2_access': False,
          'gpu_or_model_loading': False, 'model_or_asset_downloads': False,
          'network': 'Only bounded official PyPI metadata resolution and selected wheel bytes during build; gate blocked',

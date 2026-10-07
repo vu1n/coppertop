@@ -69,22 +69,28 @@ base and the full live closure checks; it is not a dependency resolver.
 `tools/run_cpu_image_repair.py` prepares the exact approval plan offline. Its
 `--execute --approved-plan-sha256` mode is for a separately approved single
 attempt; preparation, tests and publication do not authorize that mode.
-The approved $0.25 attempt `repair-61d8ca278e0543bf` ran once. The build
-failed before native/simulator checks or installation: Modal did not expose
-`/sys/class/net`. Its App `ap-bgpLSj2Ey6bgOIipV0C2pA` is stopped, with zero
-active containers/sandboxes. Failed image `im-scs1svNJArZhOTcffmUham` is
-unusable; it is not the GPU selector. The local fix reads bounded
-`/proc/net/dev` counters when sysfs is absent and still fails if neither
-source is available. The fallback is locally tested, not live verified.
-Retained holds are now $48.31459248 against the approved $48.32 ceiling,
-leaving $0.00540752. Another attempt requires new exact approval.
+PR #3 merged at `30b354dc4dbd86d32ae530c8bf39dc9e416abaea`.
+Two approved $0.25 CPU repairs have been consumed. The first lacked sysfs
+counters; the bounded procfs fallback fixed that. The second attempt
+`repair-a870ef4c6031bd52` passed native dependency/import/ABI and source checks,
+then inventoried all 129 simulator pins: 15 missing, no differing versions.
+It stopped before downloads because five missing historical admission pins
+were outside the repair allowlist. App `ap-XwKQ8feyGRtjbw0vBZ2Idd` is stopped
+with zero active containers/sandboxes; failed image `im-FnuwFE2LkHgclpshvkD8cM`
+is unusable. No dependency installation, validation, GPU or R2 occurred.
+Retained holds are $48.56459248 against the approved $48.57 ceiling, leaving
+$0.00540752. Another attempt requires new exact approval.
 
 The tool first runs the cached native interpreter's active dependency closure,
 30 overlay pins, `pip check`, imports and CUDA ABI checks on CPU. It then checks
 both source editables' revisions/cleanliness and all 129 simulator versions.
 It rejects any changed version or missing protected/unrelated package before
-network or installation. The 124-package repair allowlist follows audited
-runtime dependencies; five unrelated historical service packages are excluded.
+network or installation. The repair allowlist now consists only of the 15 missing packages observed
+in that approved inventory: aiohappyeyeballs, aiohttp, aiosignal, attrs, cbor2,
+certifi, frozenlist, grpclib, h2, hpack, hyperframe, idna, multidict, propcache
+and yarl. Five restore historical admission consistency rather than RoboCasa
+runtime functionality; this expands the previous repair scope and needs new
+approval. Their exact compressed wheel total is 2,333,449 bytes.
 Missing approved wheels plus `idna==3.10` are installed from exact official
 wheel filenames, sizes and SHA-256 hashes. Official PyPI JSON resolves only
 the already bound artifact; redirects, proxies and alternate hosts are rejected.
@@ -115,12 +121,9 @@ At [Modal's published pricing](https://modal.com/pricing), using the maximum
 1.75 [regional multiplier](https://modal.com/docs/guide/region-selection),
 compute is estimated at $0.202587 plus $0.04 for 1 GiB
 [network egress](https://modal.com/docs/guide/network-egress-billing): $0.242587.
-Propose a **$0.25 additional reservation and $48.57 cumulative ceiling**;
-retaining every previous hold gives $48.56459248. This replaces the earlier
-incomplete $0.20/$48.27 proposal by accounting for the full controller, cleanup,
-image/network allowance and margin. The original $0.25/$48.32 attempt was approved and consumed; this new
-$0.25/$48.57 retest is not approved.
-No credits or release of existing holds are assumed.
+Propose a **$0.25 additional reservation and $48.82 cumulative ceiling**;
+retaining every previous hold gives $48.81459248. Both previous $0.25 attempts were approved and consumed; this third
+$0.25/$48.82 proposal is not approved. No credits or release of existing holds are assumed.
 
 Validation reruns the native gate and the existing complete simulator pin,
 `pip check`, import, source and cached-assets CPU gate with network blocked.
