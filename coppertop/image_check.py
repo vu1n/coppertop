@@ -49,7 +49,7 @@ def pinned_dependencies(*paths):
             pins[name] = version
     if conflicts:
         raise ValueError('Conflicting dependency pins: ' + canonical(conflicts).decode())
-    if not pins or len(pins) > 64:
+    if not pins or len(pins) > 256:
         raise ValueError('Bounded nonempty dependency lock required')
     return dict(sorted(pins.items()))
 
@@ -100,11 +100,13 @@ def recipe_digest(root):
 
 
 def validate(args):
+    from .dependency_gate import require_pip_check
     require_native_interpreter()
     if sys.version_info[:2] != (3,11):raise ValueError('Python 3.11 required')
     if os.environ.get('HF_HUB_OFFLINE') != '1' or os.environ.get('TRANSFORMERS_OFFLINE') != '1':
         raise ValueError('Offline native model inspection required')
     require_dependencies(pinned_dependencies(args.root/'requirements-gpu-smoke.lock'))
+    require_pip_check()
     import torch,torchvision,flash_attn,transformers,av,pyarrow,numpy
     if torch.__version__.split('+')[0]!='2.8.0' or torchvision.__version__.split('+')[0]!='0.23.0':
         raise ValueError('Immutable CUDA base packages differ')

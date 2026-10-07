@@ -19,12 +19,16 @@ SOURCE_BLOBS = {
 ARMS = ('official', 'one_update')
 DEV_SEEDS = (8, 9, 12, 15, 23)
 CACHED_IMAGE = 'im-jSDPqh8D8lT4vK8OLVkOvP'
+RUNTIME_FILES = ('coppertop/performance_eval.py', 'coppertop/performance_runtime.py',
+                 'coppertop/performance_cloud.py', 'coppertop/reload_launch.py',
+                 'coppertop/dependency_gate.py', 'coppertop/image_check.py',
+                 'requirements-simulator.lock')
 
 
 def runtime_sources():
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[1]
     return {name: hashlib.sha256((root/name).read_bytes()).hexdigest()
-            for name in ('performance_eval.py', 'performance_runtime.py', 'performance_cloud.py', 'reload_launch.py')}
+            for name in RUNTIME_FILES}
 
 
 def plan():
@@ -63,10 +67,10 @@ def runtime_image(sdk, image, root):
         raise ValueError('Exact previously verified warm image and SDK required')
     root = Path(root)
     for name, expected in runtime_sources().items():
-        path = root/'coppertop'/name
+        path = root/name
         if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError('Runtime upload source differs')
-        image = image.add_local_file(path, '/app/coppertop/'+name, copy=False)
+        image = image.add_local_file(path, '/app/'+name, copy=False)
     return image
 
 
