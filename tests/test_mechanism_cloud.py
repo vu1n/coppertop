@@ -25,6 +25,25 @@ def ledger():
 
 
 class CloudTests(unittest.TestCase):
+    def test_explicit_a100_is_bound_to_plan_and_provider_without_fallback(self):
+        value=ledger();value['cumulative_cap']='70.82'
+        original=module.prepare(value,ATTEMPT,'official_recording_full')
+        selected=module.prepare(value,ATTEMPT,'official_recording_full','A100-80GB')
+        self.assertNotEqual(original['cloud_plan_sha256'],selected['cloud_plan_sha256'])
+        self.assertEqual(original['cloud_plan']['worker'],selected['cloud_plan']['worker'])
+        self.assertEqual(selected['cloud_plan']['pricing']['a100_80gb_per_second'],'.000694')
+        functions=module.create_functions(SimpleNamespace(__version__='1.6.1',App=App),
+            selected,object(),Volume([]),Mock(),[])
+        self.assertEqual(functions.app.definitions['evaluate']['gpu'],'A100-80GB')
+        self.assertEqual(functions.app.definitions['evaluate']['retries'],0)
+        with self.assertRaisesRegex(ValueError,'Modal1.6.1'):
+            module.execute(selected,value,Path.cwd(),Path('unused'),selected['cloud_plan_sha256'],
+                sdk=SimpleNamespace(__version__='unsupported'))
+        changed=copy.deepcopy(selected);changed['cloud_plan']['resources']['gpu']='L40S'
+        with self.assertRaisesRegex(ValueError,'Exact proposed plan'):
+            module.execute(changed,value,Path.cwd(),Path('unused'),selected['cloud_plan_sha256'])
+        with self.assertRaises(ValueError):module.prepare(value,ATTEMPT,'official_recording_full','any')
+
     def test_cli_exit_reflects_terminal_status_after_publication_cleanup(self):
         # Exercise process exit as well as main's returned code; no provider path runs.
         script = """

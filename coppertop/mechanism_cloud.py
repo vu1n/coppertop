@@ -39,10 +39,12 @@ def selected_worker(workload):
     raise ValueError('Known bounded workload required')
 
 
-def prepare(ledger, attempt, workload='mechanism'):
+def prepare(ledger, attempt, workload='mechanism', gpu='L40S'):
     """Pure preparation: no credentials, signing, provider calls or allocation."""
     if not re.fullmatch(r'mechanism-[0-9a-f]{16}', attempt):
         raise ValueError('Dedicated mechanism attempt required')
+    if gpu not in ('L40S', 'A100-80GB'):
+        raise ValueError('Explicit supported GPU required; no fallback')
     worker = selected_worker(workload)
     full = workload=='official_recording_full'
     additional = Decimal('8') if full else ADDITIONAL
@@ -56,7 +58,7 @@ def prepare(ledger, attempt, workload='mechanism'):
         'worker': worker, 'worker_sha256': digest(canonical(worker)),
         'ledger_sha256': digest(canonical(ledger)), 'retained_holds_usd': str(historical_total(ledger)),
         'additional_cap_usd': str(additional), 'cumulative_cap_usd': str(cumulative),
-        'resources': {'gpu': 'L40S', 'gpu_cpu': 4, 'gpu_memory_mib': 65536,
+        'resources': {'gpu': gpu, 'gpu_cpu': 4, 'gpu_memory_mib': 65536,
             'gate_cpu': 4, 'gate_memory_mib': 16384, 'publisher_cpu': 2, 'publisher_memory_mib': 4096,
             'single_use_containers': True, 'retries': 0, 'scaledown_seconds': 2,
             'startup_seconds_each': 300, 'gate_seconds': 610, 'worker_seconds': 250, 'gpu_phase_seconds': 270,
@@ -78,6 +80,10 @@ def prepare(ledger, attempt, workload='mechanism'):
         p['retention']='Keep ≤1GiB immutable R2 evidence in Standard storage with ongoing charges; ≤2GiB each local scratch and new Volume. CPU single PUT ≤64MiB; no multipart. Delete only owned Volume after publication attempt and zero-active audit.'
     if workload != 'mechanism':
         p.update(kind='official_full_rollout_recording' if full else 'official_recording_cloud_acceptance', workload=workload)
+    if gpu == 'A100-80GB':
+        p['pricing']['a100_80gb_per_second'] = '.000694'
+        if full:
+            p['pricing']['compute_storage_egress_envelope_usd'] = '2.00'
     return {'cloud_plan': p, 'cloud_plan_sha256': digest(canonical(p)), 'scope': scope}
 
 
@@ -161,7 +167,7 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
         return {'container_id': _container(os.environ.get('MODAL_TASK_ID')), 'status': result['status'],
                 'simulator': result, 'plan_sha256': prepared['cloud_plan_sha256']}
     @app.function(**dict(common, name='mechanism-feasibility', cpu=(4,4), memory=(65536,65536),
-        gpu='L40S', timeout=resources['gpu_phase_seconds'], secrets=[], block_network=True, volumes={MOUNT: mount}))
+        gpu=resources['gpu'], timeout=resources['gpu_phase_seconds'], secrets=[], block_network=True, volumes={MOUNT: mount}))
     def evaluate():
         binding()
         target = Path(MOUNT)/'outputs'
@@ -298,7 +304,8 @@ def execute_phases(functions, prepared, output, *, admission, invoke, stopped, c
 
 def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runner=subprocess.run):
     """One exact approval, one retained hold, no fallback/retry or shared cleanup."""
-    checked = prepare(ledger, prepared['cloud_plan']['attempt_id'], prepared['cloud_plan'].get('workload','mechanism'))
+    checked = prepare(ledger, prepared['cloud_plan']['attempt_id'], prepared['cloud_plan'].get('workload','mechanism'),
+        prepared['cloud_plan']['resources']['gpu'])
     if (approved_sha256 != prepared['cloud_plan_sha256']
             or digest(canonical(prepared['cloud_plan'])) != approved_sha256
             or checked['cloud_plan_sha256'] != approved_sha256):
@@ -414,10 +421,11 @@ def main():
     parser.add_argument('--ledger',type=Path,required=True)
     parser.add_argument('--attempt',required=True)
     parser.add_argument('--workload',choices=('mechanism','official_recording','official_recording_full'),default='mechanism')
+    parser.add_argument('--gpu', choices=('L40S','A100-80GB'), default='L40S')
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--approved-cloud-plan-sha256')
     parser.add_argument('--env-file',type=Path,default=Path.home()/'code/coppertop/.env.local')
-    args=parser.parse_args(); ledger=read_json(args.ledger); prepared=prepare(ledger,args.attempt,args.workload)
+    args=parser.parse_args(); ledger=read_json(args.ledger); prepared=prepare(ledger,args.attempt,args.workload,args.gpu)
     if not args.execute:
         print(json.dumps({key:value for key,value in prepared.items() if key!='scope'})); return 0
     result = execute(prepared,ledger,Path(__file__).resolve().parent.parent,args.env_file,args.approved_cloud_plan_sha256)
