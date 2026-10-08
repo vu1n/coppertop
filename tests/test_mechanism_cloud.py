@@ -36,9 +36,12 @@ class CloudTests(unittest.TestCase):
             selected,object(),Volume([]),Mock(),[])
         self.assertEqual(functions.app.definitions['evaluate']['gpu'],'A100-80GB')
         self.assertEqual(functions.app.definitions['evaluate']['retries'],0)
-        with self.assertRaisesRegex(ValueError,'Modal1.6.1'):
-            module.execute(selected,value,Path.cwd(),Path('unused'),selected['cloud_plan_sha256'],
-                sdk=SimpleNamespace(__version__='unsupported'))
+        reviewed_at=module.datetime.fromisoformat(selected['cloud_plan']['pricing']['checked_utc'])
+        with patch.object(module,'datetime',wraps=module.datetime) as clock:
+            clock.now.return_value=reviewed_at
+            with self.assertRaisesRegex(ValueError,'Modal1.6.1'):
+                module.execute(selected,value,Path.cwd(),Path('unused'),selected['cloud_plan_sha256'],
+                    sdk=SimpleNamespace(__version__='unsupported'))
         changed=copy.deepcopy(selected);changed['cloud_plan']['resources']['gpu']='L40S'
         with self.assertRaisesRegex(ValueError,'Exact proposed plan'):
             module.execute(changed,value,Path.cwd(),Path('unused'),selected['cloud_plan_sha256'])
