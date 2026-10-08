@@ -14,6 +14,7 @@ from coppertop.s3 import S3Store
 from coppertop import record_archive as a
 from test_record_archive import DiskS3
 from test_storage import S3Error
+from coppertop.publication_trace import error_details
 
 
 ENDPOINT='https://'+'a'*32+'.r2.cloudflarestorage.com'
@@ -210,11 +211,87 @@ class ArchiveValidationTests(unittest.TestCase):
             with patch.object(v,'sdk_client',return_value=fake),patch.dict(os.environ,credentials.environment()):
                 v.publish_child(directory,ENDPOINT,directory/'approval.json')
             result=v.load(directory/'publication.json')
-            self.assertTrue(result['verified']);self.assertEqual(result['requests'],24)
+            self.assertTrue(result['verified']);self.assertEqual(result['requests'],12)
             self.assertEqual(len(v.load(directory/'owned-keys.json')['keys']),2)
-            self.assertEqual(fake.calls.count('part'),10)
+            self.assertEqual(fake.calls.count('part'),0)
+            self.assertNotIn('complete',fake.calls)
             # One streamed full archive read; both receipt verifications are small.
             self.assertEqual(fake.calls.count('get'),3)
+
+    def test_killed_completion_or_readback_preserves_exact_active_phase(self):
+        class Killed(BaseException):pass
+        for blocked in ('complete','readback'):
+            with self.subTest(blocked=blocked),tempfile.TemporaryDirectory() as root:
+                root=Path(root);source=root/'source';source.mkdir();(source/'one').write_bytes(b'fixture')
+                descriptor=a.seal_directory(source,root/'episode.tar')
+                plan={'bucket':'coppertop','prefix':PREFIX,'descriptor':descriptor,
+                      'publication_requests_max':32,'remote_bytes_max':v.REMOTE_BYTES}
+                fake=DiskS3(root/'remote');trace=v.DurableTrace(root/'telemetry.json')
+                journal=v.JournalClient(fake,plan,root,trace.record)
+                store=S3Store(journal,'coppertop',prefix=PREFIX)
+                if blocked=='complete':
+                    def block(**kwargs):raise Killed()
+                    fake.complete_multipart_upload=block
+                else:
+                    class Body:
+                        def read(self,count):raise Killed()
+                        def close(self):pass
+                    fake.get_object=lambda **kwargs:{'ContentLength':descriptor['archive']['size'],'Body':Body()}
+                with patch('coppertop.s3.STREAMED_PUT_BYTES',0),self.assertRaises(Killed):
+                    a.publish_archive(root/'episode.tar',descriptor,store,record={'synthetic':True},
+                        persist=lambda state:v.save(root/'state.json',state),observe=trace.record)
+                events=v.load(root/'telemetry.json')['events']
+                target='complete_multipart' if blocked=='complete' else 'archive_hash_readback'
+                self.assertEqual([e['status'] for e in events if e['stage']==target],['started'])
+                self.assertFalse(any(e['stage']=='receipt_put' for e in events))
+                self.assertTrue((root/'source'/'one').exists())
+                self.assertTrue((root/'episode.tar').exists())
+
+    def test_cleanup_preserves_response_facts_without_secret_headers(self):
+        class ProviderError(Exception):
+            response={'Error':{'Code':'AccessDenied','Message':'do not copy this secret'},
+                'ResponseMetadata':{'HTTPStatusCode':403,'RequestId':'request-123',
+                                    'HTTPHeaders':{'authorization':'secret'}},'SecretAccessKey':'secret'}
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root);plan,key,fake,client,state=self.setup_case(root,completed=True)
+            trace=v.DurableTrace(root/'cleanup-telemetry.json');client.observe=trace.record
+            fake.abort_multipart_upload=Mock(side_effect=ProviderError())
+            fake.objects.add(key)
+            result=v.cleanup_owned(client,plan,[key],state)
+            self.assertFalse(result['verified']);self.assertFalse(fake.objects)
+            self.assertEqual(result['errors'][0]['error_code'],'AccessDenied')
+            self.assertEqual(result['errors'][0]['http_status'],403)
+            self.assertEqual(result['errors'][0]['request_id'],'request-123')
+            events=v.load(root/'cleanup-telemetry.json')['events']
+            failures=[e for e in events if e.get('error_code')=='AccessDenied']
+            self.assertEqual(len(failures),1)
+            self.assertNotIn('secret',(root/'cleanup-telemetry.json').read_text())
+            self.assertEqual(error_details(ProviderError())['http_status'],403)
+
+    def test_telemetry_error_facts_survive_wrapper_and_malformed_metadata(self):
+        error=S3Error('NoSuchUpload')
+        try:raise RuntimeError('wrapper') from error
+        except RuntimeError as wrapped:self.assertEqual(error_details(wrapped)['error_code'],'NoSuchUpload')
+        error.response={'Error':None,'ResponseMetadata':'malformed'}
+        self.assertEqual(error_details(error),{'error_type':type(error).__name__})
+
+    def test_successful_rpc_response_status_and_request_id_are_durable(self):
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root);plan,key,fake,client,state=self.setup_case(root)
+            trace=v.DurableTrace(root/'trace.json');client.observe=trace.record
+            fake.delete_object=Mock(return_value={'ResponseMetadata':{'HTTPStatusCode':204,
+                'RequestId':'delete-123','HTTPHeaders':{'Authorization':'secret'}}})
+            client.call('delete_object',Bucket='coppertop',Key=key)
+            last=v.load(root/'trace.json')['events'][-1]
+            self.assertEqual(last['status'],'completed');self.assertEqual(last['http_status'],204)
+            self.assertEqual(last['request_id'],'delete-123');self.assertNotIn('secret',(root/'trace.json').read_text())
+
+    def test_single_put_cleanup_needs_no_upload_identity(self):
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root);plan,key,fake,client,state=self.setup_case(root)
+            fake.objects.add(key)
+            result=v.cleanup_owned(client,plan,[key],None,multipart_expected=False)
+            self.assertTrue(result['verified']);self.assertEqual(fake.calls,['delete','head'])
 
 
 if __name__=='__main__':unittest.main()

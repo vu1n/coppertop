@@ -55,7 +55,9 @@ class DiskS3:
     def put_object(self, *, Bucket, Key, Body, IfNoneMatch, **kwargs):
         self.call('put')
         if IfNoneMatch!='*': raise AssertionError('conditional write required')
-        with self.object(Key).open('xb') as out: out.write(Body)
+        with self.object(Key).open('xb') as out:
+            if isinstance(Body,bytes):out.write(Body)
+            else:shutil.copyfileobj(Body,out,256*1024)
         return {}
 
     def create_multipart_upload(self, **kwargs):
@@ -199,7 +201,7 @@ class ArchiveTests(unittest.TestCase):
             descriptor=a.seal_directory(root/'source',root/'episode.tar')
             client=DiskS3(root/'remote',.001);store=S3Store(client,'bucket')
             client.fail_part=2;saved=[]
-            with self.assertRaises(UploadInterrupted):
+            with patch('coppertop.s3.STREAMED_PUT_BYTES',0),self.assertRaises(UploadInterrupted):
                 a.publish_archive(root/'episode.tar',descriptor,store,record={},persist=saved.append)
             self.assertNotIn('complete',client.calls);self.assertNotIn('put',client.calls)
             self.assertEqual(file_ref(root/'episode.tar').to_dict(),descriptor['archive'])
@@ -261,7 +263,8 @@ class ArchiveTests(unittest.TestCase):
             staged=a.stage_archive(root/'episode.tar',descriptor,root/'stage',run_id='benchmark',commit=lambda:None)
             client=DiskS3(root/'remote',.02);store=S3Store(client,'bucket')
             tracemalloc.start(); started=time.monotonic()
-            result=a.publish_archive(root/'stage'/'episode.tar',staged,store,record={'synthetic':True})
+            with patch('coppertop.s3.STREAMED_PUT_BYTES',0):
+                result=a.publish_archive(root/'stage'/'episode.tar',staged,store,record={'synthetic':True})
             elapsed=time.monotonic()-started;peak=tracemalloc.get_traced_memory()[1];tracemalloc.stop()
             parts=(descriptor['archive']['size']+a.PART_BYTES-1)//a.PART_BYTES
             self.assertEqual(client.calls.count('part'),parts)

@@ -28,12 +28,15 @@ Keep at most1GiB of immutable evidence and6000 CAS objects in a fresh attempt
 prefix, including the inventory and report (the recorder reserves those slots and
 1MiB of metadata headroom). A separate immutable inventory avoids embedding thousands of digests in
 Modal's inline response; the response remains a ≤1KiB hash receipt, the report
-≤64KiB. CPU publication performs conditional single PUTs of at most64MiB each,
-then complete byte/hash readback. No multipart permissions or unfinished uploads
-are needed. Objects exceeding this cap fail loudly. Local scratch and the exact
-owned temporary Volume are bounded to2GiB each; the Volume is deleted after the
-publication attempt and zero-active compute audit. Retained R2 data continues to
-incur Standard storage charges.
+≤64KiB. The producer seals one bounded archive. CPU publication uses a streamed
+conditional single PUT up to256MiB, or16MiB multipart parts for larger archives
+and explicit multipart resumes, followed by full archive SHA256 readback and a
+verified completion receipt. See [archive publication](archive-publication.md)
+for bounds, transport tests and the live validation gate. Producer scratch is
+bounded to2GiB+16MiB and the exact owned temporary Volume to2GiB. After verified
+publication and zero-active compute audit, the Volume is deleted. Publication
+failure preserves staging only under explicit ongoing-storage acceptance.
+Retained R2 data continues to incur Standard storage charges.
 
 ## Launch boundary
 
@@ -49,9 +52,11 @@ exact reviewed code/ledger/plan hash and explicit approval of $8 additional,
 within the existing $70.82 cumulative ceiling. The existing cached image is reused;
 no model/asset downloads, image builds, training updates or automatic retries.
 GPU workers receive no R2 credentials. Only the CPU publisher receives one
-one-hour temporary GetObject/HeadObject/PutObject session for that exact prefix.
+one-hour temporary archive session for that exact prefix, including the bounded
+multipart operations. Full execution also requires explicit size-bounded ongoing
+Volume storage acceptance and its release condition.
 
-Hard limits: CPU cache gate610s; L40S/4CPU/64GiB phase600s, worker560s,
+Hard limits: CPU cache gate610s; selected L40S or A100-80GB/4CPU/64GiB phase600s, worker560s,
 official session550s plus ≤10s server cleanup; CPU publisher900s; each phase
 startup≤300s; whole controller3600s with cleanup admission reserve. Pricing expires
 24h after review, and live billing is refreshed before each phase. Lagging provider

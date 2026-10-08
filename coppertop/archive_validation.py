@@ -4,6 +4,7 @@ The publisher is a killable child. Cleanup never races its upload threads and us
 an independently signed capability for only the locally journaled object keys.
 """
 import argparse
+import faulthandler
 from dataclasses import dataclass
 import hashlib
 import json
@@ -19,8 +20,9 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from .chords import canonical
 from . import record_archive
 from .r2_session import SessionScope, BoundedClient, mint, _endpoint, _session
-from .s3 import S3Store, _code
+from .s3 import S3Store, _code,STREAMED_PUT_BYTES
 from .streams import file_ref
+from .publication_trace import phase,error_details,response_details
 
 FILES = 1939
 RAW_BYTES = 154493961
@@ -32,7 +34,7 @@ SESSION_SECONDS = 1200
 
 def implementation_sha256():
     root=Path(__file__).parent
-    files=('archive_validation.py','record_archive.py','s3.py','r2_session.py','reload_launch.py')
+    files=('archive_validation.py','record_archive.py','s3.py','r2_session.py','reload_launch.py','publication_trace.py')
     return hashlib.sha256(canonical({name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in files})).hexdigest()
 
 
@@ -57,6 +59,19 @@ def load(path):
     return json.loads(raw)
 
 
+class DurableTrace:
+    def __init__(self,path):
+        self.path=Path(path);self.lock=RLock();self.events=[]
+        with self.path.open('x'):pass
+        self.record({'stage':'trace','status':'started'})
+
+    def record(self,event):
+        with self.lock:
+            if len(self.events)>=192:raise ValueError('Publication telemetry event cap exhausted')
+            self.events.append(dict(event,utc_epoch=time.time()))
+            save(self.path,{'events':self.events})
+
+
 def prepare(directory):
     directory = Path(directory).resolve()
     directory.parent.mkdir(parents=True,exist_ok=True)
@@ -78,6 +93,7 @@ def prepare(directory):
         'publisher_session_seconds':SESSION_SECONDS, 'cleanup_session_seconds':SESSION_SECONDS,
         'publication_requests_max':32, 'cleanup_requests_max':16,
         'storage_class':'STANDARD',
+        'single_put_threshold_bytes':STREAMED_PUT_BYTES,
         'remote_bytes_max':REMOTE_BYTES, 'cloud_compute_usd_max':'0',
         'r2_invoice_allowance_usd':'5', 'automatic_retries':0,
         'cleanup':'abort_owned_upload_delete_exact_test_keys_verify_absence',
@@ -101,6 +117,7 @@ def validate_plan(plan, directory):
         'cleanup_session_seconds':SESSION_SECONDS,'publication_requests_max':32,
         'cleanup_requests_max':16,'remote_bytes_max':REMOTE_BYTES,'cloud_compute_usd_max':'0',
         'storage_class':'STANDARD',
+        'single_put_threshold_bytes':STREAMED_PUT_BYTES,
         'r2_invoice_allowance_usd':'5','automatic_retries':0,
         'cleanup':'abort_owned_upload_delete_exact_test_keys_verify_absence',
         'retention':'local_source_preserved_remote_cleanup_failure_reported_no_expiry_guarantee'}
@@ -155,10 +172,12 @@ def sdk_client(endpoint, credentials):
 
 
 class JournalClient:
-    def __init__(self, client, plan, directory):
+    def __init__(self, client, plan, directory,observe=lambda event:None):
         self.client,self.plan,self.directory = client,plan,Path(directory)
         self.keys=[]; self.requests=0; self.written=0
+        self.multipart_keys=[]
         self.lock=RLock()
+        self.observe=observe
 
     def __getattr__(self, name):
         target = getattr(self.client,name)
@@ -176,18 +195,26 @@ class JournalClient:
                     if self.requests>=self.plan['publication_requests_max']:
                         raise ValueError('Publication request cap exhausted')
                     self.requests+=1
-                    try: self.client.head_object(Bucket=kwargs['Bucket'],Key=key)
+                    try:
+                        with phase(self.observe,'rpc.ownership_head') as facts:
+                            response=self.client.head_object(Bucket=kwargs['Bucket'],Key=key)
+                            facts.update(response_details(response))
                     except Exception as error:
                         if _code(error) not in ('NoSuchKey','NotFound','404'): raise
                     else: raise ValueError('Fresh test destination already exists')
                     self.keys.append(key)
-                    save(self.directory/'owned-keys.json',{'keys':self.keys})
+                if name=='create_multipart_upload':self.multipart_keys.append(key)
+                save(self.directory/'owned-keys.json',{'keys':self.keys,'multipart_keys':self.multipart_keys})
             if name in ('upload_part','put_object'):
                 with self.lock:
-                    self.written+=len(kwargs['Body'])
+                    size=len(kwargs['Body']) if type(kwargs['Body']) is bytes else kwargs['ContentLength']
+                    self.written+=size
                     if self.written>self.plan['remote_bytes_max']:
                         raise ValueError('Validation remote byte cap exhausted')
-            response=target(**kwargs)
+            part=kwargs.get('PartNumber')
+            suffix='.'+str(part) if part is not None else ''
+            with phase(self.observe,'rpc.'+name+suffix) as facts:
+                response=target(**kwargs);facts.update(response_details(response))
             if name=='head_object' and kwargs['Key'] not in self.keys:
                 raise ValueError('Fresh test destination already exists')
             return response
@@ -201,26 +228,47 @@ def publish_child(directory, endpoint, approval_path):
     values,expiry=_session(os.environ,endpoint,scope,time.time())
     from .r2_session import TemporaryCredentials
     client=BoundedClient(sdk_client(endpoint,TemporaryCredentials(*values,expiry)),scope,endpoint,expiry)
-    journal=JournalClient(client,plan,directory)
+    trace=DurableTrace(directory/'publisher-telemetry.json')
+    journal=JournalClient(client,plan,directory,trace.record)
     store=S3Store(journal,plan['bucket'],prefix=plan['prefix'])
+    stacks=(directory/'publisher-stacks.log').open('xb',buffering=0)
+    watched={'archive_put','source_recheck','complete_multipart','archive_get_headers','archive_hash_readback',
+             'receipt_put','receipt_verify','final_receipt_verify'}
+    stack_stage=None
+    def observe(event):
+        nonlocal stack_stage
+        trace.record(event)
+        if event['stage'] in watched:
+            if event['status']=='started':
+                # One in-process snapshot per long phase; frame locals and
+                # credentials are excluded. This is not a cloud scheduler.
+                faulthandler.dump_traceback_later(60,repeat=False,file=stacks)
+                stack_stage=event['stage']
+            elif event['status'] in ('completed','failed') and stack_stage==event['stage']:
+                faulthandler.cancel_dump_traceback_later();stack_stage=None
     try:
         result=record_archive.publish_archive(directory/'episode.tar',plan['descriptor'],store,
             record={'synthetic':True,'files':FILES,'raw_bytes':RAW_BYTES},
-            persist=lambda state:save(directory/'upload-state.json',state))
-        record_archive.read_completion(store,result['report_key'])
+            persist=lambda state:save(directory/'upload-state.json',state),observe=observe)
+        with phase(observe,'final_receipt_verify'):
+            record_archive.read_completion(store,result['report_key'])
         save(directory/'publication.json',{'verified':True,'result':result,
             'requests':journal.requests,'write_bytes':journal.written})
     except Exception as error:
-        save(directory/'publication.json',{'verified':False,'error_type':type(error).__name__,
+        save(directory/'publication.json',{'verified':False,**error_details(error),
             'requests':journal.requests,'write_bytes':journal.written})
         raise
+    finally:
+        faulthandler.cancel_dump_traceback_later();stacks.close()
 
 
 class CleanupClient:
-    def __init__(self,client,scope,endpoint,expiry,deadline,clock=time.time,monotonic=time.monotonic):
+    def __init__(self,client,scope,endpoint,expiry,deadline,clock=time.time,monotonic=time.monotonic,
+                 observe=lambda event:None):
         self.client,self.scope,self.endpoint=client,scope,endpoint
         self.expiry,self.deadline,self.clock,self.monotonic=expiry,deadline,clock,monotonic
         self.requests=0
+        self.observe=observe
         client.meta.events.register('before-send.s3',self.guard)
 
     def guard(self,request,**unused):
@@ -244,10 +292,12 @@ class CleanupClient:
             raise ValueError('Cleanup outside exact owned objects')
         if self.requests>=16: raise ValueError('Cleanup request cap exhausted')
         self.requests+=1
-        return getattr(self.client,name)(**kwargs)
+        with phase(self.observe,'cleanup.'+name) as facts:
+            response=getattr(self.client,name)(**kwargs)
+            facts.update(response_details(response));return response
 
 
-def cleanup_owned(client,plan,keys,state):
+def cleanup_owned(client,plan,keys,state,*,multipart_expected=True):
     """Attempt every exact-key cleanup; ambiguity is an explicit failed result."""
     errors=[]
     if state:
@@ -258,18 +308,18 @@ def cleanup_owned(client,plan,keys,state):
             if key not in keys or saved.destination!=plan['bucket']+'/'+key or saved.ref!=record_archive.archive_ref(plan['descriptor']) or len(saved.upload_id)>2048:
                 raise ValueError('Upload journal outside approved archive')
         except Exception as error:
-            errors.append({'operation':'validate_upload','error_type':type(error).__name__})
+            errors.append({'operation':'validate_upload',**error_details(error)})
         else:
             try:
                 client.call('abort_multipart_upload',Bucket=plan['bucket'],Key=key,UploadId=saved.upload_id)
             except Exception as error:
-                if _code(error)!='NoSuchUpload': errors.append({'operation':'abort','error_type':type(error).__name__})
+                if _code(error)!='NoSuchUpload': errors.append({'operation':'abort',**error_details(error)})
             try:
                 client.call('list_parts',Bucket=plan['bucket'],Key=key,UploadId=saved.upload_id)
             except Exception as error:
-                if _code(error)!='NoSuchUpload': errors.append({'operation':'verify_abort','error_type':type(error).__name__})
+                if _code(error)!='NoSuchUpload': errors.append({'operation':'verify_abort',**error_details(error)})
             else: errors.append({'operation':'verify_abort','error_type':'UploadStillExists'})
-    elif keys:
+    elif keys and multipart_expected:
         # A lost CreateMultipartUpload response leaves no upload ID. Exact-object
         # listing cannot discover it; broader bucket listing is deliberately denied.
         errors.append({'operation':'verify_upload','error_type':'UploadIdentityUnknown'})
@@ -281,7 +331,7 @@ def cleanup_owned(client,plan,keys,state):
                 if _code(error) not in ('NoSuchKey','NotFound','404'): raise
             else: raise ValueError('Deleted test object still exists')
         except Exception as error:
-            errors.append({'operation':'delete_verify','key':key,'error_type':type(error).__name__})
+            errors.append({'operation':'delete_verify','key':key,**error_details(error)})
     return {'verified':not errors,'keys':keys,'errors':errors,'requests':client.requests,
             'source_preserved':True,'remote_bytes_max':plan['remote_bytes_max']}
 
@@ -315,9 +365,13 @@ def execute(directory,approval_path,env_file):
     environment.update(credentials.environment())
     outcome=run_publisher([sys.executable,'-m','coppertop.archive_validation','--child',str(directory),
                           '--endpoint',endpoint,'--approval',str(Path(approval_path).resolve())],environment)
-    keys=load(directory/'owned-keys.json')['keys'] if (directory/'owned-keys.json').exists() else []
+    ownership=load(directory/'owned-keys.json') if (directory/'owned-keys.json').exists() else {'keys':[],'multipart_keys':[]}
+    keys=ownership['keys']
     if not isinstance(keys,list) or len(keys)>2 or len(set(keys))!=len(keys) or any(not scope.allows(key) for key in keys):
         raise ValueError('Owned-key journal outside prepared prefix')
+    multipart_keys=ownership.get('multipart_keys',keys[:1])
+    if not isinstance(multipart_keys,list) or len(multipart_keys)>1 or any(key not in keys for key in multipart_keys):
+        raise ValueError('Multipart ownership differs')
     state_error=None
     try: state=load(directory/'upload-state.json') if (directory/'upload-state.json').exists() else None
     except Exception as error:
@@ -328,13 +382,14 @@ def execute(directory,approval_path,env_file):
             with hard_deadline(CLEANUP_SECONDS):
                 cleanup_credentials=mint(access,secret,endpoint=endpoint,scope=cleanup_scope,ttl_seconds=SESSION_SECONDS)
                 client=CleanupClient(sdk_client(endpoint,cleanup_credentials),cleanup_scope,endpoint,
-                                     cleanup_credentials.expires_at,time.monotonic()+CLEANUP_SECONDS)
-                cleanup=cleanup_owned(client,plan,keys,state)
+                                     cleanup_credentials.expires_at,time.monotonic()+CLEANUP_SECONDS,
+                                     observe=DurableTrace(directory/'cleanup-telemetry.json').record)
+                cleanup=cleanup_owned(client,plan,keys,state,multipart_expected=bool(multipart_keys))
                 if state_error:
                     cleanup['verified']=False
                     cleanup['errors'].append({'operation':'read_upload_journal','error_type':state_error})
         except Exception as error:
-            cleanup={'verified':False,'keys':keys,'error_type':type(error).__name__,'source_preserved':True}
+            cleanup={'verified':False,'keys':keys,**error_details(error),'source_preserved':True}
     else: cleanup={'verified':True,'keys':[],'source_preserved':True,'requests':0}
     publication=load(directory/'publication.json') if (directory/'publication.json').exists() else {'verified':False}
     result={'publisher_process':outcome,'publication':publication,'cleanup':cleanup,

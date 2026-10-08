@@ -136,7 +136,8 @@ assert plan(full=True)['acceptance']['limits']['query_calls']==38
                 owned=mount/attempt;owned.mkdir()
                 for path in (mount/'record.json',mount/'archive'):path.rename(owned/path.name)
                 client.fail_part=1
-                with self.assertRaises(UploadInterrupted):functions.publish(receipt)
+                with patch('coppertop.s3.STREAMED_PUT_BYTES',0), self.assertRaises(UploadInterrupted):
+                    functions.publish(receipt)
                 state=json.loads((owned/'upload-state.json').read_bytes())
                 self.assertEqual(state['upload_id'],'opaque-session')
                 self.assertEqual(client.calls.count('create'),1)

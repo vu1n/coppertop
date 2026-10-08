@@ -1,8 +1,10 @@
 # Episode archive publication
 
 The producer seals one uncompressed USTAR archive before copying it to durable
-storage. The CPU publisher uploads that seekable archive with 16 MiB multipart
-parts (at most four in flight), reads the entire uploaded object once through
+storage. For archives up to 256 MiB, the CPU publisher passes a native seekable
+file handle to one conditional PutObject. Larger archives and any explicitly
+resumed multipart upload use 16 MiB parts (at most four in flight). It reads the
+entire uploaded object once through
 SHA256, and only then writes and reads back a small completion receipt. It never
 publishes individual episode files. The existing short feasibility workloads keep
 their small-object path.
@@ -29,6 +31,14 @@ completed out of order without a saved receipt can be replaced safely. A retaine
 upload can also be explicitly aborted with `S3Store.abort(state)`. Fresh resume
 authorization may be needed if a previous session's byte budget or expiry was
 exhausted. No parent credential enters GPU compute.
+
+The 256 MiB threshold fits below both the documented
+[R2 5 GiB single-part limit](https://developers.cloudflare.com/r2/platform/limits/)
+and [RunPod's less-than-500 MB PutObject limit](https://docs.runpod.io/storage/s3-api)
+(checked 2026-10-08). This is a size compatibility check, not a claim that the
+RunPod storage API or conditional headers have been validated. R2 remains the
+canonical destination from either compute provider. Single PUT has no part-level
+resume; an uncertain response fails without retry or multipart fallback.
 
 The archive contains `coppertop-archive-manifest.json` followed by sorted ordinary
 files. The manifest records every relative file path, byte count and SHA256. The
@@ -58,7 +68,10 @@ not depend on optional provider checksum response fields.
 R2 uses a distinct `mechanism_archive` role. It adds only multipart create, upload,
 list-parts, complete and abort operations to Get/Head/Put, for one dedicated
 content-addressed attempt prefix. It denies bucket/object enumeration, object
-deletion and unrelated keys. Single PUT is limited to 64 KiB; upload parts are
+deletion and unrelated keys. Byte-buffer PUTs are limited to 64 KiB. Only this
+archive role also permits a native regular file, positioned at zero, with exact
+ContentLength of at most 256 MiB. The full write budget is reserved before dispatch.
+Upload parts are
 limited to 16 MiB. Request and byte quotas are locked across concurrent workers.
 The Cloudflare [temporary-credential action documentation](https://developers.cloudflare.com/r2/api/s3/temporary-credentials/)
 lists these actions; the [boto3 example](https://developers.cloudflare.com/r2/examples/aws/boto3/)
@@ -134,15 +147,20 @@ Local filesystem fake, with 20 ms simulated latency per request:
 
 | Synthetic profile | Raw bytes | Archive bytes | Parts | Requests | Python peak |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Failed-attempt shape: 1939 files | 154493961 | 156098560 | 10 | 19 | about 64.1 MiB |
+| Failed-attempt shape: 1939 files, forced multipart | 154493961 | 156098560 | 10 | 19 | about 64.1 MiB |
+| Same shape, streamed single PUT | 154493961 | 156098560 | 0 | 7 | about 0.51 MiB |
 | Worst supported CAS shape: 6000 files | 1073741824 | 1078988800 | 65 | 74 | about 64.1 MiB |
 
-The second profile has no injected network latency. Counts include HEAD, create,
-list-parts, each part, completion, one full archive GET, and receipt PUT/two HEADs/GET.
+The single-PUT and worst-case profiles have no injected network latency.
+Multipart counts include HEAD, create, list-parts, each part, completion, one full
+archive GET, and receipt PUT/two HEADs/GET. Single PUT removes the multipart RPCs.
 They exclude staging-provider commit requests. The old 1939-object-plus-report
 path required approximately 7760 R2 requests. These are CPU synthetic transport
 measurements, not official-loader execution or cloud throughput measurements.
 The realistic profile also verifies every restored file and existing reader bytes.
+An existing boto3/botocore 1.43.108 SDK test consumes the native 156098560-byte
+request body through a mocked HTTP transport in bounded chunks: one dispatch and
+about 2.43 MiB Python peak. No real HTTP request is made by that test.
 
 Returned timings cover seal, durable copy (including verification and commit),
 publisher preparation (including source verification and client setup), time from
@@ -161,10 +179,10 @@ oversized resumed parts, malformed/special tar members, role/query denial, and
 cleanup ordering. The fake Modal-function test interrupts publication and verifies
 that the durable journal reuses the same upload ID on explicit reinvocation.
 
-Final local verification including the validation harness: 335 CPU tests ran;
-332 passed and three optional SDK
+Final local verification including the validation harness: 344 CPU tests ran;
+341 passed and three optional SDK
 checks skipped. All three SDK checks passed separately in the existing controller
-environment, as did the eleven harness tests. No packages were installed. Independent
+environment, as did the sixteen harness tests. No packages were installed. Independent
 correctness/structure and security/refutation reviews resolved destructive staging
 cleanup, oversized resumed parts, lost upload journals and sparse-header parsing.
 The size-bounded retention transitions and resource cost accounting are tested
@@ -176,7 +194,7 @@ locally; no live provider capability check is claimed.
 seals its 156098560-byte archive, and creates a fresh exclusive run directory,
 random dedicated attempt prefix, public plan and disabled approval example. It
 never reads credentials or calls providers during preparation. The plan binds
-the archive hash, five named runtime-file hashes and Python executable path;
+the archive hash, six named runtime-file hashes, the single-PUT threshold and Python executable path;
 it does not attest every transitive dependency or the interpreter binary.
 
 The existing controller runtime has boto3/botocore 1.43.108 and s3transfer 0.19.2.
@@ -211,7 +229,8 @@ requests and 150 MiB + 64 KiB writes. Socket timeouts are 30 seconds connect /
 
 Before each object-creating operation, a fresh-key HEAD must establish absence.
 An existing matching archive is rejected even on the shared publisher fast path.
-The intended owned key is fsynced before dispatch. Multipart state is atomically
+The intended owned key is fsynced before dispatch; multipart creation intent is
+journaled separately so a single PUT does not require an upload ID. Multipart state is atomically
 fsynced after each contiguous part. Metadata files are bounded to 64 KiB. Local
 source, sealed archive, journals and results are preserved on every outcome.
 
@@ -254,10 +273,40 @@ the invoice; reconcile actual account billing before launch. DeleteObject and
 AbortMultipartUpload are free operations. No new permanent key is requested.
 
 Offline tests drive the publisher child interface through a filesystem fake:
-24 requests including ownership HEADs and a second receipt verification, 10 parts,
-one full archive GET and two small receipt GETs. This extends the 19-request core
+12 requests including ownership HEADs and a second receipt verification, no parts,
+one full archive GET and two small receipt GETs. This extends the seven-request core
 measurement above. Controller mocks cover timeout, uncertain completion, receipt
 failure, expired cleanup credentials, invalid journals, destination collisions
-and source preservation. Real R2 sessions, permissions, multipart behavior and
-throughput remain unverified. Modal startup/mount delay and RunPod inventory are
+and source preservation. The first live multipart attempt proved session access
+and part acknowledgements; single PUT, full readback and completion remain
+unverified on R2. Modal startup/mount delay and RunPod inventory are
 separate pending actions.
+
+## First live validation and revised diagnostics
+
+The separately approved 2026-10-08 multipart validation acknowledged all ten
+parts (156098560 bytes) in 66.81 seconds, about 2.23 MiB/s, then exceeded the
+600-second publication deadline. No full hash readback or completion receipt was
+verified. The previous harness did not durably record phase entry, so the actual
+blocking phase is unknown. SDK completion response draining can exceed a socket
+inactivity timeout; this is a possible blocking path, not a proven cause.
+
+Cleanup observed NoSuchUpload, a successful exact-key delete, and HEAD absence.
+An earlier abort returned ClientError whose code was not retained, so the original
+overall cleanup result remains false. A late accepted completion cannot be excluded.
+Original evidence is preserved in `.local/archive-validation-20261008-ready/`,
+including `result.json`, `measurements.json` and `closeout.json`. The cleanup window
+and process-local capabilities expired; no further provider calls were made.
+A further check needs fresh authorization for a five-minute cleanup-only window
+and twenty-minute capability allowing Head/Delete/Abort/ListParts for that exact
+archive key and known upload ID, with no new publication or broad listing.
+
+The revised harness fsyncs `publisher-telemetry.json` and `cleanup-telemetry.json`
+on phase/RPC entry, success and error, including duration, allowlisted HTTP status,
+request ID, error code and readback bytes. It omits response bodies, headers,
+credentials and frame locals. Long blocking phases also trigger one bounded stack
+snapshot after sixty seconds in `publisher-stacks.log`. Killed children leave their
+last entered phase durable. Multipart telemetry and explicit recovery remain intact.
+The old plan is single-use and no longer matches the revised implementation hash.
+The minimum next validation is a newly prepared and explicitly approved local CPU
+single-PUT upload/readback/receipt/cleanup test; it needs no GPU or model download.

@@ -8,14 +8,16 @@ import base64
 import hashlib
 import hmac
 import json
+import io
 import os
 import re
+import stat
 import time
 from threading import RLock
 from dataclasses import dataclass, field
 from urllib.parse import unquote, urlsplit, parse_qs
 
-from .s3 import S3Store
+from .s3 import S3Store,STREAMED_PUT_BYTES
 
 LIMITS = {'source': (128, 3 * 1024**3), 'checkpoint': (512, 3 * 1024**3),
           'report': (8, 65536), 'mechanism': (256, 24*1024**2), 'mechanism_full': (30000, 1024**3),
@@ -245,8 +247,17 @@ class BoundedClient:
 
     def put_object(self, **kwargs):
         body = kwargs.get('Body')
-        if type(body) is not bytes or kwargs.get('IfNoneMatch') != '*':
+        if kwargs.get('IfNoneMatch') != '*':
             raise ValueError('Only bounded immutable report bytes can be written')
+        if self.scope.role=='mechanism_archive' and isinstance(body,io.BufferedReader):
+            size=kwargs.get('ContentLength')
+            if (type(size) is not int or not 0<size<=STREAMED_PUT_BYTES or not body.seekable()
+                or body.tell()!=0 or not stat.S_ISREG(os.fstat(body.fileno()).st_mode)
+                or os.fstat(body.fileno()).st_size!=size):
+                raise ValueError('Exact bounded ordinary archive file required')
+            self._reserve_write(size)
+            return self._call('PutObject',dict(kwargs,StorageClass='STANDARD'))
+        if type(body) is not bytes:raise ValueError('Only bounded immutable report bytes can be written')
         if self.scope.role=='mechanism_full' and len(body)>64*1024**2:
             raise ValueError('Full recording single PUT exceeds buffer bound')
         if self.scope.role=='mechanism_archive' and len(body)>65536:
