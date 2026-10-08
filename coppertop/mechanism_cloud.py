@@ -26,6 +26,7 @@ from .reload_launch import (read_json, save, cli_json, hard_deadline, refresh_bi
     selected_env, parent_credentials, delete_owned_volume, stop_and_audit_owned_app)
 from .streams import SMALL_BYTES, read_small
 from .record_archive import seal_directory, stage_archive, publish_archive, archive_ref
+from .s3 import STREAMED_PUT_BYTES
 from .archive_retention import validate_retention, cleanup_disposition, retention_report
 
 MOUNT = '/coppertop-mechanism'
@@ -68,7 +69,7 @@ def prepare(ledger, attempt, workload='mechanism', gpu='L40S', retention=None):
             'temporary_volume_bytes': 32*1024**2, 'metadata_bytes': 65536},
         'auth': {'ttl_seconds': 3600, 'session_count': 1, 'bucket': scope.bucket,
             'role': scope.role, 'actions': list(scope.actions), **scope.paths},
-        'pricing': {'checked_utc': '2026-10-08T08:49:35+00:00',
+        'pricing': {'checked_utc': '2026-10-08T16:36:51+00:00',
             'modal_url': 'https://modal.com/pricing', 'r2_url': 'https://developers.cloudflare.com/r2/pricing/',
             'l40s_per_second': '.000542', 'cpu_core_second': '.0000131', 'gib_second': '.00000222',
             'region_multiplier_bound': '1.75', 'r2_incremental_rounded_requests_usd': '4.86',
@@ -76,12 +77,21 @@ def prepare(ledger, attempt, workload='mechanism', gpu='L40S', retention=None):
         'retention': 'Keep ≤24MiB immutable R2 evidence in Standard storage; no R2 deletion. Delete only new owned Volume after publication attempt and zero-active audit. Preserve cached images and all prior artifacts.',
         'paid_authorized': False, 'new_image_builds': False, 'new_model_or_asset_downloads': False}
     if full:
-        p['resources'].update(worker_seconds=560,gpu_phase_seconds=600,publisher_seconds=900,
-            controller_seconds=3600,temporary_volume_bytes=2*1024**3)
+        p['resources'].update(worker_seconds=560,gpu_phase_seconds=600,publisher_seconds=2100,
+            controller_seconds=4800,temporary_volume_bytes=2*1024**3)
+        # Cover gate/startup/GPU/publication/cleanup without a session expiring
+        # during the enlarged publisher budget. This requires explicit approval.
+        p['auth']['ttl_seconds']=7200
         p['pricing'].update(r2_first_month_storage_unit_usd='.030',compute_storage_egress_envelope_usd='1.50')
         p['publication'] = {'format':'coppertop-episode-tar', 'part_bytes':16*1024**2,
             'concurrency':4, 'max_raw_bytes':1024**3, 'max_archive_bytes':1024**3+16*1024**2,
-            'completion_receipt_bytes':65536, 'full_readback_sha256':True}
+            'completion_receipt_bytes':65536, 'full_readback_sha256':True,
+            'single_put_threshold_bytes':STREAMED_PUT_BYTES,
+            'multipart_live_completion_verified':False,
+            'deadline_basis':{'local_validated_archive_bytes':156098560,
+                'local_upload_seconds':37.12929216702469,'local_readback_seconds':201.9889850000618,
+                'modal_publication_timing_verified':False,
+                'bound_extrapolation':'About28minutes at local measured rates for maximum archive;35minute deadline includes margin but does not guarantee completion.'}}
         p['resources']['producer_scratch_bytes']=2*1024**3+16*1024**2
         p['archive_retention'] = validate_retention(retention) if retention is not None else None
         p['pricing']['volume_storage_usd_per_gib_month']='0.09'
@@ -510,7 +520,7 @@ def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runn
                 if any(row.get(field) == p['app_name' if command == 'app' else 'volume_name'] for row in rows): raise ValueError('Dedicated resource already exists')
             values=selected_env(env_file); access,secret=parent_credentials(values); endpoint=values['CLOUDFLARE_R2_URL']
             scope=prepared['scope']
-            session=[sdk.Secret.from_dict(mint(access,secret,endpoint=endpoint,scope=scope,ttl_seconds=3600).environment())]
+            session=[sdk.Secret.from_dict(mint(access,secret,endpoint=endpoint,scope=scope,ttl_seconds=p['auth']['ttl_seconds']).environment())]
             del values,access,secret
             with hard_deadline(60): image=sdk.Image.from_id(p['image'])
             if image.object_id != p['image']: raise ValueError('Cached image differs')

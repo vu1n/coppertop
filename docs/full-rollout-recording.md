@@ -52,13 +52,13 @@ exact reviewed code/ledger/plan hash and explicit approval of $8 additional,
 within the existing $70.82 cumulative ceiling. The existing cached image is reused;
 no model/asset downloads, image builds, training updates or automatic retries.
 GPU workers receive no R2 credentials. Only the CPU publisher receives one
-one-hour temporary archive session for that exact prefix, including the bounded
+two-hour temporary archive session for that exact prefix, including the bounded
 multipart operations. Full execution also requires explicit size-bounded ongoing
 Volume storage acceptance and its release condition.
 
 Hard limits: CPU cache gate610s; selected L40S or A100-80GB/4CPU/64GiB phase600s, worker560s,
-official session550s plus ≤10s server cleanup; CPU publisher900s; each phase
-startup≤300s; whole controller3600s with cleanup admission reserve. Pricing expires
+official session550s plus ≤10s server cleanup; CPU publisher2100s; each phase
+startup≤300s; whole controller4800s with cleanup admission reserve. Pricing expires
 24h after review, and live billing is refreshed before each phase. Lagging provider
 usage is not a verified remaining credit balance. The financial envelope does not
 promise completion within the deadlines: capacity or publication overruns fail
@@ -67,3 +67,45 @@ without retry and retain only verified bounded evidence.
 CPU tests use fake model/physics, including the actual pinned official evaluator
 source. They establish recording contracts, not CUDA execution or a live full
 recording. The successful four-control live acceptance remains separate evidence.
+
+## Next A100 baseline proposal
+
+The 2026-10-08 local CPU/R2 test verified a156098560-byte streamed PUT, full
+SHA256 readback, receipt and exact test-object cleanup. Upload took37.1s,
+readback202.0s and the controller255.4s. This closes the transport gate for that
+size; the historical timeout investigation is closed without a root-cause claim.
+Modal mount/startup/publication timing remains unverified. At the local measured
+rates, the maximum supported1GiB+16MiB archive would need about28minutes for
+upload/readback. The35minute publication deadline includes margin, not a completion
+guarantee. Archives above256MiB still use multipart; its live completion and full
+readback remain unverified. No larger archive is approved or supported implicitly.
+
+Propose one A100-80GB frozen-Xiaomi DEV1150 execute16 baseline, ending on success,
+environment termination/truncation or600 controls, at most38 inference calls.
+Report success separately from done, calls, controls, model/inference/rollout/worker
+times, seal/staging/publication times, archive/receipt verification and compute/
+owned-Volume cleanup. Keep the existing cached image and no automatic retry.
+
+Financial terms: $8 additional within the existing$70.82 cumulative admission
+ceiling, including a$2 Modal compute/egress envelope and a$5 R2 invoice allowance.
+The bound uses current [Modal prices](https://modal.com/pricing) and the existing
+1.75 region multiplier ceiling. The local ledger snapshot is not a current credit
+balance; refresh live billing before admission and each phase. The controller
+budget is not a provider-enforced invoice ceiling.
+
+R2 access uses only one fresh two-hour capability for the new exact attempt prefix,
+with Get/Head/Put and bounded multipart actions, at most256 requests and
+1GiB+32MiB in each read/write direction. The archive is at most1GiB+16MiB; its
+receipt at most64KiB. GPU receives no R2 credentials. Canonical R2 evidence remains
+in Standard storage, nominally at most about$0.0164/month at the archive size bound
+before [R2 billing rounding/allowances](https://developers.cloudflare.com/r2/pricing/).
+This ongoing retention is separate from the one-attempt spend envelope.
+
+On failed/unverified publication, stop compute and retain only the exact owned
+staging Volume, bounded to2GiB, under operator responsibility. At$0.09/GiB/month,
+its maximum ongoing cost is$0.18/month before allowances. Release it after verified
+publication or separately authorized recovery/deletion. No automatic expiry or
+new scheduler is added. Verified publication permits deletion after a zero-active
+compute audit. Staging failure before a durable checkpoint can still lose bytes
+held only on disposable worker disk; retained staging is not a guarantee against
+that failure class.

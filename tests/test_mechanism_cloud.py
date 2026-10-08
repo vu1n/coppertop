@@ -128,6 +128,9 @@ class CloudTests(unittest.TestCase):
             selected,object(),Volume([]),Mock(),[])
         self.assertEqual(functions.app.definitions['evaluate']['gpu'],'A100-80GB')
         self.assertEqual(functions.app.definitions['evaluate']['retries'],0)
+        self.assertEqual(functions.app.definitions['publish']['timeout'],2100)
+        self.assertEqual(selected['cloud_plan']['auth']['ttl_seconds'],7200)
+        self.assertGreater(selected['cloud_plan']['auth']['ttl_seconds'],selected['cloud_plan']['resources']['controller_seconds'])
         reviewed_at=module.datetime.fromisoformat(selected['cloud_plan']['pricing']['checked_utc'])
         with patch.object(module,'datetime',wraps=module.datetime) as clock:
             clock.now.return_value=reviewed_at

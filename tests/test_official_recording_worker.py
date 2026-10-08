@@ -102,6 +102,11 @@ assert plan(full=True)['acceptance']['limits']['query_calls']==38
         self.assertEqual(plan['additional_cap_usd'],'8')
         self.assertEqual(prepared['scope'].role,'mechanism_archive')
         self.assertEqual(plan['worker']['acceptance']['limits']['query_calls'],38)
+        self.assertEqual(plan['resources']['publisher_seconds'],2100)
+        self.assertEqual(plan['resources']['controller_seconds'],4800)
+        self.assertEqual(plan['auth']['ttl_seconds'],7200)
+        self.assertEqual(plan['publication']['single_put_threshold_bytes'],256*1024**2)
+        self.assertFalse(plan['publication']['multipart_live_completion_verified'])
         with tempfile.TemporaryDirectory() as root:
             mount=Path(root)/'volume';mount.mkdir();volume=Volume([])
             attempt='mechanism-'+digest(root.encode())[:16]
