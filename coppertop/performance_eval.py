@@ -64,9 +64,9 @@ def plan():
     }
 
 
-def recording_acceptance_plan():
+def recording_acceptance_plan(*, full=False):
     p = plan()
-    return {'kind':'official_rollout_recording_acceptance', 'cloud_actions':False,
+    result = {'kind':'official_rollout_recording_acceptance', 'cloud_actions':False,
         'cached_image':p['cached_image'], 'source_pins':dict(SOURCE_PINS),
         'source_blobs':dict(SOURCE_BLOBS), 'model':p['model'], 'task':p['task'],
         'split':'development', 'source_split':'pretrain', 'seed':1150,
@@ -86,6 +86,20 @@ def recording_acceptance_plan():
         'runtime_sha256':runtime_sources(recording=True),
         'claim':'Official evaluator recording acceptance, not replay parity, utility or20Hz throughput',
         'later_comparison':'Separate matched-seed fixed16vs8 cadence experiment; no approval implied'}
+
+    if full:
+        result.update(kind='official_full_rollout_recording',
+            limits={'horizon':600,'query_calls':38,'record_bytes':1024**3,
+                    'record_objects':6000,'automatic_retries':0},
+            compute_proposal={'gpu':'L40S','cpu':4,'memory_mib':65536,'phase_seconds':600,
+                'session_seconds':550,'owned_server_cleanup_seconds':10,'startup_seconds':300,'retries':0},
+            publication_proposal={'cpu_only':True,'objects':6000,'requests':30000,'bytes':1024**3,
+                'single_object_bytes':64*1024**2,'temporary_session_seconds':3600,
+                'approval_required':'fresh owned prefix, retention, current pricing and spend ledger'},
+            acceptance=['one frozen official DEV1150 rollout; success, environment end or horizon600',
+                'all query histories, native state/actions and camera timing verified',
+                'immutable release and complete CPU/R2 byte readback; owned compute/storage cleanup'])
+    return result
 
 
 def validate_plan(value):

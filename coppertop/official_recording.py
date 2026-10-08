@@ -32,7 +32,10 @@ class Recorder:
         self.directory=Path(directory); self.directory.mkdir(exist_ok=False)
         self.entry,self.store=entry,store
         self.task,self.seed,self.cadence,self.horizon=task,seed,cadence,horizon
-        self.object_limit=64 if horizon<=4 else 1024
+        # Full publication reserves one inventory, one report and metadata headroom.
+        self.object_limit=5998 if horizon==600 else (64 if horizon<=4 else 1024)
+        self.byte_limit=1024**3-1024**2 if horizon==600 else 24*1024**2
+        self.artifact_limit=64*1024**2 if horizon==600 else 24*1024**2
         self.group=f'RoboCasa/{task}/pretrain/constructor1000/episode{seed}'
         self.provenance=dict(provenance,run_id=run_id,task=task,simulator_seed=seed,
                              cadence=cadence,split='development')
@@ -49,7 +52,7 @@ class Recorder:
 
     def reserve(self, key, size):
         if key not in self.seen:
-            if len(self.seen)>=self.object_limit or sum(self.seen.values())+size>24*1024**2:
+            if len(self.seen)>=self.object_limit or sum(self.seen.values())+size>self.byte_limit:
                 raise ValueError('Recording object/byte bound exceeded')
             self.seen[key]=size
 
@@ -188,7 +191,7 @@ class Recorder:
         finally: os.close(descriptor)
         with os.fdopen(handle,'rb') as source:
             metadata=os.fstat(source.fileno())
-            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size>24*1024**2:
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size>self.artifact_limit:
                 raise ValueError('Bounded regular artifact required')
             checksum=hashlib.sha256()
             count=0
@@ -291,7 +294,8 @@ def evaluate_recorded(entry, gym, client, settings, get_task_horizon, convert_ac
         status='success' if episode['success'] else 'failure'
         video=Path(output)/task/f'episode_{episode_index:03d}_seed_{seed}_{status}.mp4'
         result=dict(episode,status='completed',horizon=horizon,
-                    outcome_scope='bounded prefix; success=False does not establish full-episode failure')
+                    outcome_scope=('official episode outcome through success, environment end or horizon600'
+                        if horizon==600 else 'bounded prefix; success=False does not establish full-episode failure'))
         component='chords.finish'
         key=recorder.finish(result,video if video.is_file() else None)
         return stats,key

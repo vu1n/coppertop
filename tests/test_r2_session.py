@@ -41,6 +41,19 @@ class FakeClient:
 
 
 class SessionsTest(unittest.TestCase):
+    def test_full_recording_scope_keeps_exact_prefix_and_existing_actions(self):
+        from coppertop.r2_session import LIMITS
+        scope=SessionScope('mechanism_full','coppertop','chords/mechanism/mechanism-'+'a'*16)
+        self.assertEqual(scope.actions,('GetObject','HeadObject','PutObject'))
+        self.assertEqual(LIMITS[scope.role],(30000,1024**3))
+        with self.assertRaises(ValueError):SessionScope('mechanism_full','coppertop','chords')
+        client=FakeClient();bounded=BoundedClient(client,scope,ENDPOINT,expires_at=1000,clock=lambda:100)
+        key=scope.prefix+'/objects/ab/'+SHA
+        bounded.put_object(Bucket='coppertop',Key=key,Body=b'abc',IfNoneMatch='*')
+        self.assertEqual(client.calls[-1]['StorageClass'],'STANDARD')
+        with self.assertRaises(ValueError):
+            bounded.put_object(Bucket='coppertop',Key='chords/objects/ab/'+SHA,Body=b'abc',IfNoneMatch='*')
+
     def test_official_jwt_derivation_and_redaction(self):
         creds = mint('parent-id', 'dummy-secret', endpoint=ENDPOINT, scope=SOURCE, now=100)
         jwt = base64.b64decode(creds.session_token).decode()[4:]

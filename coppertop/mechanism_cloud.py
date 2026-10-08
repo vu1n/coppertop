@@ -33,9 +33,9 @@ CUMULATIVE = Decimal('64.82')
 
 def selected_worker(workload):
     if workload == 'mechanism': return worker_plan()
-    if workload == 'official_recording':
+    if workload in ('official_recording','official_recording_full'):
         from .official_recording_worker import plan
-        return plan()
+        return plan(full=workload=='official_recording_full')
     raise ValueError('Known bounded workload required')
 
 
@@ -44,16 +44,18 @@ def prepare(ledger, attempt, workload='mechanism'):
     if not re.fullmatch(r'mechanism-[0-9a-f]{16}', attempt):
         raise ValueError('Dedicated mechanism attempt required')
     worker = selected_worker(workload)
+    full = workload=='official_recording_full'
+    additional = Decimal('8') if full else ADDITIONAL
     cumulative = CUMULATIVE if workload == 'mechanism' else Decimal('70.82')
-    if Decimal(str(ledger['cumulative_cap'])) != cumulative or historical_total(ledger)+ADDITIONAL > cumulative:
-        raise ValueError('Preserved holds plus $6 must fit proposed cumulative ceiling')
-    scope = SessionScope('mechanism', 'coppertop', 'chords/mechanism/'+attempt)
+    if Decimal(str(ledger['cumulative_cap'])) != cumulative or historical_total(ledger)+additional > cumulative:
+        raise ValueError('Historical usage plus new attempt cap must fit cumulative ceiling')
+    scope = SessionScope('mechanism_full' if full else 'mechanism', 'coppertop', 'chords/mechanism/'+attempt)
     p = {'kind': 'frozen_mechanism_cloud_feasibility', 'attempt_id': attempt,
         'app_name': 'coppertop-'+attempt, 'volume_name': 'coppertop-'+attempt+'-outputs',
         'environment': 'main', 'region': 'us', 'image': worker['image'],
         'worker': worker, 'worker_sha256': digest(canonical(worker)),
         'ledger_sha256': digest(canonical(ledger)), 'retained_holds_usd': str(historical_total(ledger)),
-        'additional_cap_usd': str(ADDITIONAL), 'cumulative_cap_usd': str(cumulative),
+        'additional_cap_usd': str(additional), 'cumulative_cap_usd': str(cumulative),
         'resources': {'gpu': 'L40S', 'gpu_cpu': 4, 'gpu_memory_mib': 65536,
             'gate_cpu': 4, 'gate_memory_mib': 16384, 'publisher_cpu': 2, 'publisher_memory_mib': 4096,
             'single_use_containers': True, 'retries': 0, 'scaledown_seconds': 2,
@@ -62,24 +64,31 @@ def prepare(ledger, attempt, workload='mechanism'):
             'temporary_volume_bytes': 32*1024**2, 'metadata_bytes': 65536},
         'auth': {'ttl_seconds': 3600, 'session_count': 1, 'bucket': scope.bucket,
             'role': scope.role, 'actions': list(scope.actions), **scope.paths},
-        'pricing': {'checked_utc': '2026-10-07T12:04:04+00:00',
+        'pricing': {'checked_utc': '2026-10-08T08:49:35+00:00',
             'modal_url': 'https://modal.com/pricing', 'r2_url': 'https://developers.cloudflare.com/r2/pricing/',
             'l40s_per_second': '.000542', 'cpu_core_second': '.0000131', 'gib_second': '.00000222',
             'region_multiplier_bound': '1.75', 'r2_incremental_rounded_requests_usd': '4.86',
             'r2_first_month_storage_unit_usd': '.015', 'compute_storage_egress_envelope_usd': '1.00'},
         'retention': 'Keep ≤24MiB immutable R2 evidence in Standard storage; no R2 deletion. Delete only new owned Volume after publication attempt and zero-active audit. Preserve cached images and all prior artifacts.',
         'paid_authorized': False, 'new_image_builds': False, 'new_model_or_asset_downloads': False}
+    if full:
+        p['resources'].update(worker_seconds=560,gpu_phase_seconds=600,publisher_seconds=900,
+            controller_seconds=3600,temporary_volume_bytes=2*1024**3)
+        p['pricing'].update(r2_first_month_storage_unit_usd='.030',compute_storage_egress_envelope_usd='1.50')
+        p['retention']='Keep ≤1GiB immutable R2 evidence in Standard storage with ongoing charges; ≤2GiB each local scratch and new Volume. CPU single PUT ≤64MiB; no multipart. Delete only owned Volume after publication attempt and zero-active audit.'
     if workload != 'mechanism':
-        p.update(kind='official_recording_cloud_acceptance', workload=workload)
+        p.update(kind='official_full_rollout_recording' if full else 'official_recording_cloud_acceptance', workload=workload)
     return {'cloud_plan': p, 'cloud_plan_sha256': digest(canonical(p)), 'scope': scope}
 
 
-def output_inventory(directory):
+def output_inventory(directory, *, full=False):
     """Only digest-addressed objects and bounded metadata can leave the worker."""
     directory = Path(directory)
     if directory.is_symlink(): raise ValueError('Output symlink rejected')
+    byte_limit=2*1024**3 if full else 24*1024**2
+    object_bytes=64*1024**2 if full else SMALL_BYTES
     files = list(directory.rglob('*'))
-    if any(path.is_symlink() for path in files) or sum(p.stat().st_size for p in files if p.is_file()) > 24*1024**2:
+    if any(path.is_symlink() for path in files) or sum(p.stat().st_size for p in files if p.is_file()) > byte_limit:
         raise ValueError('Output filesystem exceeds immutable publication bound')
     objects = {}
     local = LocalStore(directory/'store')
@@ -87,23 +96,39 @@ def output_inventory(directory):
         if not path.is_file() or path.relative_to(directory/'store').as_posix() != object_path(path.name):
             raise ValueError('Malformed immutable output path')
         ref = local.stat(path.name)
-        if ref.size > SMALL_BYTES: raise ValueError('Single immutable PUT exceeds4MiB')
-        if digest(local.get(ref.sha256)) != ref.sha256: raise ValueError('Output checksum differs')
+        if ref.size > object_bytes: raise ValueError('Single immutable PUT exceeds approved buffer')
+        if digest(read_small(local,ref.sha256,object_bytes)) != ref.sha256: raise ValueError('Output checksum differs')
         objects[ref.sha256] = ref.size
-    if len(objects) > 64 or sum(objects.values()) > 24*1024**2-65536:
+    if len(objects) > (5999 if full else 64) or sum(objects.values()) > (1024**3-1024**2 if full else 24*1024**2-65536):
         raise ValueError('Publication object count/bytes exceed session')
     return objects
 
 
-def publish_directory(directory, record, store):
+def publish_directory(directory, record, store, *, full=False):
     """CPU-only upload with immutable writes and complete byte/hash readback."""
-    objects = {} if record.get('artifact_error_type') else output_inventory(directory)
-    if objects != record['objects']: raise ValueError('Committed output inventory differs')
     local = LocalStore(Path(directory)/'store')
+    objects = {} if record.get('artifact_error_type') else output_inventory(directory,full=full)
+    declared=json.loads(read_small(local,record['inventory'],1024**2)) if 'inventory' in record else record['objects']
+    if 'inventory' in record:
+        declared[record['inventory']]=local.stat(record['inventory']).size
+        if len(declared)!=record['object_count'] or sum(declared.values())!=record['object_bytes']:
+            raise ValueError('Inventory count/bytes differ')
+    if objects != declared: raise ValueError('Committed output inventory differs')
+    inventory_raw=canonical(objects) if full and 'objects' in record else None
+    if inventory_raw is not None and (len(objects)+2>6000 or sum(objects.values())+len(inventory_raw)+65536>1024**3):
+        raise ValueError('Recovery publication exceeds full object/byte bound')
     for key in objects:
-        raw = local.get(key)
-        if store.put(raw) != key or store.get(key) != raw:
+        limit=64*1024**2 if full else SMALL_BYTES
+        raw = read_small(local,key,limit)
+        stored=store.put_bounded(raw,limit=limit) if full and hasattr(store,'put_bounded') else store.put(raw)
+        if stored != key or read_small(store,key,limit) != raw:
             raise ValueError('Immutable artifact readback differs')
+    if inventory_raw is not None:
+        inventory=store.put(inventory_raw)
+        if read_small(store,inventory,1024**2)!=inventory_raw: raise ValueError('Recovery inventory readback differs')
+        record={key:value for key,value in record.items() if key!='objects'}
+        record.update(inventory=inventory,object_count=len(objects)+int(inventory not in objects),
+            object_bytes=sum(objects.values())+(len(inventory_raw) if inventory not in objects else 0))
     raw = canonical(record)
     if len(raw) > 65536: raise ValueError('Report metadata bound exceeded')
     key = store.put(raw)
@@ -116,6 +141,8 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
     """Local registration only; exactly three sequential single-use functions."""
     if sdk.__version__ != '1.6.1': raise ValueError('Modal1.6.1 required')
     p = prepared['cloud_plan']
+    full=p.get('workload')=='official_recording_full'
+    resources=p['resources']
     mount = volume.with_mount_options(sub_path='/'+p['attempt_id'])
     app = sdk.App(p['app_name'], secrets=[], volumes={}, include_source=False)
     common = dict(image=image, region='us', serialized=True, retries=0, single_use_containers=True,
@@ -133,7 +160,7 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
         return {'container_id': _container(os.environ.get('MODAL_TASK_ID')), 'status': result['status'],
                 'simulator': result, 'plan_sha256': prepared['cloud_plan_sha256']}
     @app.function(**dict(common, name='mechanism-feasibility', cpu=(4,4), memory=(65536,65536),
-        gpu='L40S', timeout=270, secrets=[], block_network=True, volumes={MOUNT: mount}))
+        gpu='L40S', timeout=resources['gpu_phase_seconds'], secrets=[], block_network=True, volumes={MOUNT: mount}))
     def evaluate():
         binding()
         target = Path(MOUNT)/'outputs'
@@ -144,30 +171,40 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
         env.update(HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1', MUJOCO_GL='egl', PYTHONPATH='/app')
         with (Path('/tmp')/(p['attempt_id']+'-worker.log')).open('wb') as log:
             try:
-                module = 'coppertop.official_recording_worker' if p.get('workload') == 'official_recording' else 'coppertop.mechanism_runtime'
-                identity_args = ['--run-id',p['attempt_id']] if p.get('workload') == 'official_recording' else []
+                module = 'coppertop.official_recording_worker' if p.get('workload') in ('official_recording','official_recording_full') else 'coppertop.mechanism_runtime'
+                identity_args = ['--run-id',p['attempt_id'], *(['--full'] if full else [])] if p.get('workload') in ('official_recording','official_recording_full') else []
                 process = runner([SIMULATOR, '-m', module, '--execute-local',
                     '--plan-sha256', p['worker_sha256'], '--output', str(scratch), *identity_args],
-                    stdout=log, stderr=log, env=env, timeout=250)
+                    stdout=log, stderr=log, env=env, timeout=resources['worker_seconds'])
                 passed = process.returncode == 0
             except subprocess.TimeoutExpired:
                 passed = False
-        if scratch.exists():
-            output_inventory(scratch)
-            shutil.copytree(scratch,target)
-        result_path = target/('result.json' if passed else 'failure.json')
+        result_path = scratch/('result.json' if passed else 'failure.json')
         result = read_json(result_path, 65536) if result_path.is_file() else {'status':'failed','comparison_valid':False}
-        recording = p.get('workload') == 'official_recording'
+        recording = p.get('workload') in ('official_recording','official_recording_full')
         expected_status, expected_queries = ('recording_acceptance',1) if recording else ('bounded_feasibility',5)
-        if passed and (result.get('status') != expected_status or result.get('query_calls') != expected_queries):
+        if passed and (result.get('status') != expected_status or
+                (not full and result.get('query_calls') != expected_queries) or
+                (full and (not 1<=result.get('query_calls',0)<=38 or result.get('cadence')!=16 or result.get('horizon')!=600))):
             raise ValueError('Feasibility gate result differs')
         record = {'container_id': _container(os.environ.get('MODAL_TASK_ID')),
             'plan_sha256': prepared['cloud_plan_sha256'], 'attempt_id': p['attempt_id'],
             'status': 'passed' if passed else 'failed', 'result': result,
-            'objects': output_inventory(target), 'worker_plan': p['worker']}
+            'objects': output_inventory(scratch,full=full), 'worker_plan': p['worker']}
         # Publish even failed live gates; never report them as policy failures.
-        record['query_journal'] = read_json(target/'queries.json', 65536) if (target/'queries.json').is_file() else {'calls':[]}
+        record['query_journal'] = read_json(scratch/'queries.json', 65536) if (scratch/'queries.json').is_file() else {'calls':[]}
+        if full:
+            # The complete inventory is an immutable object, outside Modal's inline report.
+            objects=record.pop('objects')
+            inventory=LocalStore(scratch/'store').put(canonical(objects))
+            inventory_size=LocalStore(scratch/'store').stat(inventory).size
+            objects[inventory]=inventory_size
+            record.update(inventory=inventory,object_count=len(objects),object_bytes=sum(objects.values()))
         if len(canonical(record)) > 65536: raise ValueError('Metadata envelope exceeds bound')
+        if scratch.exists():
+            output_inventory(scratch,full=full)
+            shutil.copytree(scratch,target)
+            output_inventory(target,full=full)
         save(Path(MOUNT)/'record.json', record); volume.commit()
         # A full record triggered Modal's blob upload despite block_network.
         # Keep the control response small; the CPU publisher reads the Volume.
@@ -176,7 +213,7 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
         if len(canonical(receipt))>1024: raise ValueError('Control receipt exceeds inline bound')
         return receipt
     @app.function(**dict(common, name='mechanism-cpu-publisher', cpu=(2,2), memory=(4096,4096),
-        gpu=None, timeout=300, secrets=list(session), volumes={MOUNT: mount.with_mount_options(read_only=True)}))
+        gpu=None, timeout=resources['publisher_seconds'], secrets=list(session), volumes={MOUNT: mount.with_mount_options(read_only=True)}))
     def publish(record):
         binding()
         incoming = digest(canonical(record))
@@ -189,7 +226,7 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
                 try: record['committed_record'] = read_json(path, 32768)
                 except (OSError, ValueError): record['committed_record_unavailable'] = True
             target = Path(MOUNT)/'outputs'
-            try: record['objects'] = output_inventory(target)
+            try: record['objects'] = output_inventory(target,full=full)
             except (OSError, ValueError) as error:
                 record['objects'] = {}; record['artifact_error_type'] = type(error).__name__
             journal = target/'queries.json'
@@ -204,7 +241,7 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
             record=committed
         elif read_json(Path(MOUNT)/'record.json', 65536) != record:
             raise ValueError('Committed feasibility record differs')
-        key = publish_directory(Path(MOUNT)/'outputs', record, store_factory('mechanism'))
+        key = publish_directory(Path(MOUNT)/'outputs', record, store_factory('mechanism_full' if full else 'mechanism'),full=full)
         return {'container_id': _container(os.environ.get('MODAL_TASK_ID')), 'report_key': key,
                 'source_record_sha256': incoming, 'published_status': record['status'],
                 'plan_sha256': prepared['cloud_plan_sha256']}
@@ -214,10 +251,11 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
 def execute_phases(functions, prepared, output, *, admission, invoke, stopped, cleanup):
     state = {'status':'started', 'phases':{}, 'automatic_retries':0}
     error = None
+    resources=prepared['cloud_plan']['resources']
     try:
         admission()
         for name, function, args, bound in (('gate', functions.gate, (), 920),
-                ('evaluate', functions.evaluate, (), 580), ('publish', functions.publish, None, 610)):
+                ('evaluate', functions.evaluate, (), resources['gpu_phase_seconds']+310), ('publish', functions.publish, None, resources['publisher_seconds']+310)):
             if name == 'publish': args = (state['phases']['evaluate'],)
             try: result = invoke(function, args, bound)
             except Exception as caught:
@@ -277,7 +315,7 @@ def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runn
     functions = volume = None
     current = ledger
     pending = 'pending-'+p['attempt_id']
-    deadline=time.monotonic()+2700
+    deadline=time.monotonic()+p['resources']['controller_seconds']
     def ownership():
         save(output/'ownership.json', {k:v for k,v in owned.items() if k != 'context'} | {'app_id': functions.app.app_id if functions else None,'volume_name':p['volume_name']})
     def bind():
@@ -289,7 +327,7 @@ def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runn
         nonlocal current
         bind(); identity = functions.app.app_id if functions else None
         key = identity if identity in current['apps'] else pending
-        current = refresh_billing(current, output, app_id=identity, reservation_key=key, runner=runner, additional_cap=6)
+        current = refresh_billing(current, output, app_id=identity, reservation_key=key, runner=runner, additional_cap=int(p['additional_cap_usd']))
     def admission():
         billing()
         owned['attempted']=True; ownership()
@@ -302,7 +340,7 @@ def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runn
     def invoke(function, args, bound):
         billing()
         remaining=deadline-time.monotonic()
-        if function is functions.evaluate and remaining < 580+610+240:
+        if function is functions.evaluate and remaining < p['resources']['gpu_phase_seconds']+310+p['resources']['publisher_seconds']+310+240:
             raise TimeoutError('Insufficient whole-attempt time for GPU/publication/cleanup')
         if remaining <= 0: raise TimeoutError('Controller deadline exhausted')
         return function.spawn(*args).get(timeout=min(bound,remaining))
@@ -339,9 +377,9 @@ def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runn
         billing()
         return dict(receipt,volume_deleted=True,holds_released=0,context_exit_error_type=context_error)
     try:
-        with hard_deadline(2700):
-            current = refresh_billing(ledger, output, runner=runner, additional_cap=6)
-            current['apps'][pending]={'state':'unsettled_bounded','known_reported_usd':'0','reservation_usd':'6','description':p['app_name']}
+        with hard_deadline(p['resources']['controller_seconds']):
+            current = refresh_billing(ledger, output, runner=runner, additional_cap=int(p['additional_cap_usd']))
+            current['apps'][pending]={'state':'unsettled_bounded','known_reported_usd':'0','reservation_usd':p['additional_cap_usd'],'description':p['app_name']}
             save(output/'ledger.json',current)
             for command, field in (('app','description'),('volume','name')):
                 rows = cli_json([sys.executable,'-m','modal',command,'list','--env','main','--json'],runner)
@@ -371,7 +409,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ledger',type=Path,required=True)
     parser.add_argument('--attempt',required=True)
-    parser.add_argument('--workload',choices=('mechanism','official_recording'),default='mechanism')
+    parser.add_argument('--workload',choices=('mechanism','official_recording','official_recording_full'),default='mechanism')
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--approved-cloud-plan-sha256')
     parser.add_argument('--env-file',type=Path,default=Path.home()/'code/coppertop/.env.local')

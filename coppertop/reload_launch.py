@@ -229,7 +229,7 @@ def reconcile(ledger, rows, *, app_id=None, reservation_key=None, additional_cap
             raise ValueError('Current full reservation missing')
     additional=0 if reservation_key is not None else additional_cap
     cap = Decimal(str(result.get('cumulative_cap', '30')))
-    approved_caps = {Decimal(8): (30, 38), Decimal(10): (48, Decimal('58.82')),
+    approved_caps = {Decimal(8): (30, 38, Decimal('70.82')), Decimal(10): (48, Decimal('58.82')),
         Decimal(6): (Decimal('64.82'), Decimal('70.82')),
         Decimal('0.10'): (48, Decimal('48.07')),
         Decimal('0.25'): (Decimal('48.32'), Decimal('48.57'), Decimal('48.82'))}[additional_cap]

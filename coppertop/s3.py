@@ -67,8 +67,11 @@ class S3Store:
         return f'{self.prefix}/{path}' if self.prefix else path
 
     def put(self, data: bytes) -> str:
-        if len(data) > SMALL_BYTES:
-            raise ValueError('Use put_stream for large objects')
+        return self.put_bounded(data,limit=SMALL_BYTES)
+
+    def put_bounded(self, data: bytes, *, limit: int) -> str:
+        if type(limit) is not int or not SMALL_BYTES<=limit<=64*1024**2 or type(data) is not bytes or len(data)>limit:
+            raise ValueError('Immutable single PUT exceeds explicit buffer bound')
         key = digest(data)
         try:
             self.client.put_object(Bucket=self.bucket, Key=self.key(key), Body=data,
@@ -76,7 +79,7 @@ class S3Store:
         except Exception as error:
             if _code(error) != 'PreconditionFailed':
                 raise
-            if self.get(key) != data:
+            if read_small(self,key,limit) != data:
                 raise ValueError('Existing object corrupted') from error
         return key
 

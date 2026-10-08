@@ -30,6 +30,7 @@ def guarded(name,*args,**kw):
 builtins.__import__=guarded
 from coppertop.official_recording_worker import plan
 assert plan()['acceptance']['limits']['query_calls']==1
+assert plan(full=True)['acceptance']['limits']['query_calls']==38
 """
         result=subprocess.run([sys.executable,'-c',script],capture_output=True,timeout=30)
         self.assertEqual(result.returncode,0,result.stderr.decode())
@@ -86,6 +87,77 @@ assert plan()['acceptance']['limits']['query_calls']==1
                     else:
                         with self.assertRaises(ValueError):functions.evaluate()
                         self.assertEqual(volume.events,[])
+
+    def test_full_plan_and_large_publication_use_compact_inventory(self):
+        from coppertop.s3 import S3Store
+        from coppertop.streams import read_small
+        from test_storage import FakeS3
+        value=ledger();value['cumulative_cap']='70.82'
+        prepared=mechanism_cloud.prepare(value,ATTEMPT,'official_recording_full')
+        plan=prepared['cloud_plan']
+        self.assertEqual(plan['additional_cap_usd'],'8')
+        self.assertEqual(prepared['scope'].role,'mechanism_full')
+        self.assertEqual(plan['worker']['acceptance']['limits']['query_calls'],38)
+        with tempfile.TemporaryDirectory() as root:
+            mount=Path(root)/'volume';mount.mkdir();volume=Volume([])
+            attempt='mechanism-'+digest(root.encode())[:16]
+            prepared=mechanism_cloud.prepare(value,attempt,'official_recording_full')
+            self.addCleanup(shutil.rmtree,Path('/tmp')/(attempt+'-outputs'),True)
+            raw=b'x'*(5*1024**2)
+            key=digest(raw)
+            def runner(argv,**options):
+                self.assertIn('--full',argv);self.assertEqual(options['timeout'],560)
+                target=Path(argv[argv.index('--output')+1]);target.mkdir()
+                from coppertop.streams import ObjectRef,CHUNK_BYTES
+                local=LocalStore(target/'store')
+                local.put_stream(ObjectRef(key,len(raw)),(raw[i:i+CHUNK_BYTES] for i in range(0,len(raw),CHUNK_BYTES)))
+                # More entries than fit in the inline report; tiny fixture payloads.
+                for i in range(1000):local.put(str(i).encode())
+                (target/'result.json').write_bytes(canonical({'status':'recording_acceptance',
+                    'query_calls':3,'controls':33,'cadence':16,'horizon':600}))
+                return SimpleNamespace(returncode=0)
+            native_link=os.link
+            def link(source,destination):
+                if Path(destination).is_relative_to(mount): raise PermissionError('Volume rejects hard links')
+                return native_link(source,destination)
+            client=FakeS3();store=S3Store(client,'coppertop',prefix=prepared['scope'].prefix)
+            functions=mechanism_cloud.create_functions(SimpleNamespace(__version__='1.6.1',App=App),
+                prepared,object(),volume,lambda role:store,[],runner)
+            with patch.object(mechanism_cloud,'MOUNT',str(mount)),patch.dict('os.environ',{'MODAL_TASK_ID':'ta-gpu'}),patch('coppertop.chords.os.link',side_effect=link):
+                receipt=functions.evaluate();self.assertLess(len(pickle.dumps(receipt)),1024)
+                record=json.loads((mount/'record.json').read_bytes())
+                self.assertNotIn('objects',record);self.assertLess(len(canonical(record)),65536)
+                self.assertEqual(record['object_count'],1002)
+                published=functions.publish(receipt)
+                self.assertEqual(read_small(store,key,64*1024**2),raw)
+                self.assertEqual(published['report_key'],receipt['record_sha256'])
+                # Corrupting an inventoried object is rejected before publication.
+                LocalStore(mount/'outputs/store').path(key).write_bytes(b'corrupt')
+                with self.assertRaises(ValueError):functions.publish(receipt)
+
+    def test_full_recovery_rejects_aggregate_before_any_write(self):
+        with tempfile.TemporaryDirectory() as root:
+            objects={digest(str(i).encode()):1 for i in range(5999)}
+            destination=Mock()
+            with patch.object(mechanism_cloud,'output_inventory',return_value=objects):
+                with self.assertRaisesRegex(ValueError,'Recovery publication exceeds'):
+                    mechanism_cloud.publish_directory(root,{'objects':objects},destination,full=True)
+            destination.put.assert_not_called();destination.put_bounded.assert_not_called()
+
+    def test_full_worker_binds_horizon_and_stops_server(self):
+        with tempfile.TemporaryDirectory() as root:
+            output=Path(root)/'output';process=Mock();process.poll.return_value=None
+            def spawn(argv,**options):
+                self.assertIn('--full-recording',argv)
+                (output/'ready.json').write_text('{}');return process
+            perform=Mock();validate=Mock(return_value={'status':'recording_acceptance'})
+            with patch.object(worker,'stop_owned') as stop:
+                result=worker.execute(output,digest(canonical(worker.plan(full=True))),
+                    run_id=ATTEMPT,popen=spawn,perform=perform,validate=validate,full=True)
+            self.assertEqual(perform.call_args.args[0].record_horizon,600)
+            self.assertEqual(perform.call_args.args[0].replan_steps,16)
+            validate.assert_called_once_with(output,full=True);stop.assert_called_once_with(process)
+            self.assertGreaterEqual(result['worker_elapsed_seconds'],0)
 
     def test_readiness_requires_successful_listener(self):
         with tempfile.TemporaryDirectory() as root:

@@ -173,7 +173,7 @@ def serve(args):
     if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
         raise ValueError('Exactly one approved CUDA device required')
     p = plan()
-    signal.alarm(p['limits']['server_seconds_each'])
+    signal.alarm(550 if getattr(args,'full_recording',False) else p['limits']['server_seconds_each'])
     torch.set_grad_enabled(False)
     pins = read_json(Path('/app/containers/gpu-smoke-pins.json'))
     verify_snapshot(MODEL, pins['model'])
@@ -303,7 +303,7 @@ def rollout(args):
         record.update(status='completed', success=result['success'], steps=result['steps'],
             wall_seconds=time.monotonic()-began, inference_seconds=inference_seconds, model_queries=queries,
             model_load_seconds=read_json(args.output/'ready.json')['model_load_seconds'],
-            recipe=p['recipe'], intervention_policy=None)
+            recipe=dict(p['recipe'],replan_steps=settings.replan_steps), intervention_policy=None)
         save(args.output/'episode.json', record)
     finally:
         client.close()
@@ -384,6 +384,7 @@ def main(argv=None):
     parser.add_argument('--arm', choices=plan()['arms'])
     parser.add_argument('--seed', type=int)
     parser.add_argument('--record-chords',action='store_true')
+    parser.add_argument('--full-recording',action='store_true')
     parser.add_argument('--record-run-id')
     parser.add_argument('--record-horizon',type=int,default=4)
     parser.add_argument('--replan-steps',type=int,choices=(8,16),default=16)
