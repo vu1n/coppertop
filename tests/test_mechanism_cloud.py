@@ -25,21 +25,60 @@ def ledger():
 
 
 class CloudTests(unittest.TestCase):
-    def test_full_launch_requires_retention_and_backstop_before_keys(self):
+    def test_owned_stage_release_requires_compute_audit_and_verified_data_or_empty_stage(self):
+        from test_record_archive import POLICY
+        audit={'app_stopped':True,'active_containers':0,'active_sandboxes':0}
+        cases=[('complete',100,False,False),('unknown',None,False,False),
+            ('over_limit',2*1024**3+1,False,False),('empty',0,False,True),('published',100,True,True)]
+        for label,size,published,deleted in cases:
+            with self.subTest(label=label),patch.object(module,'delete_owned_volume') as delete:
+                volume=SimpleNamespace(iterdir=Mock(return_value=iter([SimpleNamespace(type=1,size=size)])))
+                if size is None:volume.iterdir.side_effect=OSError('unknown size')
+                result=module.cleanup_owned_stage(object(),volume,name='owned',identity='vo-owned',audit=audit,
+                    gpu_started=True,publication_verified=published,policy=POLICY,rate='0.09')
+                self.assertEqual(result['volume_deleted'],deleted)
+                if deleted:delete.assert_called_once()
+                else:
+                    delete.assert_not_called();self.assertTrue(result['volume_retained_for_recovery'])
+                    self.assertEqual(result['retention']['size_bytes'],size)
+        with patch.object(module,'delete_owned_volume') as delete:
+            for invalid in (None,dict(POLICY,accept_ongoing_storage_charges=False)):
+                with self.assertRaises(ValueError):module.cleanup_owned_stage(object(),Mock(),name='owned',identity='vo-owned',audit=audit,
+                    gpu_started=True,publication_verified=False,policy=invalid,rate='0.09')
+            with self.assertRaises(ValueError):module.cleanup_owned_stage(object(),Mock(),name='owned',identity='vo-owned',
+                audit=dict(audit,active_containers=1),gpu_started=True,publication_verified=True,policy=POLICY,rate='0.09')
+            delete.assert_not_called()
+
+    def test_retained_stage_metadata_measurement_and_unknown_or_over_limit_reporting(self):
+        from test_record_archive import POLICY
+        resource={'provider':'modal','id':'vo-owned','name':'owned'}
+        volume=SimpleNamespace(iterdir=Mock(return_value=iter([
+            SimpleNamespace(type=2,size=4096),SimpleNamespace(type=1,size=1024**3)])))
+        report=module.retained_stage_report(volume,resource,POLICY,'0.09')
+        self.assertEqual(report['size_bytes'],1024**3);self.assertEqual(report['estimated_monthly_usd'],'0.09')
+        self.assertEqual(report['resource'],resource)
+        volume.iterdir.side_effect=OSError('provider metadata unavailable')
+        report=module.retained_stage_report(volume,resource,POLICY,'0.09')
+        self.assertIsNone(report['size_bytes']);self.assertEqual(report['size_error_type'],'OSError')
+        volume.iterdir.side_effect=None;volume.iterdir.return_value=iter([SimpleNamespace(type=1,size=2*1024**3+1)])
+        report=module.retained_stage_report(volume,resource,POLICY,'0.09')
+        self.assertFalse(report['within_size_authorization'])
+
+    def test_full_launch_requires_explicit_storage_authorization_before_keys(self):
         from test_record_archive import POLICY
         value=ledger();value['cumulative_cap']='70.82'
         reviewed_at=module.datetime.fromisoformat(module.prepare(value,ATTEMPT,'official_recording_full')['cloud_plan']['pricing']['checked_utc'])
         with patch.object(module,'datetime',wraps=module.datetime) as clock,patch.object(module,'selected_env',side_effect=AssertionError('keys forbidden')):
             clock.now.return_value=reviewed_at
-            for retention,reason in ((None,'retention policy'),(POLICY,'cleanup adapter')):
-                prepared=module.prepare(value,ATTEMPT,'official_recording_full',retention=retention)
+            for retention,reason in ((None,'retention policy'),(dict(POLICY,accept_ongoing_storage_charges=False),'explicitly accepted')):
                 with self.assertRaisesRegex(ValueError,reason):
+                    prepared=module.prepare(value,ATTEMPT,'official_recording_full',retention=retention)
                     module.execute(prepared,value,Path.cwd(),Path('unused'),prepared['cloud_plan_sha256'],
                         sdk=SimpleNamespace(__version__='1.6.1'))
             prepared=module.prepare(value,ATTEMPT,'official_recording_full',retention=POLICY)
-            with self.assertRaisesRegex(ValueError,'independent expiry'):
-                module.execute(prepared,value,Path.cwd(),Path('unused'),prepared['cloud_plan_sha256'],
-                    sdk=SimpleNamespace(__version__='1.6.1'),retention_backstop=Mock())
+            self.assertEqual(prepared['cloud_plan']['archive_retention'],POLICY)
+            self.assertEqual(prepared['cloud_plan']['pricing']['volume_storage_usd_per_gib_month'],'0.09')
+            self.assertNotIn('retention_backstop',prepared['cloud_plan'])
 
     def test_archive_checkpoint_and_verified_completion_gate_cleanup(self):
         from test_record_archive import POLICY
@@ -66,7 +105,7 @@ class CloudTests(unittest.TestCase):
                     if fail:
                         self.assertFalse(outcome.get('durable_report_verified',False))
                         return {'app_stopped':True,'active_containers':0,'active_sandboxes':0,'volume_deleted':False,
-                            'volume_retained_until_deadline':True,'retention_backstop_armed':True}
+                            'volume_retained_for_recovery':True,'retention':{'ongoing_charges_accepted':True}}
                     self.assertTrue(outcome['durable_report_verified'])
                     return {'app_stopped':True,'active_containers':0,'active_sandboxes':0,'volume_deleted':True}
                 action=lambda:module.execute_phases(functions,prepared,root,admission=lambda:None,

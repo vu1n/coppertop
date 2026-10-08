@@ -26,7 +26,7 @@ from .reload_launch import (read_json, save, cli_json, hard_deadline, refresh_bi
     selected_env, parent_credentials, delete_owned_volume, stop_and_audit_owned_app)
 from .streams import SMALL_BYTES, read_small
 from .record_archive import seal_directory, stage_archive, publish_archive, archive_ref
-from .archive_retention import validate_retention, cleanup_disposition
+from .archive_retention import validate_retention, cleanup_disposition, retention_report
 
 MOUNT = '/coppertop-mechanism'
 ADDITIONAL = Decimal('6')
@@ -76,7 +76,6 @@ def prepare(ledger, attempt, workload='mechanism', gpu='L40S', retention=None):
         'retention': 'Keep ≤24MiB immutable R2 evidence in Standard storage; no R2 deletion. Delete only new owned Volume after publication attempt and zero-active audit. Preserve cached images and all prior artifacts.',
         'paid_authorized': False, 'new_image_builds': False, 'new_model_or_asset_downloads': False}
     if full:
-        from .modal_retention import BACKSTOP_SPEC
         p['resources'].update(worker_seconds=560,gpu_phase_seconds=600,publisher_seconds=900,
             controller_seconds=3600,temporary_volume_bytes=2*1024**3)
         p['pricing'].update(r2_first_month_storage_unit_usd='.030',compute_storage_egress_envelope_usd='1.50')
@@ -85,8 +84,8 @@ def prepare(ledger, attempt, workload='mechanism', gpu='L40S', retention=None):
             'completion_receipt_bytes':65536, 'full_readback_sha256':True}
         p['resources']['producer_scratch_bytes']=2*1024**3+16*1024**2
         p['archive_retention'] = validate_retention(retention) if retention is not None else None
-        p['retention_backstop']=dict(BACKSTOP_SPEC)
-        p['retention']='Release GPU after verified archive staging. Delete owned Volume only after verified completion; otherwise retain until an explicitly approved, durably enforced deadline. Missing policy/backstop blocks launch.'
+        p['pricing']['volume_storage_usd_per_gib_month']='0.09'
+        p['retention']='Release GPU after verified archive staging. After publication failure, preserve the size-bounded owned Volume only under explicit ongoing-storage authorization. Release after verified publication or a separately authorized recovery/deletion decision; no automatic expiry.'
     if workload != 'mechanism':
         p.update(kind='official_full_rollout_recording' if full else 'official_recording_cloud_acceptance', workload=workload)
     if gpu == 'A100-80GB':
@@ -118,6 +117,42 @@ def output_inventory(directory, *, full=False):
     if len(objects) > (5999 if full else 64) or sum(objects.values()) > (1024**3-1024**2 if full else 24*1024**2-65536):
         raise ValueError('Publication object count/bytes exceed session')
     return objects
+
+
+def retained_stage_report(volume, resource, policy, rate):
+    """Bounded provider metadata read; measurement failure never deletes the sole copy."""
+    measured_bytes=None;size_error=None
+    try:
+        with hard_deadline(60):
+            total=0
+            for number,entry in enumerate(volume.iterdir('/',recursive=True),1):
+                if number>32:raise ValueError('Owned staging entry count exceeds bound')
+                # Modal1.6.1 FileEntryType.FILE=1, DIRECTORY=2.
+                if entry.type==2:continue
+                if entry.type!=1 or type(entry.size) is not int or entry.size<0:
+                    raise ValueError('Invalid owned staging entry')
+                total+=entry.size
+            measured_bytes=total
+    except Exception as caught:
+        size_error=type(caught).__name__
+    return retention_report(resource,policy,rate_usd_per_gib_month=rate,
+        size_bytes=measured_bytes,size_error=size_error)
+
+
+def cleanup_owned_stage(sdk, volume, *, name, identity, audit, gpu_started,
+                        publication_verified, policy, rate):
+    if (audit.get('app_stopped') is not True or any(type(audit.get(key)) is not int or audit[key]!=0
+            for key in ('active_containers','active_sandboxes'))):
+        raise ValueError('Zero-active compute audit required before staging cleanup')
+    disposition=cleanup_disposition(gpu_started=gpu_started,publication_verified=publication_verified,
+        retention=policy)
+    if disposition=='retain_for_recovery':
+        retained=retained_stage_report(volume,{'provider':'modal','id':identity,'name':name},policy,rate)
+        if retained['size_bytes']!=0:
+            return dict(audit,volume_deleted=False,volume_retained_for_recovery=True,
+                retention=retained,holds_released=0)
+    delete_owned_volume(sdk,name,identity)
+    return dict(audit,volume_deleted=True,holds_released=0)
 
 
 def publish_directory(directory, record, store, *, full=False):
@@ -356,8 +391,8 @@ def execute_phases(functions, prepared, output, *, admission, invoke, stopped, c
             if error is None:error=caught
         try:
             state['cleanup'] = receipt = cleanup()
-            retained=(state['status']=='failed' and receipt.get('volume_retained_until_deadline') is True
-                and receipt.get('retention_backstop_armed') is True)
+            retained=(state['status']=='failed' and receipt.get('volume_retained_for_recovery') is True
+                and receipt.get('retention',{}).get('ongoing_charges_accepted') is True)
             if receipt.get('app_stopped') is not True or (receipt.get('volume_deleted') is not True and not retained) or any(type(receipt.get(k)) is not int or receipt[k] != 0 for k in ('active_containers','active_sandboxes')):
                 raise ValueError('Owned cleanup not verified')
         except BaseException as caught:
@@ -368,8 +403,7 @@ def execute_phases(functions, prepared, output, *, admission, invoke, stopped, c
     return state
 
 
-def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runner=subprocess.run,
-            retention_backstop=None):
+def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runner=subprocess.run):
     """One exact approval, one retained hold, no fallback/retry or shared cleanup."""
     checked = prepare(ledger, prepared['cloud_plan']['attempt_id'], prepared['cloud_plan'].get('workload','mechanism'),
         prepared['cloud_plan']['resources']['gpu'], prepared['cloud_plan'].get('archive_retention'))
@@ -387,17 +421,12 @@ def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runn
     full=p.get('workload')=='official_recording_full'
     if full:
         validate_retention(p.get('archive_retention'))
-        if not callable(retention_backstop):
-            raise ValueError('Provider deadline cleanup adapter required before credential access/allocation')
-        if p['retention_backstop'].get('live_ready') is not True:
-            raise ValueError('Modal Cron cleanup proposal lacks verified independent expiry; full launch blocked')
     output = root/'.local/mechanism'/p['attempt_id']
     if any(path.is_symlink() for path in (root/'.local', output.parent, output)):
         raise ValueError('Dedicated ignored attempt directory required')
     output.mkdir(parents=True, exist_ok=True)
     with (output/'consumed.json').open('x') as marker: marker.write(canonical({'plan_sha256':approved_sha256}).decode())
-    owned = {'created':False, 'attempted':False, 'volume_id':None, 'context':None, 'entered':False,
-             'retention_backstop':None}
+    owned = {'created':False, 'attempted':False, 'volume_id':None, 'context':None, 'entered':False}
     functions = volume = None
     current = ledger
     pending = 'pending-'+p['attempt_id']
@@ -423,15 +452,6 @@ def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runn
         owned['context']=functions.app.run(name=p['app_name'], environment_name='main')
         with hard_deadline(300): owned['context'].__enter__()
         owned['entered']=True; bind()
-        if full:
-            deadline_utc=time.time()+p['resources']['controller_seconds']+p['archive_retention']['seconds']
-            backstop=retention_backstop(volume_name=p['volume_name'], volume_id=owned['volume_id'],
-                app_name=p['app_name'], app_id=functions.app.app_id,
-                deadline_utc=deadline_utc, policy=p['archive_retention'])
-            if (not isinstance(backstop,dict) or backstop.get('armed') is not True
-                    or backstop.get('volume_id')!=owned['volume_id'] or backstop.get('deadline_utc')!=deadline_utc):
-                raise ValueError('Exact owned-volume deadline cleanup acknowledgement required')
-            owned['retention_backstop']=backstop; ownership()
     def invoke(function, args, bound):
         billing()
         remaining=deadline-time.monotonic()
@@ -468,14 +488,14 @@ def execute(prepared, ledger, root, env_file, approved_sha256, *, sdk=None, runn
             if not owned['volume_id']:
                 with hard_deadline(60): volume.hydrate(); owned['volume_id']=volume.object_id; ownership()
             outcome=read_json(output/'outcome.json') if (output/'outcome.json').is_file() else {}
-            disposition=cleanup_disposition(gpu_started=outcome.get('gpu_started',False),
-                publication_verified=outcome.get('durable_report_verified',False),
-                retention=p.get('archive_retention'), backstop=owned['retention_backstop']) if full else 'delete'
-            if disposition=='retain_until_deadline':
-                save(output/'retention.json',owned['retention_backstop'])
+            if full:
+                receipt=cleanup_owned_stage(sdk,volume,name=p['volume_name'],identity=owned['volume_id'],audit=receipt,
+                    gpu_started=outcome.get('gpu_started',False),publication_verified=outcome.get('durable_report_verified',False),
+                    policy=p['archive_retention'],rate=p['pricing']['volume_storage_usd_per_gib_month'])
+                if receipt.get('volume_retained_for_recovery'):
+                    save(output/'retention.json',receipt['retention'])
                 billing()
-                return dict(receipt, volume_deleted=False, volume_retained_until_deadline=True,
-                    retention_backstop_armed=True, retention=owned['retention_backstop'], holds_released=0)
+                return dict(receipt,context_exit_error_type=context_error)
             delete_owned_volume(sdk,p['volume_name'],owned['volume_id'])
         elif owned['attempted']: raise RuntimeError('Unconfirmed Volume creation requires ownership audit')
         billing()
@@ -515,7 +535,7 @@ def main():
     parser.add_argument('--attempt',required=True)
     parser.add_argument('--workload',choices=('mechanism','official_recording','official_recording_full'),default='mechanism')
     parser.add_argument('--gpu', choices=('L40S','A100-80GB'), default='L40S')
-    parser.add_argument('--archive-retention',type=Path,help='Explicit bounded deadline policy JSON; execution also requires a durable provider backstop adapter')
+    parser.add_argument('--archive-retention',type=Path,help='Explicit size-bounded ongoing staging-storage authorization and release condition JSON')
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--approved-cloud-plan-sha256')
     parser.add_argument('--env-file',type=Path,default=Path.home()/'code/coppertop/.env.local')

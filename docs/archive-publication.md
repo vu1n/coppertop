@@ -81,57 +81,52 @@ staged recording because publication failed.
 
 The full Modal publisher mounts the owned Volume writable solely to persist the
 bounded upload journal; it never rewrites the sealed archive. Other publishers
-keep their read-only mounts. On failed/unverified full publication, the controller
-stops compute and conservatively retains the owned stage, even if the GPU RPC did
-not return a usable receipt. It records ownership and the deadline acknowledgement.
-Verified archival publication permits stage deletion; a metadata-only failure
-report does not.
+keep their read-only mounts. After failed/unverified full publication the controller
+stops compute, then retains nonempty or unmeasured owned staging only when the
+launch explicitly accepts ongoing size-bounded storage. This also covers a GPU RPC
+that did not return a usable receipt. A provider metadata read reports all retained
+file bytes (32-entry/60-second bound); failure reports an unknown size and the
+measurement error, rather than deleting the only possible complete copy. A verified
+empty owned stage is deleted. Verified archival publication permits stage deletion;
+a metadata-only failure report does not.
 
-Next live full-recording launch requires an explicit retention policy containing
-`seconds` (60..86400), `max_bytes` (2 GiB), `max_storage_usd` (positive finite ceiling),
-`cleanup_owner`, and `expiry_action="delete_owned_stage_even_if_unpublished"`.
-The deadline is bounded by admission + controller limit + retention duration.
-It also requires an injected `retention_backstop` provider adapter which durably
-arms cleanup of the exact owned Volume and returns `armed`, `volume_id`, and
-`deadline_utc`. Missing policy/adapter blocks execution before key access or
-allocation. **No such provider adapter has been configured or armed here.**
-The policy is not an assertion that storage is free or that an in-process timer
-provides durable cleanup. Expiry deletion can discard unpublished data and must
-be part of the next reviewed live authorization. No indefinite retention is implied.
+The retained-resource receipt includes exact provider/resource ID/name, measured
+bytes or an explicit measurement error, maximum authorized bytes, whether the
+measurement fits that authorization, monthly rate and estimated cost, cleanup
+owner and release condition. It is saved as `retention.json` alongside ownership
+and outcome evidence. A size violation or unknown measurement requires follow-up;
+neither is represented as verified bounded storage. Compute is stopped before
+retention is reported.
 
-### Concrete Modal scheduling proposal and unresolved provider limits
+Next live full-recording approval must include this explicit policy:
 
-`coppertop/modal_retention.py` supplies a pure, hashed cleanup plan and local SDK
-definitions using existing Modal Cron. It binds the exact workload App ID and
-Volume ID/name, with intended dispatches at the deadline (rounded up to a minute),
-five minutes later and ten minutes later. Each call audits zero active workload
-containers/sandboxes, deletes only the exact owned Volume, then stops the cleanup
-App using its actual executing container identity. The final failed call also
-attempts to stop the scheduler. The cleanup call has a 360-second execution bound
-and 300-second startup bound; no GPU, data mounts or secrets are added. Tests cover
-early execution refusal, active compute, changed identity, absent Volume, ordered
-cleanup, local SDK definition and explicit unresolved arming conditions.
+```json
+{
+  "max_bytes": 2147483648,
+  "accept_ongoing_storage_charges": true,
+  "cleanup_owner": "operator",
+  "release_condition": "verified_publication_or_explicit_recovery_or_deletion"
+}
+```
 
-This is a **plan, not an armed backstop**. Native Cron is yearless and recurs, and
-Modal [schedules require deployment](https://modal.com/docs/guide/cron). A timeout,
-startup failure or failed self-stop can leave the schedule alive; failed Volume
-deletion can leave storage charged. Three intended dispatches do not enforce three
-invocations. The plan explicitly sets `finite_schedule_enforced=false` and
-`live_ready=false`; it exposes no deployment/arming method, and the full launcher
-rejects it even if given a callable returning a claimed acknowledgement.
+The policy and rate are bound into the exact cloud-plan approval hash. Missing
+policy or unaccepted ongoing charges block execution before key access/allocation.
+At the published [Modal Volume rate](https://modal.com/pricing) of $0.09/GiB/month
+(checked 2026-10-08), 2 GiB costs at most $0.18/month before account allowances;
+the synthetic 156098560-byte archive is about $0.0131/month plus small metadata.
+Actual invoice amounts depend on usage, duration and account allowances. This is
+ongoing storage acceptance, not a fixed total-spend ceiling or an automatic expiry.
+The next live approval must separately reconcile the actual account balance and
+bounded compute/R2 request costs. No paid retained resource is authorized now.
 
-Before live full recording, a separately verified expiry mechanism must cap the
-independent scheduler's lifetime and provide terminal disposition if Volume
-deletion fails. The operator must approve that mechanism's deployment, any cleanup
-compute/storage budget, and expiry deletion of unpublished data. The cached image
-must mount and hash-check the reviewed cleanup module with `copy=False`; no new
-image build is implied. A CPU-only live capability check must establish that Modal
-container credentials can stop/audit the exact workload App and delete the exact
-Volume; controller privileges do not prove container privileges. No credentials
-need be pasted into chat, and no new token is presumed necessary. A provider/API
-failure still requires a named owner to resolve cleanup; neither the storage cost
-ceiling nor the existing fake tests prove enforcement. These are explicit remaining
-settings/validation requirements, not an implemented readiness claim.
+Release is verified publication followed by deletion of the exact owned stage,
+or a separately authorized recovery/deletion decision. A later recovery still
+needs its own compute/session authorization and exact ownership verification.
+A failed cleanup API call remains a reported failure, requiring the named owner to
+resolve it; it is never silently called successful. If a hard time limit is desired,
+the live plan must explicitly choose expiry deletion even if that discards the only
+unpublished archive, or use an independently verified expiry mechanism. This work
+adds no recurring cleanup service, deployment, timer or scheduler configuration.
 
 ## Measurements and validation limits
 
@@ -166,13 +161,13 @@ oversized resumed parts, malformed/special tar members, role/query denial, and
 cleanup ordering. The fake Modal-function test interrupts publication and verifies
 that the durable journal reuses the same upload ID on explicit reinvocation.
 
-Final local verification: 326 tests ran in the CPU environment, 322 passed and
-four optional SDK checks skipped. All four SDK checks passed separately in the
-existing controller environment. No packages were installed. Independent
+Final local verification: 324 CPU tests ran; 321 passed and three optional SDK
+checks skipped. All three SDK checks passed separately in the existing controller
+environment. No packages were installed. Independent
 correctness/structure and security/refutation reviews resolved destructive staging
 cleanup, oversized resumed parts, lost upload journals and sparse-header parsing.
-The native Cron proposal's live limitations remain explicit and launch-blocking;
-they are not represented as a completed provider capability check.
+The size-bounded retention transitions and resource cost accounting are tested
+locally; no live provider capability check is claimed.
 
 ## Minimal next live proposal (not authorized or executed)
 
@@ -184,9 +179,9 @@ documented archive actions; no automatic retries. Bound the run to 10 minutes an
 remote storage to 150 MiB plus a 64 KiB receipt. Keep the local source until exact
 remote cleanup is verified.
 
-The next reviewed plan must specify a finite retention deadline and exact-key
-cleanup/abort authority, including how cleanup continues if the local process
-fails. The current archive session intentionally has no DeleteObject permission.
+The next reviewed plan must specify retained-size/ongoing-storage terms and
+exact-key cleanup/abort authority. A failed local process leaves its preserved
+source available for an explicitly authorized recovery/deletion decision. The current archive session intentionally has no DeleteObject permission.
 An independently approved exact-key cleanup path is needed; existing recordings
 and earlier partial objects must be preserved. This proposal validates real R2
 multipart/session/SDK behavior; it does not validate Modal mount/preparation delay.

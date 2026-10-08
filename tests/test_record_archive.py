@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from coppertop import record_archive as a
-from coppertop.archive_retention import cleanup_disposition, validate_retention
+from coppertop.archive_retention import cleanup_disposition, validate_retention, retention_report
 from coppertop.chords import canonical, digest, LocalStore
 from coppertop.multipart import UploadInterrupted, UploadState
 from coppertop.r2_session import BoundedClient, SessionScope
@@ -22,8 +22,8 @@ from coppertop.streams import file_ref
 from test_storage import S3Error
 
 
-POLICY = {'seconds':3600, 'max_bytes':2*1024**3, 'max_storage_usd':'0.01',
-          'cleanup_owner':'approved deadline adapter', 'expiry_action':'delete_owned_stage_even_if_unpublished'}
+POLICY = {'max_bytes':2*1024**3, 'accept_ongoing_storage_charges':True,
+          'cleanup_owner':'operator', 'release_condition':'verified_publication_or_explicit_recovery_or_deletion'}
 
 
 class DiskS3:
@@ -219,12 +219,24 @@ class ArchiveTests(unittest.TestCase):
             with self.assertRaises(ValueError):a.read_completion(incomplete,incomplete.put(canonical(missing)))
 
     def test_missing_retention_and_cleanup_order_contract(self):
-        for value in (None,dict(POLICY,seconds=0),dict(POLICY,max_storage_usd='NaN'),dict(POLICY,expiry_action='keep forever')):
+        for value in (None,dict(POLICY,max_bytes=0),dict(POLICY,accept_ongoing_storage_charges=False),dict(POLICY,release_condition='automatic deletion')):
             with self.assertRaises(ValueError):validate_retention(value)
-        self.assertEqual(cleanup_disposition(gpu_started=False,publication_verified=False,retention=None,backstop=None),'delete')
-        self.assertEqual(cleanup_disposition(gpu_started=True,publication_verified=True,retention=None,backstop=None),'delete')
-        with self.assertRaises(ValueError):cleanup_disposition(gpu_started=True,publication_verified=False,retention=POLICY,backstop=None)
-        self.assertEqual(cleanup_disposition(gpu_started=True,publication_verified=False,retention=POLICY,backstop={'armed':True}),'retain_until_deadline')
+        self.assertEqual(cleanup_disposition(gpu_started=False,publication_verified=False,retention=None),'delete')
+        self.assertEqual(cleanup_disposition(gpu_started=True,publication_verified=True,retention=None),'delete')
+        with self.assertRaises(ValueError):cleanup_disposition(gpu_started=True,publication_verified=False,retention=None)
+        self.assertEqual(cleanup_disposition(gpu_started=True,publication_verified=False,retention=POLICY),'retain_for_recovery')
+
+    def test_retained_resource_size_and_ongoing_cost_accounting(self):
+        resource={'provider':'modal','id':'vo-owned','name':'owned-stage'}
+        measured=retention_report(resource,POLICY,rate_usd_per_gib_month='0.09',size_bytes=1024**3)
+        self.assertEqual(measured['estimated_monthly_usd'],'0.09')
+        self.assertEqual(measured['maximum_authorized_monthly_usd'],'0.18')
+        self.assertTrue(measured['within_size_authorization']);self.assertFalse(measured['automatic_expiry'])
+        over=retention_report(resource,POLICY,rate_usd_per_gib_month='0.09',size_bytes=2*1024**3+1)
+        self.assertFalse(over['within_size_authorization'])
+        unknown=retention_report(resource,POLICY,rate_usd_per_gib_month='0.09',size_error='TimeoutError')
+        self.assertIsNone(unknown['size_bytes']);self.assertIsNone(unknown['estimated_monthly_usd'])
+        self.assertEqual(unknown['size_error_type'],'TimeoutError')
 
     def test_archive_role_queries_and_legacy_denial(self):
         with tempfile.TemporaryDirectory() as root:
