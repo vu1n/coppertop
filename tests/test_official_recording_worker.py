@@ -93,18 +93,21 @@ assert plan(full=True)['acceptance']['limits']['query_calls']==38
     def test_full_plan_and_large_publication_use_compact_inventory(self):
         from coppertop.s3 import S3Store
         from coppertop.streams import read_small
-        from test_storage import FakeS3
+        from test_record_archive import DiskS3
+        from coppertop.record_archive import read_completion, unpack_archive
+        from coppertop.multipart import UploadInterrupted
         value=ledger();value['cumulative_cap']='70.82'
         prepared=mechanism_cloud.prepare(value,ATTEMPT,'official_recording_full')
         plan=prepared['cloud_plan']
         self.assertEqual(plan['additional_cap_usd'],'8')
-        self.assertEqual(prepared['scope'].role,'mechanism_full')
+        self.assertEqual(prepared['scope'].role,'mechanism_archive')
         self.assertEqual(plan['worker']['acceptance']['limits']['query_calls'],38)
         with tempfile.TemporaryDirectory() as root:
             mount=Path(root)/'volume';mount.mkdir();volume=Volume([])
             attempt='mechanism-'+digest(root.encode())[:16]
             prepared=mechanism_cloud.prepare(value,attempt,'official_recording_full')
             self.addCleanup(shutil.rmtree,Path('/tmp')/(attempt+'-outputs'),True)
+            self.addCleanup((Path('/tmp')/(attempt+'-episode.tar')).unlink,missing_ok=True)
             raw=b'x'*(5*1024**2)
             key=digest(raw)
             def runner(argv,**options):
@@ -122,7 +125,7 @@ assert plan(full=True)['acceptance']['limits']['query_calls']==38
             def link(source,destination):
                 if Path(destination).is_relative_to(mount): raise PermissionError('Volume rejects hard links')
                 return native_link(source,destination)
-            client=FakeS3();store=S3Store(client,'coppertop',prefix=prepared['scope'].prefix)
+            client=DiskS3(Path(root)/'remote');store=S3Store(client,'coppertop',prefix=prepared['scope'].prefix)
             functions=mechanism_cloud.create_functions(SimpleNamespace(__version__='1.6.1',App=App),
                 prepared,object(),volume,lambda role:store,[],runner)
             with patch.object(mechanism_cloud,'MOUNT',str(mount)),patch.dict('os.environ',{'MODAL_TASK_ID':'ta-gpu'}),patch('coppertop.chords.os.link',side_effect=link):
@@ -131,12 +134,21 @@ assert plan(full=True)['acceptance']['limits']['query_calls']==38
                 self.assertNotIn('objects',record);self.assertLess(len(canonical(record)),65536)
                 self.assertEqual(record['object_count'],1002)
                 owned=mount/attempt;owned.mkdir()
-                for path in (mount/'record.json',mount/'outputs'):path.rename(owned/path.name)
+                for path in (mount/'record.json',mount/'archive'):path.rename(owned/path.name)
+                client.fail_part=1
+                with self.assertRaises(UploadInterrupted):functions.publish(receipt)
+                state=json.loads((owned/'upload-state.json').read_bytes())
+                self.assertEqual(state['upload_id'],'opaque-session')
+                self.assertEqual(client.calls.count('create'),1)
+                client.fail_part=None
                 published=functions.publish(receipt)
-                self.assertEqual(read_small(store,key,64*1024**2),raw)
-                self.assertEqual(published['report_key'],receipt['record_sha256'])
-                # Corrupting an inventoried object is rejected before publication.
-                LocalStore(mount/attempt/'outputs/store').path(key).write_bytes(b'corrupt')
+                self.assertEqual(client.calls.count('create'),1)
+                completion=read_completion(store,published['report_key'])
+                restored=unpack_archive(owned/'archive'/'episode.tar',completion['archive'],Path(root)/'restored')
+                self.assertEqual(read_small(LocalStore(restored/'store'),key,64*1024**2),raw)
+                self.assertTrue(published['archive_verified']);self.assertTrue((owned/'upload-state.json').is_file())
+                # Changed sealed bytes are rejected before remote publication.
+                (owned/'archive'/'episode.tar').write_bytes(b'corrupt')
                 with self.assertRaises(ValueError):functions.publish(receipt)
 
     def test_full_recovery_rejects_aggregate_before_any_write(self):

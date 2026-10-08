@@ -41,6 +41,30 @@ class FakeClient:
 
 
 class SessionsTest(unittest.TestCase):
+    def test_real_sdk_multipart_serialization_matches_guard_offline(self):
+        try:
+            import boto3
+            from botocore.config import Config
+        except ImportError:
+            self.skipTest('Existing optional R2 SDK unavailable; run in controller environment')
+        prefix='chords/mechanism/mechanism-abcdef0123456789'
+        scope=SessionScope('mechanism_archive','coppertop',prefix)
+        # Explicit fixture credentials prevent SDK credential discovery; only
+        # request serialization runs, never client API dispatch/network.
+        sdk=boto3.client('s3',endpoint_url=ENDPOINT,region_name='auto',
+            aws_access_key_id='fixture',aws_secret_access_key='fixture',
+            config=Config(s3={'addressing_style':'path'}))
+        client=BoundedClient(sdk,scope,ENDPOINT,1000,lambda:1)
+        base={'Bucket':scope.bucket,'Key':prefix+'/objects/aa/'+'a'*64}
+        operations={'CreateMultipartUpload':{},'UploadPart':{'UploadId':'opaque+/=','PartNumber':1,'Body':b'x'},
+            'ListParts':{'UploadId':'opaque+/=','PartNumberMarker':0},
+            'CompleteMultipartUpload':{'UploadId':'opaque+/=','MultipartUpload':{'Parts':[{'PartNumber':1,'ETag':'opaque'}]}},
+            'AbortMultipartUpload':{'UploadId':'opaque+/='}}
+        for operation,parameters in operations.items():
+            model=sdk.meta.service_model.operation_model(operation)
+            request=sdk._convert_to_request_dict(dict(base,**parameters),model,ENDPOINT)
+            client.destination_guard(SimpleNamespace(url=request['url'],method=request['method']))
+
     def test_full_recording_scope_keeps_exact_prefix_and_existing_actions(self):
         from coppertop.r2_session import LIMITS
         scope=SessionScope('mechanism_full','coppertop','chords/mechanism/mechanism-'+'a'*16)
@@ -164,7 +188,8 @@ class SessionsTest(unittest.TestCase):
             client.get_object(Bucket='other', Key=PATH)
         with self.assertRaises(ValueError):
             client.put_object(Bucket='coppertop', Key=PATH, Body=b'x', IfNoneMatch='*')
-        self.assertFalse(hasattr(client, 'create_multipart_upload'))
+        with self.assertRaisesRegex(ValueError,'outside approved role'):
+            client.create_multipart_upload(Bucket=SOURCE.bucket,Key=SOURCE.object_paths[0])
 
     def test_read_byte_reservation_and_bounded_body(self):
         fake = FakeClient()

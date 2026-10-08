@@ -25,6 +25,59 @@ def ledger():
 
 
 class CloudTests(unittest.TestCase):
+    def test_full_launch_requires_retention_and_backstop_before_keys(self):
+        from test_record_archive import POLICY
+        value=ledger();value['cumulative_cap']='70.82'
+        reviewed_at=module.datetime.fromisoformat(module.prepare(value,ATTEMPT,'official_recording_full')['cloud_plan']['pricing']['checked_utc'])
+        with patch.object(module,'datetime',wraps=module.datetime) as clock,patch.object(module,'selected_env',side_effect=AssertionError('keys forbidden')):
+            clock.now.return_value=reviewed_at
+            for retention,reason in ((None,'retention policy'),(POLICY,'cleanup adapter')):
+                prepared=module.prepare(value,ATTEMPT,'official_recording_full',retention=retention)
+                with self.assertRaisesRegex(ValueError,reason):
+                    module.execute(prepared,value,Path.cwd(),Path('unused'),prepared['cloud_plan_sha256'],
+                        sdk=SimpleNamespace(__version__='1.6.1'))
+            prepared=module.prepare(value,ATTEMPT,'official_recording_full',retention=POLICY)
+            with self.assertRaisesRegex(ValueError,'independent expiry'):
+                module.execute(prepared,value,Path.cwd(),Path('unused'),prepared['cloud_plan_sha256'],
+                    sdk=SimpleNamespace(__version__='1.6.1'),retention_backstop=Mock())
+
+    def test_archive_checkpoint_and_verified_completion_gate_cleanup(self):
+        from test_record_archive import POLICY
+        value=ledger();value['cumulative_cap']='70.82'
+        prepared=module.prepare(value,ATTEMPT,'official_recording_full',retention=POLICY)
+        functions=SimpleNamespace(gate='gate',evaluate='evaluate',publish='publish')
+        archive={'sha256':'a'*64,'size':10240}
+        for fail in (None,'publish','staging'):
+            with self.subTest(fail=fail),tempfile.TemporaryDirectory() as root:
+                events=[]
+                evaluation={'container_id':'ta-gpu','status':'passed','plan_sha256':prepared['cloud_plan_sha256'],
+                    'archive':archive,'durable_archive_verified':fail!='staging','record_sha256':'b'*64}
+                def invoke(function,args,bound):
+                    events.append(function)
+                    if function=='gate':return {'container_id':'ta-gate','status':'passed','plan_sha256':prepared['cloud_plan_sha256']}
+                    if function=='evaluate':return evaluation
+                    if fail=='publish':raise OSError('publication interrupted')
+                    return {'container_id':'ta-pub','plan_sha256':prepared['cloud_plan_sha256'],
+                        'archive':archive,'archive_verified':True,'report_key':'c'*64,
+                        'source_record_sha256':digest(canonical(evaluation)),'published_status':'passed'}
+                def cleanup():
+                    events.append('cleanup')
+                    outcome=json.loads((Path(root)/'outcome.json').read_bytes())
+                    if fail:
+                        self.assertFalse(outcome.get('durable_report_verified',False))
+                        return {'app_stopped':True,'active_containers':0,'active_sandboxes':0,'volume_deleted':False,
+                            'volume_retained_until_deadline':True,'retention_backstop_armed':True}
+                    self.assertTrue(outcome['durable_report_verified'])
+                    return {'app_stopped':True,'active_containers':0,'active_sandboxes':0,'volume_deleted':True}
+                action=lambda:module.execute_phases(functions,prepared,root,admission=lambda:None,
+                    invoke=invoke,stopped=lambda task:events.append('stopped-'+task) or True,cleanup=cleanup)
+                if fail:
+                    with self.assertRaises(Exception):action()
+                else:self.assertTrue(action()['durable_report_verified'])
+                self.assertEqual(events[-1],'cleanup')
+                if fail=='staging':self.assertNotIn('publish',events)
+                else:self.assertLess(events.index('stopped-ta-gpu'),events.index('publish'))
+
     def test_explicit_a100_is_bound_to_plan_and_provider_without_fallback(self):
         value=ledger();value['cumulative_cap']='70.82'
         original=module.prepare(value,ATTEMPT,'official_recording_full')
@@ -140,7 +193,7 @@ with patch.object(module,'read_json',return_value={}), patch.object(module,'prep
                 functions=module.create_functions(SimpleNamespace(__version__='1.6.1',App=App),
                     prepared,object(),Volume([]),lambda role:destination,[])
                 options=functions.app.definitions['publish']['volumes'][module.MOUNT].options
-                self.assertTrue(options['read_only']);self.assertNotIn('sub_path',options)
+                self.assertEqual(options['read_only'],workload!='official_recording_full');self.assertNotIn('sub_path',options)
                 record={'recovery':True,'status':'failed','objects':{},'plan_sha256':prepared['cloud_plan_sha256']}
                 native=LocalStore.__init__
                 def reject_volume_writes(store,path):
