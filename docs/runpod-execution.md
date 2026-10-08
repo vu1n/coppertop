@@ -12,16 +12,15 @@ The sibling A100 rollout succeeded at 205 controls and 13 queries, with about
 147 MiB and 1,939 immutable objects, but its shared CPU publisher timed out at
 900 s; the final report was absent and no complete release was verified. GPU and
 temporary Volume cleanup completed. The shared publisher's full-run scalability
-is therefore a **known unresolved live blocker**. This implementation reuses
-`mechanism_cloud.publish_directory` unchanged and awaits that thread's repair and
-full publication verification. Diagnosis found a serial PUT + HEAD + HEAD + GET
+is therefore a **known unresolved live blocker**. Shared `record_archive` from commit `37dd2a3` now provides archive-first
+publication here. Real full-publication verification is still required. The
+preceding diagnosis found a serial PUT + HEAD + HEAD + GET
 path, about 7,760 requests: first PUT at 405 seconds, then 602 objects / 45.1 MiB
 over 495 seconds, with a 0.808-second median PUT interval. Full serial publication
 projects about 33 minutes. The initial delay lacks telemetry; the full trajectory
 cannot be reconstructed from checked survivors after source Volume deletion.
-The parent owns removal of duplicate HEADs, four-worker bounded concurrency,
-full GET/hash verification, telemetry and CPU latency validation. This checkout
-does not duplicate that repair.
+The parent completed the shared archive repair and owns its real R2 validation.
+This checkout imports that core unchanged and adds the RunPod adapters.
 Passing smoke/mocked publication cannot establish the full-run path. Do not
 approve a full RunPod launch until the shared publication gate is resolved and
 its actual limits are incorporated in a newly reviewed plan; 900 s is a failed
@@ -191,31 +190,63 @@ Availability is an admission check, not a capacity guarantee. It creates one own
 present abort. All REST and S3 calls have finite timeouts, redirects/retries are
 disabled, and no provider response or credential is written to logs.
 
-The Pod reruns CPU admission, executes the existing official worker with a 560 s
-timeout, stops its owned server, records the compact outcome, and copies checksum
-objects from local scratch to the volume. A compact inventory and record are fsynced
-before a ≤1 KiB ready marker. Filesystem fsync alone does not establish S3 visibility:
-the external CPU process hashes the record, inventory and every object before R2
-publication, then reads every R2 byte back. It must verify the Pod absent first.
+The Pod reruns CPU admission and executes the existing official worker with a
+560 s timeout. It seals every original output file into one uncompressed USTAR
+archive on local producer disk, then calls shared `stage_archive` with a POSIX
+filesystem commit barrier. The compact record and ready marker acknowledge the
+archive only after that barrier. Child artifacts/logs remain capped at 64 MiB;
+the packaging process permits the bounded archive. Filesystem fsync alone does
+not prove RunPod S3 visibility; the external CPU process streams and hashes the
+staged archive after verified Pod termination, then safely unpacks and validates
+the original CAS inventory and rollout result before any R2 mutation.
 
-The external CPU scratch also retains `source-record.json`, `source-receipt.json`
-and a `fetch-complete.json` marker written only after all object checksums pass.
-Thus a later R2 timeout leaves a complete local handoff independent of GPU/volume
-cleanup. The marker says `full_publication_verified=false`; it does not claim R2
-publication. Keep this CPU scratch until the shared publisher diagnosis determines
-the separately approved recovery path. Partial fetches have no completion marker.
+Shared `publish_archive` uses 16 MiB parts, at most four in flight, full streamed
+R2 hash readback and a verified completion receipt. Its archive role uses the
+existing shared `chords/mechanism/<run_id>` namespace and concurrent request/byte
+guards. The multipart journal is fsynced locally and PUT/GET-verified on the owned
+RunPod volume before each callback returns. Resume is explicit and can restore
+that volume journal after a CPU process is lost. Source-volume journal requests
+are additional to the shared synthetic R2 counts, and real latency is unmeasured.
 
-The controller deletes the Pod rather than stopping it. It explicitly enumerates
-and aborts up to 100 incomplete multipart uploads in the owned volume, attempts
-volume deletion even if abort fails, and verifies the exact volume absent. A network
-volume survives Pod termination and continues billing. If Pod absence is unknown,
-the volume is preserved, cleanup is failed and the reservation remains held. Cleanup
-can be retried without allocation:
+External CPU scratch retains the archive, `source-record.json`, `source-receipt.json`,
+safely restored original files under `outputs`, and `fetch-complete.json`. That
+marker follows complete archive and CAS verification and says
+`full_publication_verified=false`. R2 timeout cannot erase this local handoff.
+The final publication marker separately identifies the verified completion.
+Existing `LocalStore` readers work on unpacked `outputs/store`; individual CAS
+files are not separately uploaded to R2.
+
+After publication failure, compute is stopped and the exact owned stage is
+retained only under the explicit ongoing-storage policy in the approved plan.
+`retention.json` reports resource ID, bounded prefix size or measurement error,
+3 GB allocated capacity, approved monthly rate, cleanup owner and required recovery.
+The size check is one page of at most 32 entries for the archive stage, not a
+recursive dataset scan. Unknown/over-limit size is reported for follow-up, never
+represented as verified bounded storage. RunPod bills allocated capacity: at the
+illustrative $0.07/GB-month, this volume is $0.21/month regardless of used bytes.
+There is no scheduler, expiry service or claim of a fixed lifetime-spend cap.
+
+A verified archive completion permits owned-volume deletion; a metadata failure
+report does not. Explicit deletion of unpublished source requires separate operator
+authorization. Any journaled R2 multipart upload must first be aborted and verified
+absent using fresh exact-scoped authority. If multipart creation succeeded but its
+response was lost before saving the upload ID, the current shared API cannot
+reconcile it: RunPod reports unresolved state and blocks a fresh upload/source
+deletion pending separately authorized exact-key orphan reconciliation. Shared
+core was not independently modified to add enumeration privileges.
+
+Owned-volume deletion audits GPU absence, aborts up to 100 incomplete source-volume
+uploads, deletes only that volume, and verifies its absence. Default recovery
+stops/audits compute and retains unpublished data; it never allocates resources:
 
 ```sh
 python -m coppertop.runpod_cloud --recover .local/runpod-attempt/state.json \
   --approved-plan-sha256 ORIGINAL_PLAN_HASH --output .local/unused
 ```
+
+A separately authorized `--resume-publication` or `--delete-unpublished` selects
+one explicit operation. Cleanup-only recovery requires no R2 publication credentials.
+Neither command is authorized by this document.
 
 Lost allocation responses are reconciled by exact unique owned name/specification
 only after that name was found absent. Multiple matches fail closed. Startup or
@@ -234,9 +265,10 @@ or a stopped resource alone.
 | --- | --- |
 | New GPU Pods / network volumes | 1 / 1; volume 3,000,000,000 bytes |
 | Container disk | 100 GB; admitted root filesystem ≤70 GiB |
-| Local recording / CPU fetch scratch | ≤2 GiB each; encoded single artifact ≤64 MiB |
+| Local recording / CPU fetch scratch | ≤2 GiB + 96 MiB each, including archive, original files and bounded logs |
 | Worker/server logs | two slots, each ≤64 MiB; inherited POSIX file-size cap |
-| R2 evidence, including inventory and two report slots | ≤1 GiB and ≤6,000 immutable objects |
+| Raw recording / archive / staging | ≤1 GiB / ≤1 GiB + 16 MiB / ≤2 GiB; ≤6,000 CAS files plus 20 sidecars |
+| R2 publication | one archive plus ≤64 KiB completion and bounded failure metadata; 16 MiB parts, concurrency ≤4 |
 | Setup / ready-run / CPU publish | 900 / 1,200 / 900 seconds |
 | Main controller / overall handoff / cleanup / recovery metadata | 3,000 / 3,300 / 180 / 60 seconds |
 | Official worker / server session | 560 / 550 seconds, plus owned shutdown |
@@ -265,10 +297,11 @@ The historical A100 $1.59/h substitutes to $17.69. These are arithmetic examples
 not current capacity or launch proposals. Any new setup/bulk-transfer/registry
 spend is excluded and needs its own exact reservation before execution. Prices
 and transfer reservation must be rechecked; $25 in the example is unapproved.
-After owned-volume deletion, only ≤1 GiB R2 evidence remains: conservatively
-$0.03/month at those rates, indefinitely until separate retention action. Failed
-R2 single PUTs have no multipart uploads; committed partial objects remain within
-the same fresh prefix and bound, referenced by the local attempt journal.
+After owned-volume deletion, the bounded R2 archive/receipt remains: conservatively
+$0.03/month at those rates until separately authorized retention action. Interrupted
+R2 multipart uploads remain journaled for explicit resume/abort. Retained RunPod
+staging adds allocated-volume charges ($0.21/month at the illustrative rate),
+accepted explicitly outside the initial one-month reservation.
 
 ## Remaining live gates and smallest blocked step
 

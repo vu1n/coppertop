@@ -19,10 +19,13 @@ from .chords import canonical, digest
 from .official_recording_worker import plan as worker_plan
 from .reload_launch import hard_deadline, read_json
 from .runpod_staging import DATACENTERS
+from .record_archive import MAX_ARCHIVE_BYTES, archive_ref
+from .archive_retention import validate_retention
 
 LIMITS = {'setup_seconds':900,'run_seconds':1200,'publish_seconds':900,
           'cleanup_seconds':180,'controller_seconds':3000,'handoff_seconds':3300,'worker_seconds':560,
-          'scratch_bytes':2*1024**3,'retained_bytes':1024**3,'objects':6000,
+          'scratch_bytes':2*1024**3+96*1024**2,'retained_bytes':2*1024**3,'raw_bytes':1024**3,
+          'archive_bytes':MAX_ARCHIVE_BYTES,'objects':6000,'multipart_part_bytes':16*1024**2,'multipart_concurrency':4,
           'single_object_bytes':64*1024**2,'network_volume_gb':3,
           'container_disk_gb':100,'retries':0}
 
@@ -66,7 +69,7 @@ def cost_bound(prices):
 def prepare(config):
     """Bind exact OCI image, real CPU validation receipt, prices and code to approval."""
     if set(config) != {'run_id','image','runtime_export_sha256','cpu_admission_sha256',
-                        'datacenter','gpu','prices','additional_cap_usd','r2_bucket'}:
+                        'datacenter','gpu','prices','additional_cap_usd','r2_bucket','retention'}:
         raise ValueError('Exact RunPod configuration fields required')
     if (not re.fullmatch(r'mechanism-[0-9a-f]{16}',config['run_id'])
         or not re.fullmatch(r'[A-Za-z0-9./_-]+@sha256:[0-9a-f]{64}',config['image'])
@@ -95,7 +98,9 @@ def prepare(config):
           'runtime_sha256':{name:digest((root/name).read_bytes()) for name in files},
           'volume_name':'coppertop-'+config['run_id']+'-evidence',
           'pod_name':'coppertop-'+config['run_id'],
-          'r2_prefix':'chords/runpod/'+config['run_id'], 'cost_bound_usd':bound,
+          'r2_prefix':'chords/mechanism/'+config['run_id'], 'cost_bound_usd':bound,
+          'archive_retention':validate_retention(config['retention']) if config['retention'] is not None else None,
+          'retention_enforcement':'explicit ongoing storage acceptance; named owner; no automatic expiry service',
           'paid_authorized':False,'setup_build_and_bulk_transfer_included':False,
           'full_publication_live_verified':False}
     return {'plan':plan,'plan_sha256':digest(canonical(plan))}
@@ -167,7 +172,7 @@ def _resource_matches(kind,value,prepared,volume_id=None):
             and (value.get('networkVolumeId') or value.get('networkVolume',{}).get('id'))==volume_id)
 
 
-def cleanup(api,evidence,state,prepared,path):
+def cleanup(api,evidence,state,prepared,path,*,delete_unpublished=False):
     """Terminate, verify absent, abort uploads, delete exact volume, verify absent.
 
     A failed cleanup remains a charged hold. Never delete a volume while an owned
@@ -207,6 +212,25 @@ def cleanup(api,evidence,state,prepared,path):
                 current=api.request('GET','networkvolumes/'+volume)
                 if current is not None:
                     if not _resource_matches('networkvolumes',current,prepared): raise ValueError('Volume ownership changed')
+                    source_possible=bool(state.get('pod_creation_attempted') or state.get('pod_id'))
+                    if source_possible and not state.get('publication_verified'):
+                        policy=validate_retention(prepared['plan'].get('archive_retention'))
+                        if not delete_unpublished or (state.get('r2_upload_recovery_required') and not state.get('r2_upload_abort_verified')):
+                            result.update(stage_retained=True,volume_id=volume,allocated_gb=3,
+                                max_stage_bytes=policy['max_bytes'],cleanup_owner=policy['cleanup_owner'],
+                                ongoing_storage_charges_accepted=True,release_condition=policy['release_condition'],
+                                rate_usd_per_allocated_gb_month=prepared['plan']['config']['prices']['volume_gb_month_usd'],
+                                monthly_allocated_volume_usd=str(amount(prepared['plan']['config']['prices']['volume_gb_month_usd'])*3),
+                                required_action='explicitly resume/verify publication, or approve deletion of unpublished source',
+                                automatic_expiry_enforced=False,r2_upload_recovery_required=bool(state.get('r2_upload_recovery_required')),
+                                r2_upload_state_unresolved=bool(state.get('r2_upload_state_unresolved')))
+                            try:
+                                measurement=evidence(volume).stage_size(prepared)
+                                if not isinstance(measurement,dict) or len(canonical(measurement))>1024:raise ValueError('Bounded size metadata required')
+                                result['stage_size']=measurement
+                            except Exception as error:result['stage_size']={'unavailable':type(error).__name__}
+                            state['cleanup']=result;save(path,state);save(Path(path).parent/'retention.json',result);return result
+                        result['unpublished_deletion_explicitly_permitted']=True
                     # Include any upload that was interrupted before its ID was journaled.
                     try:
                         with hard_deadline(100): evidence(volume).abort_incomplete()
@@ -225,9 +249,19 @@ def cleanup(api,evidence,state,prepared,path):
     return result
 
 
+def accept_publication(state,publication,receipt):
+    from .streams import ObjectRef
+    if (not isinstance(publication,dict) or publication.get('archive_verified') is not True
+        or publication.get('archive')!=receipt.get('archive')):
+        raise ValueError('Verified archive completion required before source deletion')
+    ObjectRef(publication['report_key'],0)
+    state.update(report_key=publication['report_key'],archive_publication=publication,publication_verified=True)
+
+
 def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_receipt,now=None):
     """One new Pod/volume only. No retries, auto repair, or fallback GPU/provider."""
     p=prepared['plan']; c=p['config']
+    policy=validate_retention(p.get('archive_retention'))
     if (digest(canonical(p))!=approved_sha256 or prepared['plan_sha256']!=approved_sha256
         or prepare(c)!=prepared or digest(canonical(cpu_receipt))!=c['cpu_admission_sha256']
         or cpu_receipt.get('status')!='passed' or cpu_receipt.get('cuda_executed') is not False
@@ -257,7 +291,8 @@ def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_rece
         raise ValueError('Actual native CPU inventory pins differ')
     directory=Path(directory); directory.mkdir(parents=True,exist_ok=True)
     journal=directory/'state.json'
-    state={'prepared':prepared,'pending':None,'consumed':True,'status':'running','holds_released':False}
+    state={'prepared':prepared,'pending':None,'consumed':True,'status':'running','holds_released':False,
+           'publication_verified':False}
     with journal.open('xb') as target:
         target.write(canonical(state));target.flush();os.fsync(target.fileno())
     began=time.monotonic()
@@ -277,14 +312,16 @@ def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_rece
                 state['volume_id']=identifier(value['id']);state['pending']=None;save(journal,state)
                 transport=evidence(state['volume_id'])
                 transport.stage_plan(prepared)
-                state['pending']='pods';save(journal,state)
+                state['pending']='pods';state['pod_creation_attempted']=True;save(journal,state)
                 pod=api.request('POST','pods',pod_payload(prepared,state['volume_id']))
                 state['pod_id']=identifier(pod['id']);state['pending']=None;save(journal,state)
                 if amount(str(pod['costPerHr']))>amount(c['prices']['gpu_hour_usd']):
                     raise ValueError('Allocated Pod exceeds quoted GPU price')
             with hard_deadline(LIMITS['run_seconds']):
                 receipt=transport.wait_receipt(prepared,state['pod_id'],LIMITS['run_seconds'])
-                state['receipt']=receipt;save(journal,state)
+                if receipt.get('durable_archive_verified') is not True:raise ValueError('Verified archive stage required before GPU handoff')
+                archive_ref({'schema_version':1,'format':'coppertop-episode-tar','archive':receipt['archive']})
+                state['receipt']=receipt;state['runtime_status']=receipt['status'];save(journal,state)
             # Stop GPU billing before any CPU evidence fetch/publication.
             current=api.request('GET','pods/'+state['pod_id'])
             if current is not None:
@@ -295,7 +332,8 @@ def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_rece
             state['pod_absent']=True;save(journal,state)
             with hard_deadline(LIMITS['publish_seconds']):
                 state['publication_started']=True;save(journal,state)
-                state['report_key']=transport.publish(prepared,receipt,directory/'fetch',publisher)
+                publication=transport.publish(prepared,receipt,directory/'fetch',publisher)
+                accept_publication(state,publication,receipt)
                 state['status']='passed' if receipt['status']=='passed' else 'failed'
                 save(journal,state)
     except BaseException as error:
@@ -317,9 +355,17 @@ def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_rece
                 with hard_deadline(remaining):
                     transport=evidence(state['volume_id'])
                     receipt=transport.recovery_receipt(prepared,state['pod_id'])
-                    state['report_key']=transport.publish(prepared,receipt,directory/'fetch',publisher)
+                    publication=transport.publish(prepared,receipt,directory/'fetch',publisher)
+                    accept_publication(state,publication,receipt)
+                    state['runtime_status']=receipt['status']
                     state['evidence_recovered']=True;save(journal,state)
             except BaseException as error: state['recovery_error']=type(error).__name__;save(journal,state)
+        upload_journal=directory/'fetch/upload-state.json'
+        if (upload_journal.is_file() or (directory/'fetch/r2-attempt.json').is_file()) and not state.get('publication_verified'):
+            state['r2_upload_recovery_required']=True
+            state['r2_upload_state_unresolved']=not upload_journal.is_file()
+            state['r2_upload_journal']=str(upload_journal)
+            save(journal,state)
         try: cleanup(api,evidence,state,prepared,journal)
         except BaseException as error:
             state['cleanup']={'error_type':type(error).__name__};save(journal,state)
@@ -338,8 +384,9 @@ def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_rece
     marker=directory/'fetch/fetch-complete.json'
     if marker.is_file():
         state['local_evidence']=dict(read_json(marker,1024),directory=str(directory/'fetch'))
-    state['runtime_status']=state['status']
-    if state['cleanup'].get('pod_absent') is not True or state['cleanup'].get('volume_absent') is not True:
+    state.setdefault('runtime_status','unknown')
+    state['publication_status']='verified' if state.get('publication_verified') else 'unverified'
+    if state['cleanup'].get('pod_absent') is not True or (state['cleanup'].get('volume_absent') is not True and not state['cleanup'].get('stage_retained')):
         state['status']='failed';state['cleanup_incomplete']=True
     state['completed']=True;save(journal,state)
     return state
@@ -351,9 +398,13 @@ def main():
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--recover',type=Path)
+    parser.add_argument('--resume-publication',action='store_true')
+    parser.add_argument('--delete-unpublished',action='store_true')
     parser.add_argument('--approved-plan-sha256')
     parser.add_argument('--cpu-receipt',type=Path)
     args=parser.parse_args()
+    if (args.resume_publication or args.delete_unpublished) and not args.recover:parser.error('Explicit recovery journal required')
+    if args.resume_publication and args.delete_unpublished:parser.error('Resume and destructive cleanup are separate approvals')
     if not args.execute and not args.recover:
         if not args.config: parser.error('--config required')
         save(args.output,prepare(read_json(args.config)));return
@@ -361,17 +412,60 @@ def main():
         if not args.config or not args.cpu_receipt: parser.error('--config and --cpu-receipt required')
         prepared=prepare(read_json(args.config))
         if prepared['plan']['full_publication_live_verified'] is not True:
-            parser.error('Full publication is blocked pending the shared A100 publisher diagnosis and a newly validated plan')
+            parser.error('Full publication is blocked pending live archive validation and a newly approved plan')
+    if args.recover:
+        state=read_json(args.recover,1024**2);prepared=state['prepared']
+        if digest(canonical(prepared['plan']))!=args.approved_plan_sha256:parser.error('Exact recovery approval required')
+        validate_retention(prepared['plan'].get('archive_retention'))
     def terminate(signum,frame): raise KeyboardInterrupt('Controller termination requested')
     signal.signal(signal.SIGTERM,terminate)
     # Only execution/recovery reads explicitly supplied credentials. No .env parsing,
     # credential creation, external messaging, or credential delivery to the Pod.
     from .runpod_evidence import make_transports
-    api,evidence,publisher=make_transports()
+    api,evidence,publisher=make_transports(publication=not args.recover)
     if args.recover:
-        state=read_json(args.recover,1024**2);prepared=state['prepared']
-        if digest(canonical(prepared['plan']))!=args.approved_plan_sha256: parser.error('Exact recovery approval required')
-        cleanup(api,evidence,state,prepared,args.recover);return
+        cleanup(api,evidence,state,prepared,args.recover)
+        if state.get('publication_verified'):
+            if state['cleanup'].get('pod_absent') is not True or state['cleanup'].get('volume_absent') is not True:raise SystemExit(1)
+            return
+        if not state.get('publication_verified') and state.get('publication_started'):
+            # A crashed controller may not have saved its final upload disposition.
+            local=args.recover.parent/'fetch/upload-state.json'
+            if local.is_file():known=read_json(local,65536)
+            else:
+                known_upload=evidence(state['volume_id']).upload_state(prepared)
+                known=known_upload.to_dict() if known_upload is not None else None
+            state['r2_upload_recovery_required']=True
+            state['r2_upload_state_unresolved']=known is None
+            save(args.recover,state)
+            if known is None and (args.resume_publication or args.delete_unpublished):
+                parser.error('Multipart state unresolved; reconcile any orphan under separate exact-key authorization before upload or source deletion')
+        if args.resume_publication or (args.delete_unpublished and state.get('r2_upload_recovery_required')):
+            if state['cleanup'].get('pod_absent') is not True:parser.error('Verified GPU absence required before resume')
+            _,_,publisher=make_transports(publication=True)
+            c=prepared['plan']['config'];now=datetime.now(timezone.utc)
+            expires=getattr(publisher,'session_expires_utc',None)
+            if (publisher.bucket!=c['r2_bucket'] or publisher.prefix!=prepared['plan']['r2_prefix']
+                or not isinstance(expires,datetime) or expires.tzinfo is None
+                or not 3540<=(expires-now).total_seconds()<=3600):parser.error('Fresh exact archive session required for explicit resume')
+        if args.resume_publication:
+            with hard_deadline(LIMITS['publish_seconds']):
+                transport=evidence(state['volume_id']);receipt=transport.recovery_receipt(prepared,state['pod_id'])
+                result=transport.publish(prepared,receipt,args.recover.parent/'fetch',publisher,resume=True)
+                accept_publication(state,result,receipt);state['r2_upload_recovery_required']=False;save(args.recover,state)
+            cleanup(api,evidence,state,prepared,args.recover)
+        elif args.delete_unpublished:
+            if state.get('r2_upload_recovery_required'):
+                from .multipart import UploadState
+                local=args.recover.parent/'fetch/upload-state.json'
+                upload=UploadState.from_dict(read_json(local,65536)) if local.is_file() else evidence(state['volume_id']).upload_state(prepared)
+                if upload is None:parser.error('Owned multipart journal unavailable; retain stage for recovery')
+                from .runpod_evidence import abort_publication
+                with hard_deadline(60):abort_publication(publisher,upload)
+                state['r2_upload_abort_verified']=True;save(args.recover,state)
+            cleanup(api,evidence,state,prepared,args.recover,delete_unpublished=True)
+        if state['cleanup'].get('pod_absent') is not True or state['cleanup'].get('volume_error'):raise SystemExit(1)
+        return
     state=execute(prepared,args.approved_plan_sha256,args.output,
         api=api,evidence=evidence,publisher=publisher,cpu_receipt=read_json(args.cpu_receipt))
     if state['status']!='passed' or state.get('cleanup',{}).get('volume_absent') is not True:

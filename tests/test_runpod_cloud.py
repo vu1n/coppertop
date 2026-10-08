@@ -17,6 +17,9 @@ from coppertop import runpod_cloud as cloud, runpod_worker as worker, runpod_run
 from coppertop.runpod_evidence import Evidence
 from coppertop.runpod_staging import RunpodVolumeConfig
 from coppertop.reload_launch import read_json
+from coppertop.record_archive import seal_directory,read_completion
+from coppertop.s3 import S3Store
+from test_record_archive import DiskS3
 
 NOW=datetime(2026,10,8,18,0,tzinfo=timezone.utc)
 
@@ -27,6 +30,7 @@ def inputs():
     config={'run_id':'mechanism-1234567890abcdef','image':'example/coppertop@sha256:'+'a'*64,
             'runtime_export_sha256':'b'*64,'cpu_admission_sha256':'c'*64,
             'datacenter':'US-WA-1','gpu':'NVIDIA RTX 6000 Ada Generation','r2_bucket':'coppertop',
+            'retention':{'max_bytes':2*1024**3,'accept_ongoing_storage_charges':True,'cleanup_owner':'test operator','release_condition':'verified_publication_or_explicit_recovery_or_deletion'},
             'additional_cap_usd':'25', 'prices':{'checked_utc':NOW.isoformat(),'gpu_hour_usd':'0.84',
                 'container_gb_month_usd':'0.1','volume_gb_month_usd':'0.07','r2_gb_month_usd':'0.015',
                 'r2_request_reservation_usd':'4.86','transfer_reservation_usd':'1'}}
@@ -66,8 +70,8 @@ class API:
 class ControllerTests(unittest.TestCase):
     def fixture(self,directory):
         prepared,cpu=inputs();api=API()
-        evidence=Mock();evidence.wait_receipt.return_value={'status':'passed','pod_id':'pod-1'}
-        evidence.publish.return_value='d'*64
+        evidence=Mock();evidence.wait_receipt.return_value={'status':'passed','pod_id':'pod-1','archive':{'sha256':'f'*64,'size':10240},'durable_archive_verified':True}
+        evidence.publish.return_value={'report_key':'d'*64,'archive':evidence.wait_receipt.return_value['archive'],'archive_verified':True}
         evidence.recovery_receipt.side_effect=FileNotFoundError('No sealed record')
         factory=Mock(return_value=evidence)
         publisher=LocalStore(Path(directory)/'r2');publisher.bucket='coppertop';publisher.prefix=prepared['plan']['r2_prefix']
@@ -83,7 +87,7 @@ class ControllerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             fixture=self.fixture(root);p,cpu,api,e,factory,publisher=fixture
             def publish(*args):
-                self.assertFalse(api.values['pods']);self.assertTrue(api.values['networkvolumes']);return 'd'*64
+                self.assertFalse(api.values['pods']);self.assertTrue(api.values['networkvolumes']);return e.publish.return_value
             e.publish.side_effect=publish
             result=self.execute(root,fixture)
             self.assertEqual(result['status'],'passed');self.assertEqual(result['cleanup'],{'pod_absent':True,'volume_absent':True})
@@ -101,8 +105,9 @@ class ControllerTests(unittest.TestCase):
             with self.subTest(phase=phase),tempfile.TemporaryDirectory() as root:
                 fixture=self.fixture(root);fixture[2].lose=phase
                 result=self.execute(root,fixture)
-                self.assertEqual(result['status'],'failed');self.assertTrue(result['cleanup']['volume_absent'])
-                self.assertFalse(fixture[2].values['pods']);self.assertFalse(fixture[2].values['networkvolumes'])
+                self.assertEqual(result['status'],'failed');self.assertFalse(fixture[2].values['pods'])
+                self.assertEqual(bool(fixture[2].values['networkvolumes']),phase=='pods')
+                self.assertTrue(result['cleanup'].get('stage_retained') if phase=='pods' else result['cleanup'].get('volume_absent'))
                 self.assertIn('recovery_report_key',result)
 
     def test_cleanup_failure_preserves_volume_and_can_recover(self):
@@ -113,25 +118,32 @@ class ControllerTests(unittest.TestCase):
             self.assertTrue(fixture[2].values['networkvolumes']);fixture[3].publish.assert_not_called()
             fixture[2].refuse_delete=False
             outcome=cloud.cleanup(fixture[2],fixture[4],result,fixture[0],Path(root)/'controller/state.json')
+            self.assertTrue(outcome['stage_retained'])
+            outcome=cloud.cleanup(fixture[2],fixture[4],result,fixture[0],Path(root)/'controller/state.json',delete_unpublished=True)
             self.assertTrue(outcome['volume_absent'])
             self.assertEqual(sum(call[:2]==('POST','pods') for call in fixture[2].calls),1)
 
-    def test_publication_and_upload_abort_failure_still_delete_volume(self):
+    def test_publication_failure_retains_source_and_only_explicit_deletion_aborts(self):
         with tempfile.TemporaryDirectory() as root:
             fixture=self.fixture(root)
             fixture[3].publish.side_effect=ValueError('Bad evidence')
             fixture[3].abort_incomplete.side_effect=ConnectionError('Abort unavailable')
             result=self.execute(root,fixture)
-            self.assertEqual(result['status'],'failed');self.assertIn('multipart_error',result['cleanup'])
-            self.assertTrue(result['cleanup']['volume_absent']);self.assertIn('recovery_report_key',result)
+            self.assertEqual(result['status'],'failed');self.assertTrue(result['cleanup']['stage_retained'])
+            self.assertEqual(result['runtime_status'],'passed');self.assertFalse(result['publication_verified'])
+            self.assertEqual(result['cleanup']['monthly_allocated_volume_usd'],'0.21')
+            self.assertTrue(result['cleanup']['ongoing_storage_charges_accepted'])
+            fixture[3].abort_incomplete.assert_not_called();self.assertIn('recovery_report_key',result)
+            cleanup=cloud.cleanup(fixture[2],fixture[4],result,fixture[0],Path(root)/'controller/state.json',delete_unpublished=True)
+            self.assertIn('multipart_error',cleanup);self.assertTrue(cleanup['volume_absent'])
 
     def test_timeout_recovers_sealed_evidence_before_volume_delete(self):
         with tempfile.TemporaryDirectory() as root:
             fixture=self.fixture(root);p,cpu,api,e,factory,publisher=fixture
             e.wait_receipt.side_effect=TimeoutError('Ready marker unavailable')
-            e.recovery_receipt.side_effect=None;e.recovery_receipt.return_value={'status':'failed'}
+            e.recovery_receipt.side_effect=None;e.recovery_receipt.return_value=dict(e.wait_receipt.return_value,status='failed')
             def publish(*args):
-                self.assertFalse(api.values['pods']);self.assertTrue(api.values['networkvolumes']);return 'd'*64
+                self.assertFalse(api.values['pods']);self.assertTrue(api.values['networkvolumes']);return e.publish.return_value
             e.publish.side_effect=publish
             result=self.execute(root,fixture)
             self.assertEqual(result['status'],'failed');self.assertTrue(result['evidence_recovered'])
@@ -195,6 +207,32 @@ import coppertop.runpod_cloud, coppertop.runpod_runtime
                 with self.assertRaises(SystemExit) as error:cloud.main()
                 self.assertEqual(error.exception.code,2)
 
+    def test_missing_retention_blocks_allocation_and_metadata_is_not_archive_completion(self):
+        with tempfile.TemporaryDirectory() as root:
+            p,cpu,api,e,factory,publisher=self.fixture(root)
+            p['plan']['archive_retention']=None;p['plan_sha256']=digest(canonical(p['plan']))
+            with self.assertRaises(ValueError):cloud.execute(p,p['plan_sha256'],Path(root)/'controller',api=api,evidence=factory,publisher=publisher,cpu_receipt=cpu,now=NOW)
+            self.assertFalse(api.calls)
+        with tempfile.TemporaryDirectory() as root:
+            fixture=self.fixture(root);fixture[3].publish.return_value={'report_key':'d'*64}
+            state=self.execute(root,fixture)
+            self.assertFalse(state['publication_verified']);self.assertTrue(state['cleanup']['stage_retained'])
+            self.assertIn('recovery_report_key',state)
+            self.assertFalse(any(method=='DELETE' and resource.startswith('networkvolumes/') for method,resource,_ in fixture[2].calls))
+
+    def test_lost_multipart_creation_response_reports_unresolved_upload_and_retains_source(self):
+        with tempfile.TemporaryDirectory() as root:
+            fixture=self.fixture(root)
+            def lost(prepared,receipt,directory,publisher):
+                cloud.save(Path(directory)/'r2-attempt.json',{'publication_verified':False})
+                raise ConnectionError('creation response lost before upload ID was saved')
+            fixture[3].publish.side_effect=lost
+            state=self.execute(root,fixture)
+            self.assertTrue(state['r2_upload_recovery_required']);self.assertTrue(state['r2_upload_state_unresolved'])
+            self.assertTrue(state['cleanup']['stage_retained']);self.assertFalse(fixture[2].values['pods'])
+            result=cloud.cleanup(fixture[2],fixture[4],state,fixture[0],Path(root)/'controller/state.json',delete_unpublished=True)
+            self.assertTrue(result['stage_retained']);self.assertTrue(fixture[2].values['networkvolumes'])
+
 
 class MemoryS3:
     def __init__(self):
@@ -202,8 +240,13 @@ class MemoryS3:
         self.meta=SimpleNamespace(endpoint_url='https://s3api-us-wa-1.runpod.io/',region_name='US-WA-1',
             config=SimpleNamespace(connect_timeout=10,read_timeout=20,retries={'total_max_attempts':1}))
     def get_object(self,Bucket,Key):
+        from test_storage import S3Error
+        if Key not in self.data:raise S3Error('NoSuchKey')
         raw=self.data[Key];return {'Body':io.BytesIO(raw),'ContentLength':len(raw)}
     def put_object(self,Bucket,Key,Body):self.data[Key]=Body
+    def list_objects_v2(self,Bucket,Prefix,MaxKeys):
+        entries=[{'Key':key,'Size':len(raw)} for key,raw in self.data.items() if key.startswith(Prefix)]
+        return {'Contents':entries[:MaxKeys],'IsTruncated':len(entries)>MaxKeys}
     def list_multipart_uploads(self,**kwargs):return {'Uploads':[]}
     def abort_multipart_upload(self,**kwargs):self.aborted.append(kwargs)
 
@@ -214,29 +257,37 @@ class EvidenceTests(unittest.TestCase):
         base=transport.base(p)
         data=b'raw native observation';key=digest(data);objects={key:len(data)}
         inv=canonical(objects);inventory=digest(inv)
+        with tempfile.TemporaryDirectory() as temp:
+            source=Path(temp)/'original';local=LocalStore(source/'store')
+            local.put(data);local.put(inv)
+            descriptor=seal_directory(source,Path(temp)/'episode.tar')
+            s3.data[base+'/archive/episode.tar']=(Path(temp)/'episode.tar').read_bytes()
         record={'provider':'RunPod','run_id':p['plan']['config']['run_id'],'pod_id':'pod-1',
             'plan_sha256':p['plan_sha256'],'status':'failed','inventory':inventory,
-            'object_count':2,'object_bytes':len(data)+len(inv),'result':{'status':'failed'}}
+            'object_count':2,'object_bytes':len(data)+len(inv),'result':{'status':'failed'},
+            'archive':descriptor,'durable_archive_verified':True}
         s3.data[base+'/record.json']=canonical(record)
-        s3.data[base+'/outputs/store/'+object_path(key)]=data
-        s3.data[base+'/outputs/store/'+object_path(inventory)]=inv
-        receipt={'pod_id':'pod-1','plan_sha256':p['plan_sha256'],'status':'failed','record_sha256':digest(canonical(record))}
+        receipt={'pod_id':'pod-1','plan_sha256':p['plan_sha256'],'status':'failed','record_sha256':digest(canonical(record)),
+            'archive':descriptor['archive'],'durable_archive_verified':True}
         s3.data[base+'/ready.json']=canonical(receipt)
         return p,s3,transport,record,receipt,key
 
     def test_checksum_fetch_and_existing_publisher_readback(self):
         with tempfile.TemporaryDirectory() as root:
-            p,s3,t,record,receipt,key=self.fixture();store=LocalStore(Path(root)/'r2')
+            p,s3,t,record,receipt,key=self.fixture();store=S3Store(DiskS3(Path(root)/'r2'),'coppertop',prefix=p['plan']['r2_prefix'])
             t.stage_plan(p);self.assertEqual(t.wait_receipt(p,'pod-1',1),receipt)
             report=t.publish(p,receipt,Path(root)/'fetch',store)
-            self.assertEqual(store.get(report),canonical(record));self.assertEqual(store.get(key),b'raw native observation')
+            self.assertEqual(read_completion(store,report['report_key'])['record'],record)
+            self.assertEqual(LocalStore(Path(root)/'fetch/outputs/store').get(key),b'raw native observation')
 
     def test_corrupt_object_inventory_and_receipt_rejected(self):
-        for mutation in ('object','inventory','identity','outcome'):
+        for mutation in ('object','descriptor','identity','outcome'):
             with self.subTest(mutation=mutation),tempfile.TemporaryDirectory() as root:
                 p,s3,t,record,receipt,key=self.fixture();store=Mock()
-                if mutation=='object':s3.data[t.base(p)+'/outputs/store/'+object_path(key)]=b'corrupt'
-                if mutation=='inventory':s3.data[t.base(p)+'/outputs/store/'+object_path(record['inventory'])]=b'{}'
+                if mutation=='object':s3.data[t.base(p)+'/archive/episode.tar']=b'corrupt'
+                if mutation=='descriptor':
+                    record['archive']['manifest_sha256']='0'*64
+                    s3.data[t.base(p)+'/record.json']=canonical(record);receipt['record_sha256']=digest(canonical(record))
                 if mutation=='identity':receipt['pod_id']='unknown'
                 if mutation=='outcome':
                     record['status']='passed';receipt['status']='passed'
@@ -252,12 +303,12 @@ class EvidenceTests(unittest.TestCase):
     def test_publication_timeout_keeps_complete_cpu_evidence_and_sealed_record(self):
         with tempfile.TemporaryDirectory() as root:
             p,s3,t,record,receipt,key=self.fixture();directory=Path(root)/'fetch'
-            with patch('coppertop.runpod_evidence.publish_directory',side_effect=TimeoutError('Shared publisher deadline')):
+            with patch('coppertop.runpod_evidence.publish_archive',side_effect=TimeoutError('Shared publisher deadline')):
                 with self.assertRaises(TimeoutError):t.publish(p,receipt,directory,Mock())
             self.assertEqual(read_json(directory/'source-record.json'),record)
             marker=read_json(directory/'fetch-complete.json')
             self.assertTrue(marker['checksums_verified']);self.assertFalse(marker['full_publication_verified'])
-            self.assertEqual(LocalStore(directory/'store').get(key),b'raw native observation')
+            self.assertEqual(LocalStore(directory/'outputs/store').get(key),b'raw native observation')
 
     def test_aggregate_rejects_before_publication(self):
         with tempfile.TemporaryDirectory() as root:
@@ -269,10 +320,61 @@ class EvidenceTests(unittest.TestCase):
             s3.data[t.base(p)+'/outputs/store/'+object_path(record['inventory'])]=raw
             receipt['record_sha256']=digest(canonical(record))
             with self.assertRaisesRegex(ValueError,'aggregate'):t.publish(p,receipt,Path(root)/'fetch',destination)
-            destination.put.assert_not_called();self.assertFalse((Path(root)/'fetch').exists())
+            destination.put.assert_not_called();destination.multipart_file.assert_not_called()
+
+    def test_explicit_resume_reuses_journal_and_publishes_only_archive_and_receipt(self):
+        from coppertop.multipart import UploadInterrupted
+        with tempfile.TemporaryDirectory() as root:
+            p,s3,t,record,receipt,key=self.fixture();client=DiskS3(Path(root)/'r2');client.fail_part=1
+            store=S3Store(client,'coppertop',prefix=p['plan']['r2_prefix']);fetch=Path(root)/'fetch'
+            with self.assertRaises(UploadInterrupted):t.publish(p,receipt,fetch,store)
+            journal=read_json(fetch/'upload-state.json');self.assertEqual(journal['upload_id'],'opaque-session')
+            self.assertEqual(t.upload_state(p).to_dict(),journal)
+            self.assertTrue((fetch/'episode.tar').is_file());self.assertTrue(read_json(fetch/'fetch-complete.json')['checksums_verified'])
+            with self.assertRaisesRegex(ValueError,'Explicit'):t.publish(p,receipt,fetch,store)
+            (fetch/'upload-state.json').unlink() # New CPU process can use durable volume journal.
+            client.fail_part=None;result=t.publish(p,receipt,fetch,store,resume=True)
+            self.assertTrue(result['archive_verified']);self.assertEqual(client.calls.count('create'),1)
+            self.assertEqual(read_completion(store,result['report_key'])['record'],record)
+            self.assertFalse(client.object(store.key(key)).exists())
+            self.assertEqual(LocalStore(fetch/'outputs/store').get(key),b'raw native observation')
+
+    def test_retained_size_is_bounded_and_abort_requires_absence_verification(self):
+        from coppertop.runpod_evidence import abort_publication
+        from coppertop.multipart import UploadState
+        from coppertop.streams import ObjectRef
+        from test_storage import S3Error
+        p,s3,t,_,_,_=self.fixture()
+        measured=t.stage_size(p);self.assertTrue(measured['within_size_authorization'])
+        self.assertEqual(measured['size_bytes'],sum(len(raw) for raw in s3.data.values()))
+        s3.list_objects_v2=Mock(return_value={'IsTruncated':True,'Contents':[]})
+        with self.assertRaises(ValueError):t.stage_size(p)
+        store=Mock();store.bucket='coppertop';store.key.return_value='owned/archive'
+        upload=UploadState('coppertop/owned/archive','upload-1',ObjectRef('a'*64,10))
+        store.client.list_parts.side_effect=S3Error('NoSuchUpload');abort_publication(store,upload)
+        store.abort.assert_called_once_with(upload)
+        store.client.list_parts.side_effect=None;store.client.list_parts.return_value={'Parts':[]}
+        with self.assertRaises(ValueError):abort_publication(store,upload)
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_failed_stage_commit_keeps_producer_and_partial_archive_without_ack(self):
+        p,cpu=inputs();c=p['plan']['config']
+        env={'COPPERTOP_PLAN_SHA256':p['plan_sha256'],'COPPERTOP_RUN_ID':c['run_id'],
+             'COPPERTOP_RUNTIME_IMAGE':c['image'],'RUNPOD_POD_ID':'pod-1'}
+        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,env),patch.object(worker,'read_json',side_effect=lambda path,*args:cpu if str(path)=='/opt/runpod-cpu-admission.json' else json.loads(Path(path).read_bytes())):
+            root=Path(temp)
+            def runner(argv,**kwargs):
+                target=Path(argv[argv.index('--output')+1]);target.mkdir()
+                LocalStore(target/'store').put(b'partial native state')
+                (target/'failure.json').write_bytes(canonical({'status':'failed'}))
+                return SimpleNamespace(returncode=1)
+            with patch.object(worker,'commit_stage',side_effect=OSError('commit failed')):
+                with self.assertRaises(OSError):worker.run(p,mount=root/'mount',scratch=root,runner=runner,admit=lambda:cpu)
+            base=root/'mount/coppertop/runs'/c['run_id']
+            self.assertFalse((base/'ready.json').exists());self.assertTrue((base/'archive/episode.tar').is_file())
+            self.assertTrue((root/(c['run_id']+'-episode.tar')).is_file())
+            self.assertTrue((root/(c['run_id']+'-outputs')/'failure.json').is_file())
     def test_contract_keeps_full_checkouts_two_environments_and_no_archives(self):
         spec=runtime.contract()
         self.assertFalse(spec['archive_required']);self.assertEqual(spec['simulator']['pin_count'],129)

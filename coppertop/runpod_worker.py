@@ -1,13 +1,29 @@
 """Credential-free Pod adapter for the existing frozen official recording worker."""
 import os
 from pathlib import Path
-import shutil
 import subprocess
 
 from .chords import LocalStore, canonical, digest
 from .mechanism_cloud import output_inventory
 from .reload_launch import hard_deadline, read_json
 from .runpod_cloud import LIMITS, identifier, prepare, save
+from .record_archive import seal_directory, stage_archive, MAX_ARCHIVE_BYTES
+
+
+def commit_stage(base):
+    """POSIX mounted-volume barrier; external S3 visibility is verified by CPU."""
+    for path in base.rglob('*'):
+        if path.is_file():
+            with path.open('rb') as source:os.fsync(source.fileno())
+    for path in [*sorted((p for p in base.rglob('*') if p.is_dir()),reverse=True),base]:
+        descriptor=os.open(path,os.O_RDONLY)
+        try:os.fsync(descriptor)
+        finally:os.close(descriptor)
+
+
+def child_limits():
+    import resource
+    resource.setrlimit(resource.RLIMIT_FSIZE,(64*1024**2,64*1024**2))
 
 
 def run(prepared,*,mount=Path('/workspace'),scratch=Path('/tmp'),runner=subprocess.run,admit=None):
@@ -47,7 +63,7 @@ def run(prepared,*,mount=Path('/workspace'),scratch=Path('/tmp'),runner=subproce
                 # A whole process group is owned, including the native model server.
                 process=subprocess.Popen(['/work/sim/bin/python','-m','coppertop.official_recording_worker',
                     '--execute-local','--full','--run-id',c['run_id'],'--plan-sha256',p['worker_sha256'],
-                    '--output',str(target)],stdout=log,stderr=log,env=env,start_new_session=True)
+                    '--output',str(target)],stdout=log,stderr=log,env=env,start_new_session=True,preexec_fn=child_limits)
                 try: code=process.wait(timeout=LIMITS['worker_seconds'])
                 finally:
                     from .performance_runtime import stop_owned
@@ -64,33 +80,31 @@ def run(prepared,*,mount=Path('/workspace'),scratch=Path('/tmp'),runner=subproce
         try: record['objects']=output_inventory(target,full=True)
         except Exception as inventory_error:
             record['objects']={};record['artifact_error_type']=type(inventory_error).__name__
-    # Filesystem sealing is not a claim of distributed S3 visibility. The external
-    # CPU fetch verifies record and every object before durable R2 publication.
     objects=record.pop('objects')
     local=LocalStore(target/'store')
     inventory=local.put(canonical(objects))
     size=local.stat(inventory).size
-    # Reserve an inventory and two reports, including readback-failure recovery.
-    if len(objects)+3>6000 or sum(objects.values())+size+2*65536>1024**3:
+    if len(objects)+1>6000 or sum(objects.values())+size>1024**3:
         raise ValueError('Sealed output aggregate exceeds retention bound')
     record.update(inventory=inventory,object_count=len(objects)+int(inventory not in objects),
                   object_bytes=sum(objects.values())+(size if inventory not in objects else 0))
-    if len(canonical(record))>65536:
+    if len(canonical(record))>60*1024:
         record={key:value for key,value in record.items() if key not in ('objects','admission','result')}
         raise ValueError('Sealed metadata exceeds bound')
-    output_inventory(target,full=True)
-    shutil.copytree(target/'store',base/'outputs/store')
+    with (target/'runpod-source-record.json').open('xb') as source_record:
+        source_record.write(canonical(record));source_record.flush();os.fsync(source_record.fileno())
+    # Seal all original files on producer disk, then stage exactly one bundle.
+    # Any copy/commit failure leaves the local source and partial stage intact.
+    descriptor=seal_directory(target,Path(scratch)/(c['run_id']+'-episode.tar'))
     base.mkdir(parents=True,exist_ok=True)
+    staged=stage_archive(Path(scratch)/(c['run_id']+'-episode.tar'),descriptor,base/'archive',
+        run_id=c['run_id'],commit=lambda:commit_stage(base))
+    record.update(archive=staged,durable_archive_verified=True)
+    if len(canonical(record))>60*1024:raise ValueError('Sealed record exceeds completion provenance bound')
     save(base/'record.json',record)
-    for path in base.rglob('*'):
-        if path.is_file():
-            with path.open('rb') as source: os.fsync(source.fileno())
-    for path in [*sorted((p for p in base.rglob('*') if p.is_dir()),reverse=True),base]:
-        descriptor=os.open(path,os.O_RDONLY)
-        try: os.fsync(descriptor)
-        finally: os.close(descriptor)
+    commit_stage(base)
     receipt={key:record[key] for key in ('pod_id','plan_sha256','status')}
-    receipt['record_sha256']=digest(canonical(record))
+    receipt.update(record_sha256=digest(canonical(record)),archive=staged['archive'],durable_archive_verified=True)
     save(base/'ready.json',receipt)
     with (base/'ready.json').open('rb') as source: os.fsync(source.fileno())
     return receipt
@@ -98,8 +112,8 @@ def run(prepared,*,mount=Path('/workspace'),scratch=Path('/tmp'),runner=subproce
 
 def main():
     import resource
-    # Bounds worker/server logs and every generated artifact without a new runner.
-    resource.setrlimit(resource.RLIMIT_FSIZE,(64*1024**2,64*1024**2))
+    # Packaging needs >64MiB; only child artifacts/logs retain the 64MiB limit.
+    resource.setrlimit(resource.RLIMIT_FSIZE,(MAX_ARCHIVE_BYTES,MAX_ARCHIVE_BYTES))
     run_id=os.environ['COPPERTOP_RUN_ID']
     if not __import__('re').fullmatch(r'mechanism-[0-9a-f]{16}',run_id): raise ValueError('Run identity differs')
     prepared=read_json(Path('/workspace/coppertop/runs')/run_id/'plan.json',65536)

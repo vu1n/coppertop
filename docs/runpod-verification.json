@@ -6,11 +6,11 @@
   "support_level": "implemented local lifecycle; live validation blocked",
   "full_suite": {
     "command": ".venv/bin/python -m unittest discover -s tests -v",
-    "tests": 334,
+    "tests": 352,
     "skipped": 0,
     "status": "passed",
-    "seconds": 19.798,
-    "log": "/Users/vuln/Documents/Codex/2026-10-08/task/runpod-inventory-tests.log",
+    "seconds": 33.502,
+    "log": "/Users/vuln/Documents/Codex/2026-10-08/task/runpod-archive-tests.log",
     "installed_modal_sdk": "1.6.1",
     "acquired_source_enabled": true,
     "pinned_official_evaluator_enabled": true,
@@ -18,7 +18,7 @@
     "full_horizon_fixture": "600 controls, 38 queries, 601 observations; fake model and physics; actual pinned evaluator and video encoding"
   },
   "runpod_local_controls": {
-    "tests": 19,
+    "tests": 24,
     "coverage": [
       "approval/code/quote/session gates",
       "single-use ownership journal",
@@ -53,11 +53,11 @@
     "push_or_pr": false
   },
   "remaining_live_gates": [
-    "successful corrected CPU inventory receipt under fresh approval",
-    "exact export/build/registry/transfer footprint and budget approval",
+    "approved synchronous CPU inventory receipt",
+    "exact export/build/registry/transfer footprint and separate budget approval",
     "real Linux portable image build and CPU admission",
-    "parent shared publisher repair and validated full-run publication limits",
-    "fresh exact capacity/rates and independent cleanup reachability",
+    "parent live R2 archive/session validation and lost-create-response reconciliation",
+    "fresh exact capacity/rates, source retention authorization and cleanup reachability",
     "separately approved first RunPod CUDA/EGL/model/full-rollout/publication attempt"
   ],
   "smallest_blocked_step": {
@@ -95,7 +95,8 @@
     "median_put_interval_seconds": 0.808,
     "full_serial_projection_minutes": 33,
     "full_trajectory_reconstructible_from_checked_survivors": false,
-    "repair_owned_by_parent": true
+    "repair_owned_by_parent": true,
+    "shared_archive_core_integrated": true
   },
   "cost_examples_are_not_quotes": {
     "ada_run_only_with_full_first_month_storage_and_transfer_reservations_usd": "16.94",
@@ -106,5 +107,33 @@
     "provider_enforced_dollar_cap": false
   },
   "inventory_and_readonly_regression_tests": 9,
-  "inventory_result": "docs/runpod-inventory-result.json"
+  "inventory_result": "docs/runpod-inventory-result.json",
+  "archive_integration": {
+    "shared_commit": "37dd2a3d195200d82aa025b0ae69134034a68a90",
+    "shared_core_unchanged": true,
+    "producer_local_seal": true,
+    "one_staged_bundle": true,
+    "multipart_part_bytes": 16777216,
+    "concurrency": 4,
+    "full_streamed_hash_and_receipt": true,
+    "local_and_volume_journals": true,
+    "explicit_resume_and_abort": true,
+    "raw_bytes_ceiling": 1073741824,
+    "archive_bytes_ceiling": 1090519040,
+    "scratch_bytes_ceiling": 2248146944,
+    "stage_bytes_ceiling": 2147483648,
+    "ongoing_storage_authorization_required": true,
+    "billing_basis": "3 allocated RunPod GB; approved USD/GB-month rate",
+    "recurring_cleanup_service": false,
+    "core_synthetic_requests": [
+      19,
+      74
+    ],
+    "core_synthetic_peak_python_bytes": [
+      67162315,
+      67186285
+    ],
+    "live_throughput_verified": false,
+    "coordination_issue": "lost multipart-create response without upload ID requires exact-key orphan reconciliation; automatic fresh upload/source deletion blocked"
+  }
 }

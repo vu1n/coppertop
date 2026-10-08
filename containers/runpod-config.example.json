@@ -15,5 +15,6 @@
     "r2_gb_month_usd": "0.015",
     "r2_request_reservation_usd": "4.86",
     "transfer_reservation_usd": "1"
-  }
+  },
+  "retention": null
 }

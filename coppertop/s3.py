@@ -1,10 +1,12 @@
 """R2-compatible streaming adapter. The caller supplies an already authorized S3 client."""
 import hashlib
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Mapping, Protocol, Iterable, Callable
 from urllib.parse import urlsplit
 from .chords import digest, object_path
-from .streams import ObjectRef, CHUNK_BYTES, SMALL_BYTES, checked, read_small, verify
+from .streams import ObjectRef, CHUNK_BYTES, SMALL_BYTES, checked, read_small, verify, file_ref
 from .multipart import UploadState, UploadInterrupted, MIN_PART_BYTES, MAX_PARTS
 
 
@@ -161,26 +163,7 @@ class S3Store:
             state = UploadState(destination, upload['UploadId'], ref, part_size)
         try:
             persist(state.to_dict())
-            remote = {}
-            marker = 0
-            while True:
-                page = self.client.list_parts(Bucket=self.bucket, Key=self.key(ref.sha256),
-                    UploadId=state.upload_id, PartNumberMarker=marker)
-                for part in page.get('Parts', []):
-                    remote[part['PartNumber']] = part
-                if len(remote) > MAX_PARTS:
-                    raise ValueError('Too many remote parts')
-                if not page.get('IsTruncated'):
-                    break
-                next_marker = page['NextPartNumberMarker']
-                # Markers name part numbers; bounding them also bounds request count.
-                if type(next_marker) is not int or not marker < next_marker <= MAX_PARTS:
-                    raise ValueError('Multipart pagination marker outside bounded part range')
-                marker = next_marker
-            for part in state.parts:
-                actual = remote.get(part['number'])
-                if not actual or actual['ETag'] != part['etag'] or actual['Size'] != part['size']:
-                    raise ValueError('Saved multipart receipt missing or changed remotely')
+            self._reconcile_parts(state)
             buffer = bytearray()
             number = 0
             def send(data):
@@ -219,3 +202,116 @@ class S3Store:
         if state.destination != f'{self.bucket}/{self.key(state.ref.sha256)}':
             raise ValueError('Upload state belongs to a different destination')
         self.client.abort_multipart_upload(Bucket=self.bucket, Key=self.key(state.ref.sha256), UploadId=state.upload_id)
+
+    def multipart_file(self, ref, path, *, state=None, persist=lambda value: None,
+                       part_size=16*1024**2, concurrency=4, measured=lambda stage, seconds: None):
+        """Bounded seekable transport, explicit resume, opaque ETags, one GET verification.
+
+        Persist only the contiguous receipt prefix. Parts completed out of order
+        before a crash can safely be replaced on an explicit resume.
+        """
+        if type(concurrency) is not int or not 1 <= concurrency <= 4:
+            raise ValueError('Multipart concurrency must be 1..4')
+        destination = f'{self.bucket}/{self.key(ref.sha256)}'
+        if state is not None:
+            state.validate()
+            if state.ref != ref or state.destination != destination:
+                raise ValueError('Upload state belongs to another destination/object')
+            part_size = state.part_size
+        else:
+            UploadState(destination, 'pending', ref, part_size).validate()
+        if part_size>16*1024**2:
+            raise ValueError('Seekable multipart parts must be at most 16MiB, including resume')
+        before = time.monotonic()
+        if path.is_symlink() or path.stat().st_size != ref.size or file_ref(path) != ref or not ref.size:
+            raise ValueError('Seekable immutable source differs')
+        measured('source_check', time.monotonic()-before)
+        options = dict(Bucket=self.bucket, Key=self.key(ref.sha256))
+        try:
+            existing = self.stat(ref.sha256)
+        except FileNotFoundError:
+            existing = None
+        if existing is not None:
+            if existing != ref:
+                raise ValueError('Existing archive size differs')
+            self._verify_known(ref, measured)
+            return ref
+        if state is None:
+            state = UploadState(destination, self.client.create_multipart_upload(**options)['UploadId'], ref, part_size)
+        try:
+            persist(state.to_dict())
+            self._reconcile_parts(state)
+            count = (ref.size+part_size-1)//part_size
+            first_upload = time.monotonic()
+            def send(number):
+                size = min(part_size, ref.size-(number-1)*part_size)
+                with path.open('rb') as source:
+                    source.seek((number-1)*part_size)
+                    data = source.read(size)
+                if len(data) != size:
+                    raise ValueError('Source truncated during multipart upload')
+                sha = hashlib.sha256(data).hexdigest()
+                if number <= len(state.parts):
+                    saved = state.parts[number-1]
+                    if saved['sha256'] != sha:
+                        raise ValueError('Resumed source part differs')
+                    return saved
+                result = self.client.upload_part(**options, UploadId=state.upload_id, PartNumber=number, Body=data)
+                etag = result.get('ETag')
+                if not isinstance(etag, str) or not etag:
+                    raise ValueError('Missing opaque multipart ETag')
+                return dict(number=number, etag=etag, size=size, sha256=sha)
+            measured('first_upload', time.monotonic()-before)
+            with ThreadPoolExecutor(max_workers=concurrency) as pool:
+                # Batches bound resident payloads and in-flight requests. A failed
+                # batch is drained before returning resumable state to the caller.
+                for start in range(1, count+1, concurrency):
+                    futures = [pool.submit(send, number) for number in range(start, min(count+1,start+concurrency))]
+                    for future in futures:
+                        part = future.result()
+                        if part['number'] > len(state.parts):
+                            state.parts.append(part)
+                            persist(state.to_dict())
+            if file_ref(path) != ref:
+                raise ValueError('Source changed during multipart upload')
+            self.client.complete_multipart_upload(**options, UploadId=state.upload_id,
+                MultipartUpload={'Parts': [{'PartNumber': p['number'], 'ETag': p['etag']} for p in state.parts]})
+            measured('upload', time.monotonic()-first_upload)
+            self._verify_known(ref, measured)
+            return ref
+        except Exception as error:
+            raise UploadInterrupted(state) from error
+
+    def _verify_known(self, ref, measured):
+        before = time.monotonic()
+        response = self.client.get_object(Bucket=self.bucket, Key=self.key(ref.sha256))
+        body = response['Body']
+        try:
+            if response['ContentLength'] != ref.size:
+                raise ValueError('Archive readback length differs')
+            for _ in checked(iter(lambda: body.read(CHUNK_BYTES), b''), ref):
+                pass
+        finally:
+            body.close()
+        measured('readback', time.monotonic()-before)
+
+    def _reconcile_parts(self, state):
+        remote, marker = {}, 0
+        while True:
+            page = self.client.list_parts(Bucket=self.bucket, Key=self.key(state.ref.sha256),
+                UploadId=state.upload_id, PartNumberMarker=marker)
+            for part in page.get('Parts', []):
+                number = part['PartNumber']
+                if type(number) is not int or not 1 <= number <= MAX_PARTS or number in remote:
+                    raise ValueError('Invalid remote multipart number')
+                remote[number] = part
+            if not page.get('IsTruncated'):
+                break
+            following = page['NextPartNumberMarker']
+            if type(following) is not int or not marker < following <= MAX_PARTS:
+                raise ValueError('Multipart pagination marker outside bounded part range')
+            marker = following
+        for part in state.parts:
+            actual = remote.get(part['number'])
+            if not actual or actual['ETag'] != part['etag'] or actual['Size'] != part['size']:
+                raise ValueError('Saved multipart receipt missing or changed remotely')
