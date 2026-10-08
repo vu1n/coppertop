@@ -47,6 +47,38 @@ def fixture():
 
 
 class ReloadLauncherTests(unittest.TestCase):
+    def test_hourly_billing_splits_at_seven_days_without_releasing_holds(self):
+        from datetime import date,datetime,timezone
+        for day,expected in ((7,1),(8,2),(22,4)):
+            with self.subTest(day=day),tempfile.TemporaryDirectory() as root:
+                _,ledger=fixture();ledger['apps']['ap-old']['known_reported_usd']='0'
+                ranges=[]
+                def fetch(args,runner):
+                    begin=date.fromisoformat(args[args.index('--start')+1])
+                    end=date.fromisoformat(args[args.index('--end')+1])
+                    ranges.append((begin,end))
+                    self.assertLessEqual((end-begin).days,7)
+                    return [{'object_id':'ap-old','description':'coppertop-old','environment':'main',
+                        'interval_start':begin.isoformat()+'T00:00:00Z','cost':'0.1'}]
+                with patch.object(module,'cli_json',side_effect=fetch):
+                    result=module.refresh_billing(ledger,Path(root),now=datetime(2026,10,day,tzinfo=timezone.utc))
+                self.assertEqual(len(ranges),expected)
+                self.assertEqual(ranges[0][0],date(2026,10,1))
+                self.assertEqual(ranges[-1][1],date(2026,10,day+1))
+                self.assertTrue(all(left[1]==right[0] for left,right in zip(ranges,ranges[1:])))
+                self.assertEqual(result['apps']['ap-old']['known_reported_usd'],str(module.Decimal('0.1')*expected))
+                self.assertEqual(result['apps']['ap-old']['reservation_usd'],'21')
+                self.assertEqual(result['apps']['ap-old']['state'],'unsettled_bounded')
+
+    def test_failed_billing_chunk_writes_no_partial_ledger(self):
+        from datetime import datetime,timezone
+        _,ledger=fixture()
+        with tempfile.TemporaryDirectory() as root,patch.object(module,'cli_json',side_effect=[[],RuntimeError('provider failure')]):
+            with self.assertRaises(RuntimeError):
+                module.refresh_billing(ledger,Path(root),now=datetime(2026,10,8,tzinfo=timezone.utc))
+            self.assertFalse((Path(root)/'ledger.json').exists())
+            self.assertFalse((Path(root)/'billing.json').exists())
+
     def test_pinned_bucket_does_not_require_an_extra_local_assignment(self):
         account = 'a' * 32
         with tempfile.TemporaryDirectory() as directory:
