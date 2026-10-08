@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+# Build on a separately approved Linux CPU worker, with network disabled.
+# runtime/ is an approved complete export, not overlays or the deleted asset ZIPs.
+FROM pytorch/pytorch@sha256:417bd75df6365104c283ea4c1651fb3530d9eb5a4c2fafa51943cff2a94e6385
+WORKDIR /app
+COPY coppertop /app/coppertop
+COPY tools /app/tools
+COPY containers /app/containers
+COPY requirements-gpu-smoke.lock requirements-simulator.lock requirements-r2.txt /app/
+COPY runtime-manifest.json /tmp/runtime-manifest.json
+# All required GL/EGL/GLVND, Mesa, FFmpeg, GLib and transitive .debs must be in
+# the checksum manifest. dpkg fails if that offline closure is incomplete.
+# Bind the context: COPY then mv would retain two huge copies in image layers.
+RUN --mount=type=bind,source=runtime,target=/tmp/runtime,readonly \
+    python -m coppertop.runpod_runtime --inventory /tmp/runtime --verify /tmp/runtime-manifest.json --output /tmp/verified.json && \
+    python -c "from pathlib import Path; from coppertop.chords import canonical,digest; import json; Path('/opt/runpod-export.sha256').write_text(digest(canonical(json.loads(Path('/tmp/runtime-manifest.json').read_bytes()))))" && \
+    dpkg -i /tmp/runtime/debs/*.deb && test -z "$(dpkg --audit)" && \
+    rm -rf /opt/conda /usr/local && cp -a /tmp/runtime/opt/conda /opt/conda && cp -a /tmp/runtime/usr/local /usr/local && cp -a /tmp/runtime/work /work
+RUN ln -s /work/model /opt/model && ln -s /work/xiaomi/eval_robocasa365/entry.py /opt/evaluator.py && cp /app/containers/gpu-smoke-pins.json /opt/gpu-smoke-pins.json
+ENV PATH=/opt/conda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin PYTHONPATH=/app PYTHONDONTWRITEBYTECODE=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 TOKENIZERS_PARALLELISM=false MUJOCO_GL=egl NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics HF_HOME=/tmp/coppertop-hf HF_MODULES_CACHE=/tmp/coppertop-hf/modules
+RUN /opt/conda/bin/python -m coppertop.runpod_runtime --cpu-admission --output /opt/runpod-cpu-admission.json
+RUN test "$(du -sx --block-size=1 / | cut -f1)" -le 75161927680
+ENTRYPOINT []
+CMD ["/opt/conda/bin/python", "-m", "coppertop.runpod_worker"]

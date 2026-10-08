@@ -1,0 +1,19 @@
+{
+  "run_id": "mechanism-0000000000000000",
+  "image": "REPLACE/coppertop@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "runtime_export_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "cpu_admission_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "datacenter": "US-WA-1",
+  "gpu": "NVIDIA RTX 6000 Ada Generation",
+  "r2_bucket": "coppertop",
+  "additional_cap_usd": "25",
+  "prices": {
+    "checked_utc": "2026-10-08T10:27:49+00:00",
+    "gpu_hour_usd": "0.84",
+    "container_gb_month_usd": "0.1",
+    "volume_gb_month_usd": "0.07",
+    "r2_gb_month_usd": "0.015",
+    "r2_request_reservation_usd": "4.86",
+    "transfer_reservation_usd": "1"
+  }
+}
