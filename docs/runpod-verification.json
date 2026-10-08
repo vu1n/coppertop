@@ -154,5 +154,19 @@
     "status": "passed",
     "seconds": 1.825,
     "scope": "RunPod lifecycle, staging, evidence/recovery, runtime contract and bounded inventory; local injected transports"
+  },
+  "next_setup_proposal": {
+    "path": "docs/runpod-setup-approval.md",
+    "machine_readable": "docs/runpod-setup-approval.json",
+    "paid_authorized": false,
+    "proposed_cap_usd": "12.00",
+    "subtotal_at_published_rates_and_CPU_quote_ceiling_usd": "9.768056",
+    "registry_required": false,
+    "CPU_quote_verified": false,
+    "catalog_HTTP_status": 403,
+    "console_authenticated": false,
+    "local_bootstrap_controller_work_required": true,
+    "GPU_or_R2_included": false,
+    "current_prebuilt_OCI_path_unchanged": true
   }
 }

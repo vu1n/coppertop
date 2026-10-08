@@ -1,0 +1,24 @@
+{
+  "checked_utc": "2026-10-08T15:42:02.755047+00:00",
+  "kind": "read_only_setup_pricing_checks",
+  "status": "actual_CPU_quote_blocked",
+  "api": {
+    "url": "https://api.runpod.io/v2/catalog/cpus?include=AVAILABILITY&product=POD&vcpuCount=4",
+    "method": "GET",
+    "response_bytes_limit": 262144,
+    "http_status": 403,
+    "error_body_captured": false,
+    "cause_not_assumed": "A403 alone does not distinguish edge filtering, account permission or authorization failure"
+  },
+  "console": {
+    "url": "https://console.runpod.io",
+    "observed_state": "Sign in to Runpod; no authenticated session",
+    "sign_in_performed": false
+  },
+  "resources_created": false,
+  "credential_values_persisted": false,
+  "new_credentials": false,
+  "permissions_changed": false,
+  "proposal_rate_ceiling_usd_per_hour": "0.50",
+  "actual_rate_and_flavor_verified": false
+}

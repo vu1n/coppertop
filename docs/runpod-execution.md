@@ -1,5 +1,11 @@
 # RunPod full official rollout
 
+The subsequent [CPU setup approval bundle](runpod-setup-approval.md) proposes a
+smaller preparation route through existing S3 access and a mounted runtime cache,
+without a registry. It has a conditional USD12 envelope and explicit remaining
+local bootstrap/controller work. The prebuilt-image path documented here remains
+the committed implementation; neither proposal authorizes a paid action.
+
 This branch implements local RunPod controls and an offline portable runtime
 recipe for the frozen Xiaomi/RoboCasa recording. No RunPod runtime, portable
 image, capacity, asset transfer, or live billing has been established by these
