@@ -60,5 +60,22 @@
   "archive_required": false,
   "rootfs_bytes_ceiling": 75161927680,
   "export_manifest_bytes_ceiling": 67108864,
-  "status": "unbuilt; approved CPU inventory output handoff failed; no inventory receipt; complete prefix/source/asset/system-deb export still required"
+  "status": "seed CPU inventory verified; portable image unbuilt; full strong export/system-deb closure and pinned libopengl0 addition required",
+  "seed_inventory": {
+    "path": "containers/runpod-seed-inventory.json",
+    "sha256": "0f56b5acf693a99a219a57ed65df729ea4b104acbe18ec7fd9d8b35a03c4ab5f",
+    "bytes": 49340,
+    "status": "CPU metadata verified; not portable-image admission",
+    "python": "3.11.13",
+    "glibc": "2.35",
+    "distinct_tree_logical_bytes": 47492000203,
+    "native_distribution_count": 132,
+    "simulator_distribution_count": 132,
+    "simulator_lock_matches": 129,
+    "system_package_rows": 352,
+    "required_library_missing": "libOpenGL.so.0",
+    "system_deb_closure_verified": false,
+    "cuda_executed": false,
+    "content_checksums_revalidated": false
+  }
 }

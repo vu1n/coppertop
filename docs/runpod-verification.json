@@ -42,41 +42,38 @@
   "actions": {
     "runpod_resources_created": false,
     "remote_inventory_attempt_performed": true,
-    "remote_inventory_receipt_verified": false,
+    "remote_inventory_receipt_verified": true,
     "bulk_transfers": false,
     "large_downloads": false,
     "new_credentials_created": false,
     "existing_auth_used_readonly": true,
     "raw_credentials_exposed_or_persisted": false,
     "runpod_credits_spent": false,
-    "modal_reported_provisional_usd": "0.00738120",
-    "push_or_pr": false
+    "modal_reported_provisional_usd": "0.00600720",
+    "push_or_pr": false,
+    "modal_billing_final": false,
+    "modal_current_reservation_held_usd": "0.20",
+    "modal_previous_inventory_provisional_usd": "0.00738120"
   },
   "remaining_live_gates": [
-    "approved synchronous CPU inventory receipt",
-    "exact export/build/registry/transfer footprint and separate budget approval",
-    "real Linux portable image build and CPU admission",
-    "parent live R2 archive/session validation and lost-create-response reconciliation",
-    "fresh exact capacity/rates, source retention authorization and cleanup reachability",
-    "separately approved first RunPod CUDA/EGL/model/full-rollout/publication attempt"
+    "Price and separately approve exact export, offline system-deb closure including libopengl0 addition, Linux CPU build, registry retention and transfer",
+    "Strong exported-file/checksum/link manifest and actual rootfs/OCI layer-size measurement; fail at 70GiB export/rootfs ceilings",
+    "Passing actual portable-image CPU admission; seed inventory is not that receipt",
+    "Parent-owned real shared archive completion/readback/telemetry repair",
+    "Fresh RunPod capacity/rates, exact retention and financial authorization, cleanup reachability",
+    "Separately approved RunPod CUDA/EGL/model/full-rollout, archive handoff/readback and owned volume/incomplete-upload cleanup"
   ],
   "smallest_blocked_step": {
+    "kind": "exact priced portable-runtime export/build/registry/transfer proposal",
     "approved": false,
     "new_approval_required": true,
-    "cap_usd": "0.20",
-    "image": "im-uMab88d0cwA6MALkcTf5VW",
-    "cpu_cores": 2,
-    "memory_gib": 16,
-    "execution_seconds": 900,
-    "startup_seconds": 300,
-    "cleanup_seconds": 180,
-    "result_bytes": 262144,
-    "retries": 0,
-    "gpu": false,
-    "volumes": false,
-    "secrets": false,
-    "bulk_transfer": false,
-    "export_or_build": false
+    "financial_cap_approved": false,
+    "measured_distinct_tree_logical_bytes": 47492000203,
+    "rootfs_and_export_bytes_ceiling": 75161927680,
+    "manifest_bytes_ceiling": 67108864,
+    "complete_system_deb_and_OCI_bytes_unknown": true,
+    "required_addition": "libopengl0 / libOpenGL.so.0; pin and offline closure not verified",
+    "no_additional_remote_inventory_required_for_current_local_deliverable": true
   },
   "publication_blocker": {
     "source": "sibling A100 thread checkpoint",
@@ -96,7 +93,20 @@
     "full_serial_projection_minutes": 33,
     "full_trajectory_reconstructible_from_checked_survivors": false,
     "repair_owned_by_parent": true,
-    "shared_archive_core_integrated": true
+    "shared_archive_core_integrated": true,
+    "latest_parent_live_checkpoint": {
+      "archive_bytes": 156098560,
+      "parts_uploaded": 10,
+      "part_upload_seconds": 66.81,
+      "completion_readback_deadline_seconds": 600,
+      "complete_release_verified": false,
+      "exact_archive_key_deleted_and_observed_absent": true,
+      "list_parts": "NoSuchUpload",
+      "abort_error_code_missing": true,
+      "local_source_preserved": true,
+      "durable_phase_telemetry_and_repair_owned_by_parent": true,
+      "runpod_upload_performed": false
+    }
   },
   "cost_examples_are_not_quotes": {
     "ada_run_only_with_full_first_month_storage_and_transfer_reservations_usd": "16.94",
@@ -107,7 +117,7 @@
     "provider_enforced_dollar_cap": false
   },
   "inventory_and_readonly_regression_tests": 9,
-  "inventory_result": "docs/runpod-inventory-result.json",
+  "inventory_result": "docs/runpod-inventory-success.json",
   "archive_integration": {
     "shared_commit": "37dd2a3d195200d82aa025b0ae69134034a68a90",
     "shared_core_unchanged": true,
@@ -135,5 +145,14 @@
     ],
     "live_throughput_verified": false,
     "coordination_issue": "lost multipart-create response without upload ID requires exact-key orphan reconciliation; automatic fresh upload/source deletion blocked"
+  },
+  "prior_failed_inventory_result": "docs/runpod-inventory-result.json",
+  "post_inventory_regression": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=<installed-controller-sdk> .venv/bin/python -m unittest discover -s tests -p 'test_runpod*.py' -v",
+    "tests": 46,
+    "skipped": 0,
+    "status": "passed",
+    "seconds": 1.825,
+    "scope": "RunPod lifecycle, staging, evidence/recovery, runtime contract and bounded inventory; local injected transports"
   }
 }

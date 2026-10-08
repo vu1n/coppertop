@@ -3,8 +3,9 @@
 This branch implements local RunPod controls and an offline portable runtime
 recipe for the frozen Xiaomi/RoboCasa recording. No RunPod runtime, portable
 image, capacity, asset transfer, or live billing has been established by these
-tests. One separately approved CPU inventory attempt and existing-key read-only
-storage checks have now run; their limits and outcome are below. This document
+tests. Two separately approved CPU inventory attempts and existing-key read-only
+storage checks have now run; the corrected inventory succeeded. Their limits and
+outcomes are below. This document
 does not authorize another paid action, credential creation, publishing or bulk
 download. The existing Modal GPU approval is separate.
 
@@ -21,6 +22,12 @@ projects about 33 minutes. The initial delay lacks telemetry; the full trajector
 cannot be reconstructed from checked survivors after source Volume deletion.
 The parent completed the shared archive repair and owns its real R2 validation.
 This checkout imports that core unchanged and adds the RunPod adapters.
+The latest parent checkpoint uploaded all ten parts of a 156,098,560-byte archive
+in 66.81 seconds, but completion/readback stalled through the 600-second deadline.
+The exact archive key was deleted and observed absent; ListParts returned
+NoSuchUpload, while the abort ClientError lacked its error code. The local source
+is preserved. Durable phase telemetry, reconciliation and repair remain owned by
+the parent; this thread performs no duplicate archive upload.
 Passing smoke/mocked publication cannot establish the full-run path. Do not
 approve a full RunPod launch until the shared publication gate is resolved and
 its actual limits are incorporated in a newly reviewed plan; 900 s is a failed
@@ -31,7 +38,7 @@ through injected transports. Enabling the CLI requires a reviewed follow-up that
 binds the shared publisher's real validation and measured limits to a fresh plan;
 no runtime recipe or mocked receipt flips that gate.
 
-## Approved inventory attempt and storage access
+## Approved inventory attempts and storage access
 
 [Recorded evidence](runpod-inventory-result.json) identifies the one paid App
 `ap-hsgWOQjcCJiSyfcrP28Q1D` and call `fc-01M4DN3PJ805PMD66A7NJ7D562`.
@@ -52,12 +59,28 @@ The refreshed meter reports **$0.00738120**, provisional, versus a conservative
 controller compute estimate of $0.01224205. Billing is not final and the separate
 $0.20 reservation remains held; unrelated budget ledgers were not changed.
 
-The local correction uses the official synchronous `Function.remote` API and
+The correction uses the official synchronous `Function.remote` API and
 returns JSON bytes bounded at 256 KiB, rather than the asynchronous path with a
 smaller negotiated inline limit. It retains the network block, zero retries and
-original resource limits. Exact approval is required for another attempt; no
-corrected remote invocation has run. Local API-selection and overflow tests do
-not establish the backend's real handoff behavior.
+original resource limits. The user separately approved one revised invocation
+with the same $0.20 cap. [Its verified result](runpod-inventory-success.json) binds
+plan `483a1cc8604aa42523188b3cefc5065536f3be40b12322ee0457ba6292e940ae`
+to App `ap-MZjFFGDVPWiPbhDko11GMh`. It returned a 49,340-byte
+[CPU receipt](../containers/runpod-seed-inventory.json), SHA-256
+`0f56b5acf693a99a219a57ed65df729ea4b104acbe18ec7fd9d8b35a03c4ab5f`.
+Worker time was 73.988 seconds; controller time was 106.621 seconds including
+10.745 seconds of cleanup. Independent verification found the App stopped with
+zero active containers and sandboxes. The latest meter is **$0.00600720** at
+2026-10-08T15:15:34Z, provisional; its full separate $0.20 reservation remains
+held. This approved attempt is consumed; no further inventory retry is authorized.
+
+Both interpreters are Python 3.11.13 on x86_64/glibc 2.35 and pass pip check and
+the requested CPU imports. Native Torch is 2.8.0+cu128 with FlashAttention 2.8.3;
+simulator Torch is 2.7.1+cpu with MuJoCo 3.3.1. All 129 simulator lock entries
+match. Its three extra distributions are pip 24.0 and the pinned editable
+RoboCasa 1.0.1 / RoboSuite 1.5.2 sources. All three source HEADs match and their
+tracked files are clean. This is observed metadata, not a CUDA, model, render or
+portable-image execution result. Current file-content checksums were not rehashed.
 
 Existing RunPod control and S3 authentication passed read-only checks:
 `GET /v1/networkvolumes` found zero volumes; S3 `ListBuckets` returned HTTP 200 and
@@ -99,12 +122,12 @@ Modal identifiers remain historical experiment references, not RunPod validation
 `containers/runpod-runtime.json` defines a complete **export/transplant recipe**,
 not an environment reconstructed from overlay requirements. Export from the
 validated immutable seed `im-uMab88d0cwA6MALkcTf5VW` only after separate CPU
-inventory/export approval:
+export/build/transfer approval; the bounded metadata inventory is now complete:
 
 | Context tree | Container destination and purpose |
 | --- | --- |
 | `runtime/opt/conda` | Complete Python 3.11 native prefix, Torch 2.8/CUDA 12.8, FlashAttention 2.8.3 and active dependency closure |
-| `runtime/usr/local` | Complete inherited interpreter/stdlib and CUDA support outside the prefixes; preserves venv link targets |
+| `runtime/usr/local` | Observed seed tree: two files, 3,405 bytes and one man-page link; retain it without treating it as the Python/CUDA closure |
 | `runtime/work/sim` | Complete Python 3.11 simulator prefix, all 129 admission pins including CPU Torch 2.7.1 and MuJoCo 3.3.1 |
 | `runtime/work/xiaomi` | Full clean checkout, including Git metadata and stock deployment client/server |
 | `runtime/work/robocasa` | Full clean pinned checkout and extracted assets at their original paths |
@@ -120,8 +143,24 @@ them. Their historical receipt verifies prior extraction; the export manifest
 additionally hashes every current exported file. Full exported bytes and final
 root filesystem each have a 70 GiB ceiling. Unknown native/system closure,
 symlinks outside the exported trees, excess footprint or broken ABI fail admission;
-no broad repair or new acquisition follows automatically. Original system `.deb`
-versions/checksums and full native inventory remain unverified until that export.
+no broad repair or new acquisition follows automatically.
+
+The CPU receipt measures **47,492,000,203 logical bytes (44.23 GiB)** across the
+eight distinct requested trees. `/opt/model` aliases `/work/model` and is counted
+once. This is not a complete root filesystem, tar, Debian closure or OCI layer
+size. The environments contain 132 distributions each. The simulator interpreter
+link resolves to `/opt/conda/bin/python3.11`; its stdlib also comes from that prefix.
+Native libstdc++ resolves inside `/opt/conda`, while the simulator loads the system
+libstdc++; preserve both closures. The 352 observed system-package versions are
+in the receipt, but offline `.deb` availability, checksums, dependencies and bytes
+remain unverified.
+
+**Required build addition:** `libOpenGL.so.0` was unavailable in both interpreters,
+and `libopengl0` was not installed. EGL, GL, GLES2, GLdispatch and GLib loaded.
+The portable contract retains the OpenGL requirement. Select and verify a pinned
+offline `libopengl0` package and its dependency closure under the separate setup
+approval, then pass real CPU admission. The seed inventory cannot pass that gate
+unchanged. Neither missing-package repair nor a complete symlink audit was run.
 
 Use the existing immutable PyTorch base digest. The official RunPod
 `runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404` remains a candidate; its Python,
@@ -310,30 +349,23 @@ its repair and full validation; this thread performs no duplicate investigation.
 Resolve full-run publication, including byte readback and surviving-evidence recovery,
 before approving the rollout in step 4. Do not simply increase timeout or spend.
 
-1. **CPU inventory only, before transfer:** one single-use function on the existing
-   immutable Modal seed, at most two physical CPU cores, 16 GiB RAM, 900 s execution,
-   300 s startup and 180 s exact-App stop/audit; no GPU, Volume, secrets, installation,
-   downloads or bulk output. Return ≤256 KiB of interpreter/link targets, complete
-   installed native/simulator versions, system package versions and per-tree byte
-   totals. Stop if the export closure or ≤70 GiB bound is unavailable. Preserve all
-   unrelated Apps and existing budget holds. At the checked standard function rates
-   and maximum 1.75 region multiplier, `1380×(2×0.0000131 + 16×0.00000222)×1.75 =
-   $0.1490478` plus at most $0.00000977 metadata egress. The first approved attempt
-   is consumed and its output handoff failed. A corrected single synchronous
-   invocation would need **fresh approval for up to $0.20** and the exact prepared
-   plan hash. No new attempt is authorized. The local preparation command makes
-   no remote call:
-
-   ```sh
-   PYTHONPATH=. python tools/run_runpod_inventory.py --prepare \
-     --output .local/corrected-inventory-plan.json
-   ```
-
-   Execution requires the matching `--approved-plan-sha256` after actual approval;
-   a flag or prepared file does not itself establish human authorization.
-2. Price and approve the exact export/build/registry/CPU-transfer phase from that
+1. **CPU metadata inventory complete:** the single revised invocation used two
+   physical CPU cores, 16 GiB RAM, 900 s execution, 300 s startup and 180 s exact-App
+   cleanup; ≤256 KiB output, zero retries, no GPU, Volume, mounted secrets, install,
+   downloads or bulk transfer. Its conservative preflight compute envelope was
+   `1380×(2×0.0000131 + 16×0.00000222)×1.75 = $0.1490538`, plus at most
+   $0.000009765625 metadata egress, within the separate approved $0.20 cap. Both
+   historical inventory reservations remain held pending final bills. No additional
+   remote inventory is necessary for the current local deliverable or authorized.
+2. **Smallest blocked phase:** price and approve the exact export/build/registry/CPU-transfer phase from that
    inventory; source checkouts, licenses, strong manifest and current system closure
-   must accompany the existing bytes. No new large models or asset ZIP acquisition.
+   must accompany the existing bytes. The measured tree subtotal is 47,492,000,203
+   bytes; offline Debian closure and tar/manifest overhead must fit the 75,161,927,680-byte
+   export ceiling. Builder scratch, compressed OCI bytes, registry retention and
+   egress are still unmeasured and need named locations, quoted rates and explicit
+   financial caps before export or build. No RunPod setup cap has been approved.
+   No new large models or asset ZIP acquisition. Do not treat the ≤70 GiB ceiling
+   as a measured image size or a priced bulk-transfer approval.
 3. Build on Linux x86_64; retain passing real CPU receipt and measured OCI layer bytes.
    Validate the actual RunPod driver/EGL and a model query in the first approved Pod.
    The initial path intentionally attempts the full bounded rollout; an OOM, ABI,
