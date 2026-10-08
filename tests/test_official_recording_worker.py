@@ -108,7 +108,9 @@ assert plan(full=True)['acceptance']['limits']['query_calls']==38
         self.assertEqual(plan['publication']['single_put_threshold_bytes'],256*1024**2)
         self.assertFalse(plan['publication']['multipart_live_completion_verified'])
         with tempfile.TemporaryDirectory() as root:
-            mount=Path(root)/'volume';mount.mkdir();volume=Volume([])
+            physical=Path(root)/'physical-volume';physical.mkdir()
+            mount=Path(root)/'volume';mount.symlink_to(physical,target_is_directory=True)
+            volume=Volume([])
             attempt='mechanism-'+digest(root.encode())[:16]
             prepared=mechanism_cloud.prepare(value,attempt,'official_recording_full')
             self.addCleanup(shutil.rmtree,Path('/tmp')/(attempt+'-outputs'),True)
@@ -150,7 +152,9 @@ assert plan(full=True)['acceptance']['limits']['query_calls']==38
                 published=functions.publish(receipt)
                 self.assertEqual(client.calls.count('create'),1)
                 completion=read_completion(store,published['report_key'])
-                restored=unpack_archive(owned/'archive'/'episode.tar',completion['archive'],Path(root)/'restored')
+                with self.assertRaisesRegex(ValueError,'Symlink path rejected'):
+                    unpack_archive(owned/'archive'/'episode.tar',completion['archive'],Path(root)/'restored')
+                restored=unpack_archive(physical/attempt/'archive'/'episode.tar',completion['archive'],Path(root)/'restored')
                 self.assertEqual(read_small(LocalStore(restored/'store'),key,64*1024**2),raw)
                 self.assertTrue(published['archive_verified']);self.assertTrue((owned/'upload-state.json').is_file())
                 # Changed sealed bytes are rejected before remote publication.

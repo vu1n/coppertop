@@ -109,3 +109,22 @@ new scheduler is added. Verified publication permits deletion after a zero-activ
 compute audit. Staging failure before a durable checkpoint can still lose bytes
 held only on disposable worker disk; retained staging is not a guarantee against
 that failure class.
+
+## A100 execution result and staging correction
+
+The approved A100 DEV1150 actor run reported success after211 controls and14
+inference calls, with212 observations. Rollout wall time was55.75s, total
+inference7.14s, model load9.46s and worker elapsed190.66s. The local worker
+validated the native recording, but the full artifact did not reach durable
+storage: archive staging rejected Modal's provider-created Volume mount alias
+as a symlink before copying the payload. The controller stopped and audited
+all compute. Only9194bytes of control metadata remain in the exact owned Volume;
+that metadata is also recovered locally. This is actor-success evidence, not a
+published dataset release or a verified archive round-trip. No GPU retry occurred.
+
+The Modal adapter now resolves only the configured provider mount root before
+appending archive or attempt paths. Generic archive symlink checks remain unchanged
+for descendants and source files. The fake-provider regression uses the same
+symlinked mount layout through staging, publication and multipart resume.
+This fixes future staging; it cannot restore the completed attempt's lost worker
+bytes. Any new GPU attempt requires new spending authorization.

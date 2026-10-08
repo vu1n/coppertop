@@ -224,7 +224,10 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
         gpu=resources['gpu'], timeout=resources['gpu_phase_seconds'], secrets=[], block_network=True, volumes={MOUNT: mount}))
     def evaluate():
         binding()
-        target = Path(MOUNT)/'outputs'
+        # Modal sub_path mounts are provider-created aliases. Resolve only this
+        # bound mount root; archive descendants still undergo symlink rejection.
+        mounted=Path(MOUNT).resolve(strict=True)
+        target = mounted/'outputs'
         # LocalStore atomically links objects; the live Volume rejected links.
         # Finish on the worker filesystem, then copy checked bytes to the Volume.
         scratch = Path('/tmp')/(p['attempt_id']+'-outputs')
@@ -267,15 +270,15 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
             descriptor=seal_directory(scratch, Path('/tmp')/(p['attempt_id']+'-episode.tar'))
             # Write the bounded control metadata before the same provider barrier
             # that commits the verified archive. No per-file Volume staging.
-            save(Path(MOUNT)/'record.json', record)
+            save(mounted/'record.json', record)
             staged=stage_archive(Path('/tmp')/(p['attempt_id']+'-episode.tar'), descriptor,
-                Path(MOUNT)/'archive', run_id=p['attempt_id'], commit=volume.commit)
+                mounted/'archive', run_id=p['attempt_id'], commit=volume.commit)
         elif scratch.exists():
             output_inventory(scratch,full=full)
             shutil.copytree(scratch,target)
             output_inventory(target,full=full)
         if not full:
-            save(Path(MOUNT)/'record.json', record); volume.commit()
+            save(mounted/'record.json', record); volume.commit()
         # A full record triggered Modal's blob upload despite block_network.
         # Keep the control response small; the CPU publisher reads the Volume.
         receipt={key:record[key] for key in ('container_id','plan_sha256','attempt_id','status')}
@@ -293,7 +296,7 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
         incoming = digest(canonical(record))
         # GPU scheduling can fail before its subdirectory exists. Mount the owned
         # Volume root read-only, then read the attempt path without creating it.
-        directory=Path(MOUNT)/p['attempt_id']
+        directory=Path(MOUNT).resolve(strict=True)/p['attempt_id']
         if full and (directory/'archive'/'archive.json').is_file():
             descriptor=read_json(directory/'archive'/'archive.json',65536)
             committed=read_json(directory/'record.json',65536)
