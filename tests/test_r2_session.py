@@ -3,6 +3,9 @@ import hashlib
 import hmac
 import io
 import json
+from pathlib import Path
+import tempfile
+import tracemalloc
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -64,6 +67,29 @@ class SessionsTest(unittest.TestCase):
             model=sdk.meta.service_model.operation_model(operation)
             request=sdk._convert_to_request_dict(dict(base,**parameters),model,ENDPOINT)
             client.destination_guard(SimpleNamespace(url=request['url'],method=request['method']))
+        from botocore.awsrequest import AWSResponse
+        class Raw:
+            def stream(self,**unused):return iter(())
+        dispatched=[]
+        def send(request):
+            total=0
+            while chunk:=request.body.read(64*1024):total+=len(chunk)
+            dispatched.append(total)
+            return AWSResponse(request.url,200,{'content-length':'0'},Raw())
+        with tempfile.TemporaryDirectory() as root:
+            path=Path(root)/'seekable-archive'
+            with path.open('wb') as stream:stream.truncate(156098560)
+            with path.open('rb') as body,patch.object(sdk._endpoint.http_session,'send',side_effect=send):
+                tracemalloc.start()
+                try:
+                    result=client.put_object(**base,Body=body,ContentLength=path.stat().st_size,IfNoneMatch='*')
+                    peak=tracemalloc.get_traced_memory()[1]
+                finally:tracemalloc.stop()
+            self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'],200)
+            self.assertEqual(len(dispatched),1);self.assertGreaterEqual(dispatched[0],156098560)
+            self.assertLess(peak,16*1024**2)
+            print({'offline_native_sdk_streamed_put':{'file_bytes':156098560,'python_peak_bytes':peak,
+                                                       'mock_transport_calls':len(dispatched)}})
 
     def test_full_recording_scope_keeps_exact_prefix_and_existing_actions(self):
         from coppertop.r2_session import LIMITS

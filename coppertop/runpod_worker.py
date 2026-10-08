@@ -38,7 +38,10 @@ def run(prepared,*,mount=Path('/workspace'),scratch=Path('/tmp'),runner=subproce
     pod_id=identifier(os.environ['RUNPOD_POD_ID'])
     exported=read_json(Path('/opt/runpod-cpu-admission.json'))
     if digest(canonical(exported))!=c['cpu_admission_sha256']: raise ValueError('Built CPU receipt differs')
-    base=Path(mount)/'coppertop/runs'/c['run_id']
+    # Resolve only the configured provider mount root. Archive descendants and
+    # source files still pass the shared core's strict ordinary-path checks.
+    mounted=Path(mount).resolve(strict=True)
+    base=mounted/'coppertop/runs'/c['run_id']
     target=Path(scratch)/(c['run_id']+'-outputs')
     if target.exists() or (base/'ready.json').exists(): raise ValueError('Single-use worker already ran')
     record={'provider':'RunPod','pod_id':pod_id,'run_id':c['run_id'],

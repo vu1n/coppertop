@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "kind": "read_only_cpu_preparation_approval_proposal",
+  "kind": "cpu_preparation_approval_proposal",
   "paid_authorized": false,
   "not_executable_yet": true,
   "proposal_checked_utc": "2026-10-08T15:47:38.044236+00:00",
@@ -50,7 +50,8 @@
     "sandbox_compute_usd_ceiling": "2.338056",
     "rate_cpu_core_second": ".00003942",
     "rate_gib_second": ".00000667",
-    "region_multiplier_ceiling": "1.75"
+    "region_multiplier_ceiling": "1.75",
+    "export_work_seconds": 3600
   },
   "local_controller": {
     "location": "existing Mac / isolated ignored task directory",
@@ -62,7 +63,9 @@
     "read_only_disk_check": "df -Pk; no reservation or write performed",
     "source_copy_method": "Sandbox.filesystem.copy_to_local, one shard <5GB at a time",
     "raw_provider_keys_stay_local": true,
-    "bulk_readback_streamed": true
+    "bulk_readback_streamed": true,
+    "Mac_online_and_awake_required": true,
+    "memory_enforcement": "Observed RSS check <=512MiB at relay operations; actual SDK memory profile remains a bounded preflight gate."
   },
   "data": {
     "measured_distinct_tree_logical_bytes": 47492000203,
@@ -100,7 +103,8 @@
     "exact_download_size_and_sha256_verified": false,
     "installation_verified": false,
     "closure": "All eight required system packages and exact dependencies; use the seed version inventory and signed official Ubuntu / snapshot metadata; no latest upgrades",
-    "official_page_display_package_kb": 35.6
+    "official_page_display_package_kb": 35.6,
+    "verification_route": "Local hash/size/index linkage checks, then gpgv + dpkg-deb on the same approved source Sandbox before export; repeated on CPU Pod. No Mac verifier installation or extra builder."
   },
   "runpod": {
     "cloud": "SECURE",
@@ -134,21 +138,24 @@
     "operator_scope": "existing RunPod API/S3 keys, exact newly owned60GB volume and exact CPU Pod; no permission or key changes"
   },
   "multipart": {
-    "part_bytes": 67108864,
+    "part_bytes": 16777216,
     "parallel_parts": 4,
-    "max_data_parts": 800,
+    "max_data_parts": 3200,
     "max_concurrent_uploads": 1,
     "SDK_automatic_retries": 0,
     "completion_seconds_each_ceiling": 300,
     "prefix_inventory_entries_ceiling": 32,
     "incomplete_uploads_owned_ceiling": 16,
-    "request_count_ceiling": 1024,
+    "request_count_ceiling": 4096,
     "presigned_urls": false,
     "presign_reason": "RunPod official S3 compatibility explicitly marks pre-signed URLs unsupported",
     "S3_operations_live_verified": false,
     "retry_scope": "Disable boto3 request retries and workload/export/shard replay; Modal internal control-plane packet recovery remains bounded by deadlines and accounted bytes",
     "peak_staging_bytes_ceiling": 58082721792,
-    "hidden_upload_assembly_bytes_accounted": true
+    "hidden_upload_assembly_bytes_accounted": true,
+    "explicit_cleanup_request_count_ceiling": 64,
+    "explicit_cleanup_seconds": 300,
+    "preflight_verified_operations": "Future owned8MiB PUT/fullSHA256 GET/delete/absence; actual multipart completion/abort remain live gates"
   },
   "spend": {
     "proposed_additional_cap_usd": "12.00",
@@ -175,7 +182,7 @@
     "cleanup_scheduler_created": false
   },
   "receipts": [
-    "Exact current4/8-vCPU flavor/price/RAM/US-WA-1 availability and resource payload quote before allocation",
+    "Exact current4/8-vCPU catalog type/REST flavor mapping, price/RAM/US-WA-1 availability and resource payload quote before allocation",
     "Official signed Ubuntu package URLs/versions/sizes/SHA256 lock and public-base OCI metadata byte count before bulk work",
     "Complete export file SHA256/mode/link manifest; each split shard and aggregate tar SHA256/size; original source pins/model checksum/extraction provenance",
     "Local copy checksums and zero-active Modal Sandbox/App audit; provisional bills, reservations held",
@@ -183,25 +190,46 @@
     "Fresh public-base CPU Pod restore: exact hashes/paths, pip check, all native imports/ABI,129SIM pins, full source/model checksums, OpenGL/EGL/GLVND/GLib/FFmpeg loading; no CUDA or simulator reset",
     "CPU admission receipt bound to public OCI base, export manifest, bootstrap/code hashes and owned volume ID; local durable copy; CPU Pod deletion+absence and volume retention/deletion bill report"
   ],
-  "local_work_before_execution": [
-    "Implement and review safe split-tar exporter/local relay/volume bootstrap using official SDKs and existing hashing/admission; tests with tiny complete runtime fixture",
-    "Extend provider plan to bind base+bootstrap+export, exact reuse of owned60GB input/evidence volume and separate preparation/rollout limits; existing controller still requires built image and owns3GB output volume",
-    "Keep paid rollout gate false until parent archive completion/readback repair and first GPU approval",
-    "Account for hidden multipart assembly and zero application replay; prove deadline and byte enforcement for actual SDK streams in the bounded preflight"
-  ],
+  "local_work_before_execution": [],
   "unresolved_facts": [
     "Actual current CPU flavor/RAM/hourly price and US-WA-1 CPU availability: catalogue GET403; console signed out; no permission change or login performed",
     "Signed dependency closure availability/exact bytes/SHA256, including libopengl0; inventory alone did not acquire packages",
     "Public pinned-base linux/amd64 pull metadata and compressed byte count; no layer downloaded",
-    "Actual transfer/restoration throughput and safe bootstrap have not been exercised; bounded attempt stops rather than extending budget",
-    "Sandbox filesystem API supports files <=5GB; actual cached-image Sandbox creation,4GiB shard transfer and network-blocked handoff require the bounded preflight; do not treat API source inspection as live proof"
+    "Sandbox filesystem API supports files <=5GB; actual cached-image Sandbox creation,4GiB shard transfer and network-blocked handoff require the bounded preflight; do not treat API source inspection as live proof",
+    "Actual sustained transfer/restoration throughput, source gpgv/keyring and restoring native imports have not been exercised; bounded admitted attempt stops rather than expanding."
   ],
-  "later_GPU_phase": "Separate fresh approval for one frozenCoffeeSetupMugDEV1150 execute16 rollout up to600controls38queries601observations, real CUDA/EGL/model query/reset and archive publication; reuse prepared input cache only with exact ownership/hash revalidation. Existing3GB/900ssetup assumptions must be revised, no paid approval inherited.",
+  "later_GPU_phase": "Separate fresh approval for frozen DEV1150 execute16 up to600controls38queries601observations; prepared-cache reuse implemented with6300s setup, existing60GB volume and conservative3h GPU accounting. Actual CUDA/EGL/model/reset/full rollout remain unverified. Stop GPU first; explicit fresh-session CPU publication handoff.",
   "phase_deadlines": {
     "Modal_source_with_stop_audit_seconds": 7200,
     "local_S3_stage_and_readback_seconds": 7200,
     "RunPod_CPU_with_delete_audit_seconds": 7200,
     "overall_seconds": 21600,
     "automatic_retries": 0
+  },
+  "local_controls_implemented": true,
+  "not_executable_reason": "Exact CPU quote/access, offline package artifacts and public-base layer metadata are missing; no financial approval exists.",
+  "local_control_documentation": "docs/runpod-preparation.md",
+  "storage_layout": {
+    "archive": "owned60GB network volume",
+    "extraction": "100GB container disk only",
+    "reject_extraction_on_network_volume": true,
+    "rootfs_peak_old_base_plus_restore_plus_installed_packages_bytes": 75161927680,
+    "installed_packages_bytes_ceiling": 4294967296,
+    "internal_volume_read_bytes_ceiling": 107374182400
+  },
+  "throughput_admission": {
+    "real_probe_bytes": 8388608,
+    "max_age_seconds": 900,
+    "safety_factor": 2,
+    "overhead_seconds": 60,
+    "fail_if_estimated_seconds_exceed_remaining_phase": true,
+    "guarantees_sustained_throughput": false,
+    "hard_deadlines_and_byte_budgets_still_enforced": true
+  },
+  "shared_publication": {
+    "shared_commit": "55b324807dc3c86428ed44c34eb892c686b79acc",
+    "main_task_single_upload_verified": true,
+    "repeated_here": false,
+    "RunPod_or_Modal_runtime_verified": false
   }
 }

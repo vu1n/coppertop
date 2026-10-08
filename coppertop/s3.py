@@ -8,6 +8,10 @@ from urllib.parse import urlsplit
 from .chords import digest, object_path
 from .streams import ObjectRef, CHUNK_BYTES, SMALL_BYTES, checked, read_small, verify, file_ref
 from .multipart import UploadState, UploadInterrupted, MIN_PART_BYTES, MAX_PARTS
+from .publication_trace import phase
+
+# Below Runpod's documented <500MB PutObject cap and R2's5GiB single-part cap.
+STREAMED_PUT_BYTES=256*1024**2
 
 
 class S3Client(Protocol):
@@ -203,8 +207,42 @@ class S3Store:
             raise ValueError('Upload state belongs to a different destination')
         self.client.abort_multipart_upload(Bucket=self.bucket, Key=self.key(state.ref.sha256), UploadId=state.upload_id)
 
+    def upload_file(self,ref,path,*,state=None,persist=lambda value:None,concurrency=4,
+                    measured=lambda stage,seconds:None,observe=lambda event:None):
+        if state is None and ref.size<=STREAMED_PUT_BYTES:
+            return self.put_file(ref,path,measured=measured,observe=observe)
+        return self.multipart_file(ref,path,state=state,persist=persist,concurrency=concurrency,
+                                   measured=measured,observe=observe)
+
+    def put_file(self,ref,path,*,measured=lambda stage,seconds:None,observe=lambda event:None):
+        if not 0<ref.size<=STREAMED_PUT_BYTES:raise ValueError('Streamed single PUT exceeds256MiB bound')
+        before=time.monotonic()
+        with phase(observe,'source_check'):
+            if path.is_symlink() or path.stat().st_size!=ref.size or file_ref(path)!=ref:
+                raise ValueError('Seekable immutable source differs')
+        measured('source_check',time.monotonic()-before)
+        try:existing=self.stat(ref.sha256)
+        except FileNotFoundError:existing=None
+        if existing is not None:
+            if existing!=ref:raise ValueError('Existing archive size differs')
+            self._verify_known(ref,measured,observe);return ref
+        dispatched=time.monotonic();measured('first_upload',dispatched-before)
+        with path.open('rb') as body:
+            try:
+                with phase(observe,'archive_put'):
+                    self.client.put_object(Bucket=self.bucket,Key=self.key(ref.sha256),Body=body,
+                        ContentLength=ref.size,IfNoneMatch='*',ContentType='application/octet-stream')
+            except Exception as error:
+                if _code(error)!='PreconditionFailed':raise
+        measured('upload',time.monotonic()-dispatched)
+        with phase(observe,'source_recheck'):
+            if file_ref(path)!=ref:raise ValueError('Source changed during single PUT')
+        self._verify_known(ref,measured,observe)
+        return ref
+
     def multipart_file(self, ref, path, *, state=None, persist=lambda value: None,
-                       part_size=16*1024**2, concurrency=4, measured=lambda stage, seconds: None):
+                       part_size=16*1024**2, concurrency=4, measured=lambda stage, seconds: None,
+                       observe=lambda event:None):
         """Bounded seekable transport, explicit resume, opaque ETags, one GET verification.
 
         Persist only the contiguous receipt prefix. Parts completed out of order
@@ -223,8 +261,9 @@ class S3Store:
         if part_size>16*1024**2:
             raise ValueError('Seekable multipart parts must be at most 16MiB, including resume')
         before = time.monotonic()
-        if path.is_symlink() or path.stat().st_size != ref.size or file_ref(path) != ref or not ref.size:
-            raise ValueError('Seekable immutable source differs')
+        with phase(observe,'source_check'):
+            if path.is_symlink() or path.stat().st_size != ref.size or file_ref(path) != ref or not ref.size:
+                raise ValueError('Seekable immutable source differs')
         measured('source_check', time.monotonic()-before)
         options = dict(Bucket=self.bucket, Key=self.key(ref.sha256))
         try:
@@ -234,13 +273,13 @@ class S3Store:
         if existing is not None:
             if existing != ref:
                 raise ValueError('Existing archive size differs')
-            self._verify_known(ref, measured)
+            self._verify_known(ref, measured,observe)
             return ref
         if state is None:
             state = UploadState(destination, self.client.create_multipart_upload(**options)['UploadId'], ref, part_size)
         try:
             persist(state.to_dict())
-            self._reconcile_parts(state)
+            with phase(observe,'reconcile_parts'): self._reconcile_parts(state)
             count = (ref.size+part_size-1)//part_size
             first_upload = time.monotonic()
             def send(number):
@@ -272,25 +311,34 @@ class S3Store:
                         if part['number'] > len(state.parts):
                             state.parts.append(part)
                             persist(state.to_dict())
-            if file_ref(path) != ref:
-                raise ValueError('Source changed during multipart upload')
-            self.client.complete_multipart_upload(**options, UploadId=state.upload_id,
-                MultipartUpload={'Parts': [{'PartNumber': p['number'], 'ETag': p['etag']} for p in state.parts]})
+            with phase(observe,'source_recheck'):
+                if file_ref(path) != ref:
+                    raise ValueError('Source changed during multipart upload')
+            with phase(observe,'complete_multipart'):
+                self.client.complete_multipart_upload(**options, UploadId=state.upload_id,
+                    MultipartUpload={'Parts': [{'PartNumber': p['number'], 'ETag': p['etag']} for p in state.parts]})
             measured('upload', time.monotonic()-first_upload)
-            self._verify_known(ref, measured)
+            self._verify_known(ref, measured,observe)
             return ref
         except Exception as error:
             raise UploadInterrupted(state) from error
 
-    def _verify_known(self, ref, measured):
+    def _verify_known(self, ref, measured,observe=lambda event:None):
         before = time.monotonic()
-        response = self.client.get_object(Bucket=self.bucket, Key=self.key(ref.sha256))
+        with phase(observe,'archive_get_headers'):
+            response = self.client.get_object(Bucket=self.bucket, Key=self.key(ref.sha256))
         body = response['Body']
         try:
-            if response['ContentLength'] != ref.size:
-                raise ValueError('Archive readback length differs')
-            for _ in checked(iter(lambda: body.read(CHUNK_BYTES), b''), ref):
-                pass
+            with phase(observe,'archive_hash_readback'):
+                if response['ContentLength'] != ref.size:
+                    raise ValueError('Archive readback length differs')
+                total=0; checkpoint=0
+                for chunk in checked(iter(lambda: body.read(CHUNK_BYTES), b''), ref):
+                    total+=len(chunk)
+                    if total-checkpoint>=16*1024**2:
+                        observe({'stage':'archive_hash_readback','status':'progress','bytes':total})
+                        checkpoint=total
+                observe({'stage':'archive_hash_readback','status':'progress','bytes':total})
         finally:
             body.close()
         measured('readback', time.monotonic()-before)

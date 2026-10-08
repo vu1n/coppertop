@@ -12,6 +12,7 @@ import time
 from .chords import canonical
 from .cloud_stage import StageManifest, commit_directory, safe_name
 from .streams import CHUNK_BYTES, ObjectRef, checked, file_chunks, file_ref, read_small
+from .publication_trace import phase
 
 MANIFEST = 'coppertop-archive-manifest.json'
 # Up to 6000 CAS objects plus bounded worker/provenance sidecars.
@@ -236,7 +237,7 @@ def unpack_archive(archive, descriptor, destination):
 
 
 def publish_archive(archive, descriptor, store, *, record, state=None, persist=lambda value: None,
-                    concurrency=4, publisher_started=None):
+                    concurrency=4, publisher_started=None,observe=lambda event:None):
     """One payload + verified completion receipt; timing is returned out of band."""
     started = time.monotonic() if publisher_started is None else publisher_started
     archive = _plain_path(archive)
@@ -245,16 +246,16 @@ def publish_archive(archive, descriptor, store, *, record, state=None, persist=l
         raise ValueError('Bounded record required before archive upload')
     timings = {key: descriptor[key] for key in ('seal_seconds', 'durable_copy_seconds') if key in descriptor}
     timings['publisher_prep_seconds'] = time.monotonic()-started
-    if not hasattr(store, 'multipart_file'):
-        raise ValueError('Archive publication requires a seekable multipart store')
+    if not hasattr(store, 'upload_file'):
+        raise ValueError('Archive publication requires a seekable file store')
     def transfer_measured(stage, seconds):
         timings[stage+'_seconds'] = seconds
         if stage=='source_check':
             timings['publisher_prep_seconds']=time.monotonic()-started
         if stage=='first_upload':
             timings['first_upload_seconds']=time.monotonic()-started
-    store.multipart_file(ref, archive, state=state, persist=persist, part_size=PART_BYTES,
-                         concurrency=concurrency, measured=transfer_measured)
+    store.upload_file(ref, archive, state=state, persist=persist,
+                         concurrency=concurrency, measured=transfer_measured,observe=observe)
     receipt = {'schema_version': 1, 'kind': 'coppertop-archive-completion',
                'archive': descriptor, 'record': record, 'verified_sha256': ref.sha256,
                'timings_before_receipt': dict(timings)}
@@ -262,9 +263,10 @@ def publish_archive(archive, descriptor, store, *, record, state=None, persist=l
     if len(raw) > 65536:
         raise ValueError('Completion receipt exceeds metadata bound')
     before = time.monotonic()
-    key = store.put(raw)
-    if read_small(store, key, 65536) != raw:
-        raise ValueError('Completion receipt readback differs')
+    with phase(observe,'receipt_put'): key = store.put(raw)
+    with phase(observe,'receipt_verify'):
+        if read_small(store, key, 65536) != raw:
+            raise ValueError('Completion receipt readback differs')
     timings['receipt_seconds'] = time.monotonic()-before
     return {'report_key': key, 'archive': ref.to_dict(), 'timings': timings}
 

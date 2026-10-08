@@ -3,14 +3,14 @@
   "base_commit": "f2d38d5",
   "branch": "runpod-full-rollout",
   "checkout": "/Users/vuln/Documents/Codex/2026-10-08/task/coppertop-runpod",
-  "support_level": "implemented local lifecycle; live validation blocked",
+  "support_level": "implemented local CPU preparation, owned-cache reuse and full recording lifecycle; actual portable RunPod restore/GPU validation blocked",
   "full_suite": {
-    "command": ".venv/bin/python -m unittest discover -s tests -v",
-    "tests": 352,
+    "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/Users/vuln/Documents/Codex/2026-10-05/task/gpu-smoke-check/controller-venv/lib/python3.11/site-packages COPPERTOP_SOURCE=/Users/vuln/Documents/Codex/2026-10-03/task/dotspace/tools/robotics-recovery/training-data COPPERTOP_OFFICIAL_ENTRY=/Users/vuln/Documents/Codex/2026-10-03/task/dotspace/tools/robotics-recovery/modal-xr1/sources/xiaomi-eval_robocasa365_entry.py .venv/bin/python -m unittest discover -s tests -v",
+    "tests": 389,
     "skipped": 0,
     "status": "passed",
-    "seconds": 33.502,
-    "log": "/Users/vuln/Documents/Codex/2026-10-08/task/runpod-archive-tests.log",
+    "seconds": 29.567,
+    "log": "/Users/vuln/Documents/Codex/2026-10-08/task/runpod-preparation-tests.log",
     "installed_modal_sdk": "1.6.1",
     "acquired_source_enabled": true,
     "pinned_official_evaluator_enabled": true,
@@ -18,24 +18,35 @@
     "full_horizon_fixture": "600 controls, 38 queries, 601 observations; fake model and physics; actual pinned evaluator and video encoding"
   },
   "runpod_local_controls": {
-    "tests": 24,
+    "tests": 83,
     "coverage": [
-      "approval/code/quote/session gates",
-      "single-use ownership journal",
-      "lost create responses",
-      "exact resource ownership",
-      "GPU absence before publication",
-      "cleanup API failure and manual cleanup recovery",
-      "multipart abort and volume deletion",
-      "checksum and aggregate rejection",
-      "complete CPU evidence preserved after publisher timeout",
-      "compact worker sealing and child credential exclusion",
-      "complete runtime tree inventory and symlink rejection",
-      "paid CLI blocked pending shared publisher validation"
+      "fresh exact approval, code/package hashes, CPU/GPU quotes and credential gates",
+      "single-use creation journals before source/provider work; bounded exact lost-create reconciliation",
+      "complete selected runtime trees, absolute paths, strong per-file/mode/link/shard/aggregate manifests",
+      "real tiny split tar round-trip and container-disk-only restore; reject traversal, sparse/special members and descendant links",
+      "offline signature/index/deb chain with injected gpgv/dpkg fixtures; exact seed system versions and closure byte/architecture admission",
+      "official public filesystem-copy adapter; partial source copy preservation and cumulative egress reservation",
+      "shared seekable multipart relay; interruption/resume, lost creation/completion, full SHA readback and durable cumulative time/request/byte budgets",
+      "recent real-probe feasibility gate, finite estimates and observed local RSS ceiling",
+      "exact owned CPU Pod deletion/absence, cache retention, source App crash cleanup and unresolved ownership preservation",
+      "explicit bounded upload abort and exact owned-volume deletion only after surviving source verification and zero attachments",
+      "one GPU/zero-volume prepared-cache reuse, fresh bootstrap receipt and deferred publication after GPU absence",
+      "scoped fresh publication-session recovery, completion receipt and durable publication telemetry",
+      "configured provider mount-root alias accepted; descendant/source/archive-member symlinks remain rejected",
+      "full horizon query/action/history/video validation; independent success and termination outcomes"
     ]
   },
   "review": {
-    "method": "local skeptical correctness pass using code-review skill",
+    "method": "local skeptical self-review; no independent reviewer used in this continuation",
+    "resolved_findings": [
+      "fresh same-flavor quote rechecked after long source export/staging",
+      "catalog type ID kept distinct from the verified REST CPU flavor enum; actual allocated RAM/count/cost checked",
+      "source/controller ownership journal durable before work and recoverable after source export interruption",
+      "explicit upload-abort window remains available after transfer time/request/write-budget exhaustion",
+      "exact closure byte count and code tar membership checked before credentials",
+      "documented recovery CLI no longer requires a new output path",
+      "trusted provider mount root resolved only in RunPod adapter; shared archive core unchanged"
+    ],
     "remaining_concrete_local_findings": [],
     "diff_check": "passed"
   },
@@ -53,29 +64,129 @@
     "push_or_pr": false,
     "modal_billing_final": false,
     "modal_current_reservation_held_usd": "0.20",
-    "modal_previous_inventory_provisional_usd": "0.00738120"
+    "modal_previous_inventory_provisional_usd": "0.00738120",
+    "this_implementation_continuation": {
+      "local_code_tests_docs_only": true,
+      "public_documentation_reads": true,
+      "remote_provider_calls": false,
+      "paid_compute_or_storage": false,
+      "real_runtime_export": false,
+      "bulk_transfers": false,
+      "large_downloads": false,
+      "new_credentials": false,
+      "permissions_changed": false,
+      "push_or_PR": false,
+      "parent_paid_R2_or_Modal_mount_tests_duplicated": false
+    }
   },
   "remaining_live_gates": [
-    "Price and separately approve exact export, offline system-deb closure including libopengl0 addition, Linux CPU build, registry retention and transfer",
-    "Strong exported-file/checksum/link manifest and actual rootfs/OCI layer-size measurement; fail at 70GiB export/rootfs ceilings",
-    "Passing actual portable-image CPU admission; seed inventory is not that receipt",
-    "Parent-owned real shared archive completion/readback/telemetry repair",
-    "Fresh RunPod capacity/rates, exact retention and financial authorization, cleanup reachability",
-    "Separately approved RunPod CUDA/EGL/model/full-rollout, archive handoff/readback and owned volume/incomplete-upload cleanup"
+    "Actual current 4/8-vCPU CPU catalog type/REST flavor mapping, >=16GiB RAM, US-WA-1 availability and <=USD0.50/hour price; prior catalog403/sign-out is unresolved",
+    "Complete official locked Jammy dependency artifacts including libopengl0=1.4.0-1, exact metadata/deb bytes and pinned public-base linux/amd64 compressed layer metadata <=20GiB",
+    "Concrete exact-plan CPU export/transfer/one-volume/one-Pod/retention approval under the proposed USD12 cap; none exists",
+    "Same-source CPU gpgv/keyring/dpkg-deb admission before export; actual strong full-runtime export and package-closure install",
+    "Measured bounded Modal-to-Mac/RunPod S3 throughput, memory/scratch and real provider mount/bootstrap visibility while Mac stays online with reachable independent cleanup operator",
+    "Actual restored CPU imports/ABI/all129 simulator pins/model/source checksums/OpenGL/EGL/GLVND/GLib/FFmpeg receipt and zero-active source/CPU cleanup",
+    "Separate fresh GPU quote/financial approval for CUDA, EGL/reset/model and frozen DEV1150 execute16 up to600controls38queries601observations; real archive handoff/publication/cleanup",
+    "Later full-size multipart completion/readback and RunPod S3 visibility remain unverified; main task single-upload Mac-to-R2 proof is not a portable runtime proof"
   ],
   "smallest_blocked_step": {
-    "kind": "exact priced portable-runtime export/build/registry/transfer proposal",
+    "kind": "exact CPU quote/access plus complete offline package/base metadata, then concrete priced CPU-preparation approval",
     "approved": false,
-    "new_approval_required": true,
     "financial_cap_approved": false,
+    "proposed_cap_usd": "12.00",
     "measured_distinct_tree_logical_bytes": 47492000203,
-    "rootfs_and_export_bytes_ceiling": 75161927680,
+    "export_tar_bytes_ceiling": 53687091200,
+    "network_volume_allocated_bytes": 60000000000,
+    "multipart_peak_staging_bytes_ceiling": 58082721792,
+    "container_rootfs_peak_bytes_ceiling": 75161927680,
     "manifest_bytes_ceiling": 67108864,
-    "complete_system_deb_and_OCI_bytes_unknown": true,
-    "required_addition": "libopengl0 / libOpenGL.so.0; pin and offline closure not verified",
+    "complete_system_deb_and_base_layer_bytes_unknown": true,
+    "required_addition": "libopengl0=1.4.0-1 / libOpenGL.so.0; actual package hash/signature/install not verified",
+    "new_registry_or_Linux_builder_required": false,
+    "local_implementation_complete": true,
     "no_additional_remote_inventory_required_for_current_local_deliverable": true
   },
-  "publication_blocker": {
+  "cost_examples_are_not_quotes": {
+    "ada_run_only_with_full_first_month_storage_and_transfer_reservations_usd": "16.94",
+    "a100_equivalent_usd": "17.69",
+    "example_cap_unapproved_usd": "25",
+    "setup_export_build_registry_excluded": true,
+    "ongoing_r2_monthly_reservation_usd": "0.03",
+    "provider_enforced_dollar_cap": false
+  },
+  "inventory_and_readonly_regression_tests": 9,
+  "inventory_result": "docs/runpod-inventory-success.json",
+  "archive_integration": {
+    "shared_commit": "55b324807dc3c86428ed44c34eb892c686b79acc",
+    "shared_core_unchanged": true,
+    "producer_local_seal": true,
+    "one_staged_bundle": true,
+    "multipart_part_bytes": 16777216,
+    "concurrency": 4,
+    "full_streamed_hash_and_receipt": true,
+    "local_and_volume_journals": true,
+    "explicit_resume_and_abort": true,
+    "raw_bytes_ceiling": 1073741824,
+    "archive_bytes_ceiling": 1090519040,
+    "scratch_bytes_ceiling": 2248146944,
+    "stage_bytes_ceiling": 2147483648,
+    "ongoing_storage_authorization_required": true,
+    "billing_basis": "Prepared-cache path retains the original60GB volume; legacy prebuilt-image path allocates3GB. Use exact approved USD/GB-month rate.",
+    "recurring_cleanup_service": false,
+    "core_synthetic_requests": [
+      19,
+      74
+    ],
+    "core_synthetic_peak_python_bytes": [
+      67162315,
+      67186285
+    ],
+    "live_throughput_verified": false,
+    "coordination_issue": "lost multipart-create response without upload ID requires exact-key orphan reconciliation; automatic fresh upload/source deletion blocked",
+    "prior_shared_commit": "37dd2a3d195200d82aa025b0ae69134034a68a90",
+    "streamed_single_PUT_bytes_ceiling": 268435456,
+    "durable_phase_and_readback_progress_telemetry": true,
+    "main_task_single_archive_R2_verified": true,
+    "full_size_multipart_live_completion_verified": false,
+    "RunPod_S3_live_verified": false,
+    "live_runtime_verified": false,
+    "provider_mount_boundary": {
+      "parent_fix": "572af3ab96c0f368ad83cac45d9a86bdd4f59e17",
+      "shared_core_changed": false,
+      "RunPod_adapter_resolves_configured_mount_root_only": true,
+      "descendant_source_and_member_symlink_rejection_preserved": true,
+      "actual_RunPod_mount_verified": false,
+      "parent_paid_preflight_duplicated": false
+    }
+  },
+  "prior_failed_inventory_result": "docs/runpod-inventory-result.json",
+  "post_inventory_regression": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=<installed-controller-sdk> .venv/bin/python -m unittest discover -s tests -p 'test_runpod*.py' -v",
+    "tests": 46,
+    "skipped": 0,
+    "status": "passed",
+    "seconds": 1.825,
+    "scope": "RunPod lifecycle, staging, evidence/recovery, runtime contract and bounded inventory; local injected transports"
+  },
+  "next_setup_proposal": {
+    "path": "docs/runpod-setup-approval.md",
+    "machine_readable": "docs/runpod-setup-approval.json",
+    "paid_authorized": false,
+    "proposed_cap_usd": "12.00",
+    "subtotal_at_published_rates_and_CPU_quote_ceiling_usd": "9.768056",
+    "registry_required": false,
+    "CPU_quote_verified": false,
+    "catalog_HTTP_status": 403,
+    "console_authenticated": false,
+    "local_bootstrap_controller_work_required": false,
+    "GPU_or_R2_included": false,
+    "current_prebuilt_OCI_path_unchanged": true,
+    "local_controls_implemented": true,
+    "prepared_cache_reuse_implemented": true,
+    "Mac_online_and_independent_cleanup_required": true,
+    "execution_requires_exact_artifacts_quote_and_direct_approval": true
+  },
+  "historical_publication_failure": {
     "source": "sibling A100 thread checkpoint",
     "rollout_controls": 205,
     "rollout_queries": 13,
@@ -106,67 +217,53 @@
       "local_source_preserved": true,
       "durable_phase_telemetry_and_repair_owned_by_parent": true,
       "runpod_upload_performed": false
+    },
+    "superseded_by": "main_archive_validation; old failure retained as history only"
+  },
+  "main_archive_validation": {
+    "schema_version": 1,
+    "provider": "R2",
+    "status": "passed",
+    "source_thread": "01a118bb-2901-70c2-ba85-455718f0902e",
+    "shared_commit": "55b324807dc3c86428ed44c34eb892c686b79acc",
+    "confirmation": "Direct human-provided main-task evidence on2026-10-08; no validation repeated here",
+    "archive_bytes": 156098560,
+    "upload_seconds": 37.1,
+    "readback_seconds": 202.0,
+    "total_seconds": 255.4,
+    "full_SHA256_readback": true,
+    "receipt_verified": true,
+    "test_objects_and_prior_exact_upload_absent": true,
+    "local_source_preserved": true,
+    "Modal_runtime_verified": false,
+    "RunPod_runtime_verified": false,
+    "file_sha256": {
+      "coppertop/record_archive.py": "4cae9e39a7b8ee6e610f1ac13058b07b2d27cd845f6a14c4e8bb459c47b9de71",
+      "coppertop/s3.py": "7524200358a58c6e69e75442ed5f68b81df11553e5581775d4136f6870021268",
+      "coppertop/r2_session.py": "7d5fbe467931d29527a8f5af9e41f41391de8661dfa2daf6e7c0eac24474b12a",
+      "coppertop/publication_trace.py": "e9a3ea237a617f96f4da490fddf032aecae243ee5569854c426fe55081a9710b"
     }
   },
-  "cost_examples_are_not_quotes": {
-    "ada_run_only_with_full_first_month_storage_and_transfer_reservations_usd": "16.94",
-    "a100_equivalent_usd": "17.69",
-    "example_cap_unapproved_usd": "25",
-    "setup_export_build_registry_excluded": true,
-    "ongoing_r2_monthly_reservation_usd": "0.03",
-    "provider_enforced_dollar_cap": false
-  },
-  "inventory_and_readonly_regression_tests": 9,
-  "inventory_result": "docs/runpod-inventory-success.json",
-  "archive_integration": {
-    "shared_commit": "37dd2a3d195200d82aa025b0ae69134034a68a90",
-    "shared_core_unchanged": true,
-    "producer_local_seal": true,
-    "one_staged_bundle": true,
-    "multipart_part_bytes": 16777216,
-    "concurrency": 4,
-    "full_streamed_hash_and_receipt": true,
-    "local_and_volume_journals": true,
-    "explicit_resume_and_abort": true,
-    "raw_bytes_ceiling": 1073741824,
-    "archive_bytes_ceiling": 1090519040,
-    "scratch_bytes_ceiling": 2248146944,
-    "stage_bytes_ceiling": 2147483648,
-    "ongoing_storage_authorization_required": true,
-    "billing_basis": "3 allocated RunPod GB; approved USD/GB-month rate",
-    "recurring_cleanup_service": false,
-    "core_synthetic_requests": [
-      19,
-      74
-    ],
-    "core_synthetic_peak_python_bytes": [
-      67162315,
-      67186285
-    ],
-    "live_throughput_verified": false,
-    "coordination_issue": "lost multipart-create response without upload ID requires exact-key orphan reconciliation; automatic fresh upload/source deletion blocked"
-  },
-  "prior_failed_inventory_result": "docs/runpod-inventory-result.json",
-  "post_inventory_regression": {
-    "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=<installed-controller-sdk> .venv/bin/python -m unittest discover -s tests -p 'test_runpod*.py' -v",
-    "tests": 46,
-    "skipped": 0,
+  "verification_limits": [
+    "Tiny real tar/filesystem fixtures and injected provider/S3 transports establish local controls only.",
+    "Cryptographic package-manager and native admission subprocesses are mocked in local tests; no actual portable package closure installed.",
+    "The full-horizon fixture uses fake model/physics, the pinned official evaluator and actual video encoding; no RunPod GPU trajectory executed.",
+    "The prior approved seed inventory is metadata evidence, not fresh content hashes or restored-platform CPU admission.",
+    "Timeout/byte budgets fail closed; interrupted retries can exhaust the original budget and need a new precise scope. No deadline or financial cap is automatically extended.",
+    "The Mac must stay awake/online; timers do not enforce a provider dollar cap. Unresolved storage remains charged and requires the named operator.",
+    "The parent single-archive R2 proof and Modal mount preflight were not repeated."
+  ],
+  "current_runpod_subset": {
+    "tests": 83,
     "status": "passed",
-    "seconds": 1.825,
-    "scope": "RunPod lifecycle, staging, evidence/recovery, runtime contract and bounded inventory; local injected transports"
+    "skipped": 0,
+    "method": "included in the final full-suite run",
+    "scope": "local lifecycle, source inventory, portable bundle/bootstrap, relay, owned-cache and recovery fixtures"
   },
-  "next_setup_proposal": {
-    "path": "docs/runpod-setup-approval.md",
-    "machine_readable": "docs/runpod-setup-approval.json",
-    "paid_authorized": false,
-    "proposed_cap_usd": "12.00",
-    "subtotal_at_published_rates_and_CPU_quote_ceiling_usd": "9.768056",
-    "registry_required": false,
-    "CPU_quote_verified": false,
-    "catalog_HTTP_status": 403,
-    "console_authenticated": false,
-    "local_bootstrap_controller_work_required": true,
-    "GPU_or_R2_included": false,
-    "current_prebuilt_OCI_path_unchanged": true
+  "static_checks": {
+    "cost_arithmetic": "passed",
+    "network_volume_peak_arithmetic": "passed",
+    "shared_core_exact_55b3248_bytes_and_proof_hashes": "passed",
+    "final_test_count": 389
   }
 }

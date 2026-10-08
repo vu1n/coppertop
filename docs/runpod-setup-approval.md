@@ -14,11 +14,11 @@ custom OCI build is needed. The runtime identity becomes **public base digest +
 export manifest + package lock + bootstrap/code hashes + CPU receipt**, rather
 than a claim that the public base contains this experiment.
 
-This is a proposed extension to the current implementation. The committed path
-expects a prebuilt full OCI image and a new 3 GB evidence volume. A safe exporter,
-split-file relay, bootstrap and explicitly owned 60 GB cache reuse must be
-implemented, tested and reviewed locally before any paid action. This proposal
-does not silently enable the paid CLI or claim that route is already validated.
+The split exporter, local relay, offline CPU bootstrap and exact owned-cache
+reuse are implemented and tested locally. See the [control documentation](runpod-preparation.md)
+for executable gates, receipts and recovery. Complete offline artifacts, a real
+CPU quote and public-base size metadata are still missing; no live restoration
+or throughput is claimed. The prebuilt full-OCI path also remains available.
 
 ## Why this route
 
@@ -95,12 +95,14 @@ local hash. No whole-file in-memory read and no asynchronous bulk return.
 [Modal filesystem API](https://modal.com/docs/guide/sandbox-files).
 
 The local controller uploads those same shards with existing RunPod S3 keys,
-64 MiB multipart parts, at most four concurrent parts and one current upload.
-At most800 data parts, thirteen data objects, ≤32 prefix entries and ≤1,024 S3
+16 MiB multipart parts from the existing shared uploader, at most four concurrent
+parts and one current upload. At most 3,200 archive data parts, thirteen data objects,
+≤32 prefix entries and ≤4,096 S3
 calls are admitted. Each shard is below the 10 GB size at which RunPod documents
 completion timeouts; completion still has a 300 s timeout and is not assumed safe.
-One ≤8 MiB preflight object exercises upload/readback/abort/deletion first, inside
-the same byte/time/reservation limits. Disable boto3 request retries; do not replay
+One ≤8 MiB preflight object exercises upload/full readback/deletion/absence first, inside
+the same byte/time/reservation limits. Actual multipart completion and abort remain
+live gates. Disable boto3 request retries; do not replay
 an export, shard copy or upload automatically. Modal's internal control-plane
 transport recovery is not a new workload approval and must remain inside the
 deadline and byte limits. Keep exact upload IDs and phase/byte telemetry durably local.
@@ -119,7 +121,14 @@ uses ≤2 GiB after source uploads are complete; incomplete source uploads block
 that reuse. Capacity accounting includes hidden upload parts, not only visible
 object bytes.
 
-The CPU Pod sees the shards through `/workspace`. Verify each shard and aggregate
+The CPU Pod sees the shards through `/workspace`. Extraction is only on its
+100 GB container disk: the 60 GB volume never contains an extracted runtime
+copy. The bootstrap rejects a target on that volume and bounds old base +
+extracted trees + installed packages at 70 GiB before writing. Mounted shard
+prehash and streamed restoration can read up to 100 GiB from that volume;
+these are internal Pod/volume reads, without a second archive copy.
+
+ Verify each shard and aggregate
 hash, safely concatenate/extract as a stream and restore the required absolute
 paths. Do not form a second50 GiB archive. Install only the preverified offline
 package closure, restore code into `/app`, then run the existing actual CPU
@@ -146,7 +155,10 @@ or unavailable pins. Use signed official Ubuntu metadata and its snapshot archiv
 for older versions when available, with the 2 GiB package cap. Availability and a
 matching snapshot must be proved; do not silently substitute current versions or
 export an unbounded `/usr` tree. Package acquisition occurs after approval on the
-local controller; the source Sandbox can remain network-blocked.
+local controller; the source Sandbox remains network-blocked. The Mac first
+checks all declared hashes and sizes. Its missing `gpgv`/`dpkg-deb` tools run on
+the same source CPU Sandbox as the first check before runtime export, then
+again on the restoring CPU Pod. No extra Linux builder or Mac installation.
 [Official Ubuntu snapshots](https://snapshot.ubuntu.com).
 
 ## Spending, time and retention
@@ -226,12 +238,18 @@ or establish a working rollout. A later fresh GPU approval must recheck capacity
 driver / CUDA 12.8, EGL, model query and the full frozen DEV1150 execution-16 rollout
 (≤600 controls / 38 queries / 601 observations), recorder boundaries and publication.
 The same 60 GB cache can hold ≤50 GiB input +≤2 GiB recording stage, but the current
-controller's 3 GB assumptions, setup time and allocated-volume cost must be updated
-and reviewed. Do not retransfer input or rent a GPU while that work is incomplete.
-The parent independently owns archive completion/readback repair.
+cache path now binds the existing 60 GB volume, reserves up to 6,300 s setup
+and three hours of GPU cost, and stops compute before an explicit fresh-session
+publication handoff. Those limits need separate GPU approval. The main task
+confirmed shared R2 upload/full readback/receipt/cleanup passed; no R2 test was
+repeated here and no RunPod runtime is established by that result.
 
 The only fact preventing a firm current compute quote is the inaccessible CPU
 catalog/authenticated console. Package closure, base-layer bytes and throughput
 are bounded admission/verification work, not reasons to book unspecified
 infrastructure. If the exact CPU quote meets the fixed limits, this bundle needs
-one CPU-preparation approval after the required local controls are reviewable.
+one CPU-preparation approval after the missing artifacts are concrete. Recent
+real 8 MiB throughput probes must predict completion at twice measured time
+plus 60 s overhead before bulk work; stale/slow samples stop. The Mac must stay
+awake and online for all six hours with a reachable independent cleanup operator.
+Probe results never prove sustained 50 GiB throughput.

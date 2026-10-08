@@ -57,6 +57,47 @@ class Evidence:
         self.client.put_object(Bucket=self.config.volume_id,Key=key,Body=raw)
         if self._read(key,65536)!=raw: raise ValueError('Plan staging readback differs')
 
+    def require_cache(self,prepared,cpu_receipt):
+        """Exact preparation ownership/receipt; bulk bytes rehashed by Pod restore."""
+        import json,tempfile
+        from .runpod_bundle import validate_descriptor
+        from .runpod_prepare import pack_control
+        cache=prepared['plan']['config']['runtime_cache']
+        if cache['volume_id']!=self.config.volume_id or cache['datacenter']!=self.config.datacenter:raise ValueError('Cache provider identity differs')
+        prefix='coppertop/cache/'+cache['attempt']
+        ready=json.loads(self._read(prefix+'/ready.json',65536))
+        owner=json.loads(self._read(prefix+'/owner.json',4096))
+        expected={key:cache[key] for key in ('attempt','plan_sha256','volume_id','volume_name','allocated_gb','datacenter','cleanup_owner')}
+        if owner!=expected or ready.get('owner')!=expected or ready.get('all_staged_bytes_verified') is not True:
+            raise ValueError('Prepared cache ownership/readiness differs')
+        descriptor=validate_descriptor(ready['bundle'])
+        if (descriptor['manifest_sha256']!=cache['manifest_sha256'] or descriptor['tar_sha256']!=cache['tar_sha256']
+            or ready['control']['sha256']!=cache['control_sha256']):raise ValueError('Prepared bundle identity differs')
+        result=json.loads(self._read(prefix+'/bundle/cpu-receipt.json',65536))
+        if digest(canonical(result))!=cache['CPU_receipt_sha256'] or result.get('cpu_admission')!=cpu_receipt:
+            raise ValueError('Actual prepared CPU receipt differs')
+        with tempfile.TemporaryDirectory() as root:
+            if pack_control(Path(root)/'control.tar')['sha256']!=cache['control_sha256']:raise ValueError('Prepared control code differs; no bootstrap with new unadmitted code')
+        uploads=self.client.list_multipart_uploads(Bucket=self.config.volume_id,Prefix=prefix+'/',MaxUploads=16)
+        if uploads.get('IsTruncated') or uploads.get('Uploads'):raise ValueError('Incomplete input uploads block cache reuse')
+        return descriptor
+
+    def wait_bootstrap(self,prepared,pod_id,seconds):
+        import json
+        until=time.monotonic()+seconds
+        while time.monotonic()<until:
+            try:raw=self._read(self.base(prepared)+'/bootstrap.json',65536)
+            except Exception as error:
+                if not missing(error):raise
+                time.sleep(10);continue
+            value=json.loads(raw)
+            if (value.get('status')!='passed' or value.get('pod_id')!=pod_id or value.get('plan_sha256')!=prepared['plan_sha256']
+                or value.get('manifest_sha256')!=prepared['plan']['config']['runtime_export_sha256']
+                or digest(canonical(value.get('cpu_admission')))!=prepared['plan']['config']['cpu_admission_sha256']):
+                raise ValueError('Fresh Pod restore/admission receipt differs')
+            return value
+        raise TimeoutError('Fresh Pod bootstrap deadline')
+
     def wait_receipt(self,prepared,pod_id,seconds):
         import json
         until=time.monotonic()+seconds
@@ -173,7 +214,8 @@ class Evidence:
             if self._read(key,65536)!=raw:raise ValueError('Staged multipart journal commit not verified')
         save(directory/'r2-attempt.json',{'archive':ref.to_dict(),'publication_verified':False})
         publication=publish_archive(archive,descriptor,publisher,record=record,state=upload,
-            persist=persist,concurrency=4,publisher_started=started)
+            persist=persist,concurrency=4,publisher_started=started,
+            observe=lambda event:save(directory/'publication-telemetry.json',event))
         publication['archive_verified']=True
         save(directory/'publication-complete.json',publication)
         return publication

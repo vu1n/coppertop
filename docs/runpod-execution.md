@@ -1,10 +1,15 @@
 # RunPod full official rollout
 
-The subsequent [CPU setup approval bundle](runpod-setup-approval.md) proposes a
-smaller preparation route through existing S3 access and a mounted runtime cache,
-without a registry. It has a conditional USD12 envelope and explicit remaining
-local bootstrap/controller work. The prebuilt-image path documented here remains
-the committed implementation; neither proposal authorizes a paid action.
+The [CPU setup approval bundle](runpod-setup-approval.md) and
+[preparation controls](runpod-preparation.md) document the now-implemented split
+export/local relay/offline restore/60 GB owned-cache path. Its USD 12 proposal is
+unapproved, and exact CPU access/quote, complete offline packages and base layer
+metadata remain gates. The prebuilt-OCI option below retains its 3 GB volume.
+
+The main task confirmed the repaired shared R2 single-upload/full-readback/receipt
+and exact cleanup test passed for commit 55b3248. The shared interface is integrated
+unchanged here; no R2 validation was duplicated. RunPod S3 and restored/CUDA/EGL
+runtime remain unverified. Historical checkpoints below are prior evidence.
 
 This branch implements local RunPod controls and an offline portable runtime
 recipe for the frozen Xiaomi/RoboCasa recording. No RunPod runtime, portable
@@ -15,34 +20,20 @@ outcomes are below. This document
 does not authorize another paid action, credential creation, publishing or bulk
 download. The existing Modal GPU approval is separate.
 
-The sibling A100 rollout succeeded at 205 controls and 13 queries, with about
-147 MiB and 1,939 immutable objects, but its shared CPU publisher timed out at
-900 s; the final report was absent and no complete release was verified. GPU and
-temporary Volume cleanup completed. The shared publisher's full-run scalability
-is therefore a **known unresolved live blocker**. Shared `record_archive` from commit `37dd2a3` now provides archive-first
-publication here. Real full-publication verification is still required. The
-preceding diagnosis found a serial PUT + HEAD + HEAD + GET
-path, about 7,760 requests: first PUT at 405 seconds, then 602 objects / 45.1 MiB
-over 495 seconds, with a 0.808-second median PUT interval. Full serial publication
-projects about 33 minutes. The initial delay lacks telemetry; the full trajectory
-cannot be reconstructed from checked survivors after source Volume deletion.
-The parent completed the shared archive repair and owns its real R2 validation.
-This checkout imports that core unchanged and adds the RunPod adapters.
-The latest parent checkpoint uploaded all ten parts of a 156,098,560-byte archive
-in 66.81 seconds, but completion/readback stalled through the 600-second deadline.
-The exact archive key was deleted and observed absent; ListParts returned
-NoSuchUpload, while the abort ClientError lacked its error code. The local source
-is preserved. Durable phase telemetry, reconciliation and repair remain owned by
-the parent; this thread performs no duplicate archive upload.
-Passing smoke/mocked publication cannot establish the full-run path. Do not
-approve a full RunPod launch until the shared publication gate is resolved and
-its actual limits are incorporated in a newly reviewed plan; 900 s is a failed
-historical ceiling, not a demonstrated sufficient budget.
-The paid CLI consequently fails before credential access while
-`full_publication_live_verified=false`. Its lifecycle engine is locally tested
-through injected transports. Enabling the CLI requires a reviewed follow-up that
-binds the shared publisher's real validation and measured limits to a fresh plan;
-no runtime recipe or mocked receipt flips that gate.
+The current shared publication admission is the main task's verified Mac-to-R2
+archive and receipt, bound to the exact unchanged shared files in
+[archive-live-admission.json](../containers/archive-live-admission.json).
+The earlier per-file publication and multipart timeout checkpoints are retained
+as history in [runpod-verification.json](runpod-verification.json). They do not
+replace the later passing single-upload evidence. A real full-size multipart
+readback and RunPod handoff still need their own bounded validation.
+
+The paid CLI checks a newly approved exact plan, actual CPU admission receipt
+and fresh capacity/price before reading credentials. The shared R2 admission
+cannot establish RunPod S3, restoration, CUDA or EGL. The RunPod adapter also
+ports the provider mount-root boundary from parent fix 572af3a while retaining
+all generic archive symlink/member checks. The parent's paid Modal mount
+preflight is separate and was not duplicated.
 
 ## Approved inventory attempts and storage access
 
@@ -350,43 +341,22 @@ accepted explicitly outside the initial one-month reservation.
 
 ## Remaining live gates and smallest blocked step
 
-The shared A100 publisher diagnosis owns the current scaling investigation. Await
-its repair and full validation; this thread performs no duplicate investigation.
-Resolve full-run publication, including byte readback and surviving-evidence recovery,
-before approving the rollout in step 4. Do not simply increase timeout or spend.
+The local CPU preparation and owned-cache controls are complete. The smallest
+missing pricing fact is the exact current US-WA-1 CPU catalog type, accepted Pod
+flavor ID, RAM, availability and total rate. The recorded 403 and signed-out
+console remain access gaps; no credential/login/permission change or fallback
+route was attempted.
 
-1. **CPU metadata inventory complete:** the single revised invocation used two
-   physical CPU cores, 16 GiB RAM, 900 s execution, 300 s startup and 180 s exact-App
-   cleanup; ≤256 KiB output, zero retries, no GPU, Volume, mounted secrets, install,
-   downloads or bulk transfer. Its conservative preflight compute envelope was
-   `1380×(2×0.0000131 + 16×0.00000222)×1.75 = $0.1490538`, plus at most
-   $0.000009765625 metadata egress, within the separate approved $0.20 cap. Both
-   historical inventory reservations remain held pending final bills. No additional
-   remote inventory is necessary for the current local deliverable or authorized.
-2. **Smallest blocked phase:** price and approve the exact export/build/registry/CPU-transfer phase from that
-   inventory; source checkouts, licenses, strong manifest and current system closure
-   must accompany the existing bytes. The measured tree subtotal is 47,492,000,203
-   bytes; offline Debian closure and tar/manifest overhead must fit the 75,161,927,680-byte
-   export ceiling. Builder scratch, compressed OCI bytes, registry retention and
-   egress are still unmeasured and need named locations, quoted rates and explicit
-   financial caps before export or build. No RunPod setup cap has been approved.
-   No new large models or asset ZIP acquisition. Do not treat the ≤70 GiB ceiling
-   as a measured image size or a priced bulk-transfer approval.
-3. Build on Linux x86_64; retain passing real CPU receipt and measured OCI layer bytes.
-   Validate the actual RunPod driver/EGL and a model query in the first approved Pod.
-   The initial path intentionally attempts the full bounded rollout; an OOM, ABI,
-   render, setup or 560 s worker deadline failure is evidence, never an automatic retry.
-4. Refresh capacity and every rate, approve the exact plan hash and new reservation,
-   exact owned resources, fresh R2 prefix/session and retention. Establish independent
-   cleanup reachability first. Then run one rollout, verify all recorder boundaries,
-   terminate the GPU, verify full publication/readback, delete volume and reconcile
-   live bills. No financial approval has been inherited from the Modal experiment.
+The [approval bundle](runpod-setup-approval.md) reserves USD 12 for one admitted
+CPU preparation attempt, not GPU execution. Fill the signed offline closure,
+including libopengl0=1.4.0-1, and pinned-base layer metadata before approval.
+Signature/deb inspection runs on the same source Sandbox before export; the Mac
+needs no extra installed verifier. Real tiny throughput probes must pass before
+bulk work; the Mac must remain awake/online with independent cleanup reachability.
 
-Official sources used for implementation and price arithmetic (checked 2026-10-08):
-[Pod REST](https://docs.runpod.io/api-reference/pods/POST/pods),
-[Pod deletion](https://docs.runpod.io/api-reference/pods/DELETE/pods/podId),
-[network volumes](https://docs.runpod.io/storage/network-volumes),
-[S3 compatibility](https://docs.runpod.io/storage/s3-api),
-[Modal rates](https://modal.com/pricing),
-[regional multiplier](https://modal.com/docs/guide/region-selection),
-[R2 billing](https://developers.cloudflare.com/r2/pricing/).
+A later separate GPU approval must validate actual driver/CUDA12.8, EGL,
+model query and reset, frozen 600-control/38-query/601-observation boundaries,
+RunPod handoff, full archive publication and exact cleanup. A recipe, source
+inventory and fixture tests do not establish that runtime. Input archives stay
+on the 60 GB volume; extracted trees stay on container disk under the 70 GiB peak.
+No paid resources, bulk export, image/weight downloads or transfer ran here.

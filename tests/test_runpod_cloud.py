@@ -199,7 +199,7 @@ import coppertop.runpod_cloud, coppertop.runpod_runtime
         process=subprocess.run([sys.executable,'-c',script],capture_output=True,timeout=30)
         self.assertEqual(process.returncode,0,process.stderr.decode())
 
-    def test_paid_cli_is_blocked_before_credentials_until_shared_publication_is_validated(self):
+    def test_paid_cli_is_blocked_before_credentials_without_fresh_rollout_approval(self):
         with tempfile.TemporaryDirectory() as root:
             p,_=inputs();config=Path(root)/'config.json';config.write_bytes(canonical(p['plan']['config']))
             with patch.object(sys,'argv',['runpod','--execute','--config',str(config),'--cpu-receipt',str(Path(root)/'none.json'),
@@ -327,7 +327,7 @@ class EvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             p,s3,t,record,receipt,key=self.fixture();client=DiskS3(Path(root)/'r2');client.fail_part=1
             store=S3Store(client,'coppertop',prefix=p['plan']['r2_prefix']);fetch=Path(root)/'fetch'
-            with self.assertRaises(UploadInterrupted):t.publish(p,receipt,fetch,store)
+            with patch('coppertop.s3.STREAMED_PUT_BYTES',0),self.assertRaises(UploadInterrupted):t.publish(p,receipt,fetch,store)
             journal=read_json(fetch/'upload-state.json');self.assertEqual(journal['upload_id'],'opaque-session')
             self.assertEqual(t.upload_state(p).to_dict(),journal)
             self.assertTrue((fetch/'episode.tar').is_file());self.assertTrue(read_json(fetch/'fetch-complete.json')['checksums_verified'])
@@ -364,6 +364,7 @@ class RuntimeTests(unittest.TestCase):
              'COPPERTOP_RUNTIME_IMAGE':c['image'],'RUNPOD_POD_ID':'pod-1'}
         with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,env),patch.object(worker,'read_json',side_effect=lambda path,*args:cpu if str(path)=='/opt/runpod-cpu-admission.json' else json.loads(Path(path).read_bytes())):
             root=Path(temp)
+            (root/'mount').mkdir()
             def runner(argv,**kwargs):
                 target=Path(argv[argv.index('--output')+1]);target.mkdir()
                 LocalStore(target/'store').put(b'partial native state')
@@ -403,6 +404,8 @@ class RuntimeTests(unittest.TestCase):
              'RUNPOD_API_KEY':'must-never-reach-gpu-child','R2_TEMP_SECRET_ACCESS_KEY':'must-never-reach-gpu-child'}
         with tempfile.TemporaryDirectory() as root,patch.dict(os.environ,env),patch.object(worker,'read_json',side_effect=lambda path,*args:cpu if str(path)=='/opt/runpod-cpu-admission.json' else json.loads(Path(path).read_bytes())):
             root=Path(root)
+            physical=root/'physical';physical.mkdir()
+            (root/'mount').symlink_to(physical,target_is_directory=True)
             def runner(argv,**kwargs):
                 self.assertNotIn('RUNPOD_API_KEY',kwargs['env']);self.assertNotIn('R2_TEMP_SECRET_ACCESS_KEY',kwargs['env'])
                 self.assertIn('--full',argv);self.assertEqual(kwargs['timeout'],560)
@@ -416,7 +419,29 @@ class RuntimeTests(unittest.TestCase):
             record=json.loads((base/'record.json').read_bytes())
             self.assertNotIn('objects',record);self.assertEqual(record['object_count'],1101)
             self.assertLess(len(canonical(receipt)),1024);self.assertEqual(receipt['record_sha256'],digest(canonical(record)))
+            from coppertop.record_archive import unpack_archive
+            with self.assertRaisesRegex(ValueError,'Symlink path rejected'):
+                unpack_archive(base/'archive/episode.tar',record['archive'],root/'rejected')
+            restored=unpack_archive(physical/'coppertop/runs'/p['plan']['config']['run_id']/'archive/episode.tar',record['archive'],root/'restored')
+            self.assertTrue((restored/'result.json').is_file())
             with self.assertRaises(ValueError):worker.run(p,mount=root/'mount',scratch=root,runner=runner,admit=lambda:cpu)
+
+    def test_worker_still_rejects_symlink_below_trusted_mount_root(self):
+        p,cpu=inputs();c=p['plan']['config']
+        env={'COPPERTOP_PLAN_SHA256':p['plan_sha256'],'COPPERTOP_RUN_ID':c['run_id'],
+             'COPPERTOP_RUNTIME_IMAGE':c['image'],'RUNPOD_POD_ID':'pod-1'}
+        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,env),patch.object(worker,'read_json',side_effect=lambda path,*args:cpu if str(path)=='/opt/runpod-cpu-admission.json' else json.loads(Path(path).read_bytes())):
+            root=Path(temp);physical=root/'physical';physical.mkdir();mount=root/'mount';mount.symlink_to(physical)
+            base=physical/'coppertop/runs'/c['run_id'];base.mkdir(parents=True)
+            outside=root/'outside';outside.mkdir();(base/'archive').symlink_to(outside)
+            def runner(argv,**kwargs):
+                target=Path(argv[argv.index('--output')+1]);target.mkdir()
+                (target/'result.json').write_bytes(canonical({'status':'recording_acceptance'}))
+                return SimpleNamespace(returncode=0)
+            with self.assertRaisesRegex(ValueError,'Symlink path rejected'):
+                worker.run(p,mount=mount,scratch=root,runner=runner,admit=lambda:cpu)
+            self.assertFalse(list(outside.iterdir()));self.assertFalse((base/'ready.json').exists())
+            self.assertTrue((root/(c['run_id']+'-episode.tar')).is_file())
 
 
 if __name__=='__main__':unittest.main()

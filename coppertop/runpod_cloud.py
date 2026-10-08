@@ -54,12 +54,20 @@ def amount(value):
     return Decimal(value)
 
 
-def cost_bound(prices):
+def live_archive_verified():
+    root=Path(__file__).resolve().parents[1]
+    value=read_json(root/'containers/archive-live-admission.json',4096)
+    return (value.get('status')=='passed' and value.get('full_SHA256_readback') is True
+        and value.get('receipt_verified') is True and bool(value.get('file_sha256'))
+        and all(digest((root/name).read_bytes())==sha for name,sha in value['file_sha256'].items()))
+
+
+def cost_bound(prices,cache=False):
     """Reservations include hourly rounding and full first storage month, no tiers."""
     # Price discovery/setup/export/build/registry are a separate approved phase.
-    gpu = amount(prices['gpu_hour_usd']) # entire setup + run + cleanup, rounded to hour
+    gpu = amount(prices['gpu_hour_usd'])*(3 if cache else 1)
     disk = amount(prices['container_gb_month_usd'])*100
-    volume = amount(prices['volume_gb_month_usd'])*3
+    volume = amount(prices['volume_gb_month_usd'])*(60 if cache else 3)
     r2 = amount(prices['r2_gb_month_usd'])*2 # 1 GiB rounds up to two billable GB
     requests = amount(prices['r2_request_reservation_usd'])
     transfer = amount(prices['transfer_reservation_usd'])
@@ -68,8 +76,9 @@ def cost_bound(prices):
 
 def prepare(config):
     """Bind exact OCI image, real CPU validation receipt, prices and code to approval."""
-    if set(config) != {'run_id','image','runtime_export_sha256','cpu_admission_sha256',
-                        'datacenter','gpu','prices','additional_cap_usd','r2_bucket','retention'}:
+    fields={'run_id','image','runtime_export_sha256','cpu_admission_sha256',
+                        'datacenter','gpu','prices','additional_cap_usd','r2_bucket','retention'}
+    if set(config) not in (fields,fields|{'runtime_cache'}):
         raise ValueError('Exact RunPod configuration fields required')
     if (not re.fullmatch(r'mechanism-[0-9a-f]{16}',config['run_id'])
         or not re.fullmatch(r'[A-Za-z0-9./_-]+@sha256:[0-9a-f]{64}',config['image'])
@@ -84,7 +93,14 @@ def prepare(config):
         raise ValueError('Complete compute/storage/publication prices required')
     checked=datetime.fromisoformat(prices['checked_utc'])
     if checked.tzinfo is None: raise ValueError('UTC quote timestamp required')
-    bound=cost_bound(prices)
+    cache=config.get('runtime_cache')
+    if cache:
+        from .runpod_prepare import validate_cache
+        from .runpod_runtime import contract
+        validate_cache(cache)
+        if config['image']!=contract()['base'] or config['runtime_export_sha256']!=cache['manifest_sha256'] or config['datacenter']!=cache['datacenter']:
+            raise ValueError('Pinned base/cache manifest/datacenter differ')
+    bound=cost_bound(prices,bool(cache))
     if amount(config['additional_cap_usd']) < amount(bound):
         raise ValueError('Approved reservation cannot cover complete cost bound')
     worker=worker_plan(full=True)
@@ -102,7 +118,11 @@ def prepare(config):
           'archive_retention':validate_retention(config['retention']) if config['retention'] is not None else None,
           'retention_enforcement':'explicit ongoing storage acceptance; named owner; no automatic expiry service',
           'paid_authorized':False,'setup_build_and_bulk_transfer_included':False,
-          'full_publication_live_verified':False}
+          'full_publication_live_verified':live_archive_verified()}
+    if cache:
+        plan['volume_name']=cache['volume_name']
+        plan['limits'].update(setup_seconds=6300,controller_seconds=8400,handoff_seconds=8700,network_volume_gb=60)
+        plan['cache_reuse']=True
     return {'plan':plan,'plan_sha256':digest(canonical(plan))}
 
 
@@ -149,10 +169,30 @@ class RestAPI:
         return {'gpu':gpu,'datacenter':datacenter,'gpu_hour_usd':str(value['price']['secure']),
                 'checked_utc':datetime.now(timezone.utc).isoformat(),'availability':value['availability']}
 
+    def cpu_quote(self,expected):
+        from .runpod_prepare import validate_quote
+        # The recorded approval can be older after export. Validate its shape at
+        # its original clock, then fetch a fresh quote without broadening scope.
+        validate_quote(expected,now=datetime.fromisoformat(expected['checked_utc']))
+        count=expected['vcpus']
+        response=self._send('GET',f'https://api.runpod.io/v2/catalog/cpus?include=AVAILABILITY&product=POD&vcpuCount={count}')
+        values=response.get('cpus',[]) if isinstance(response,dict) else []
+        matches=[v for v in values if v.get('id')==expected['type_id']]
+        if len(matches)!=1:raise ValueError('Exact CPU flavor unavailable; no alternate route')
+        value=matches[0]
+        dc=[d for d in value.get('dataCenters',[]) if d.get('id')=='US-WA-1']
+        if len(dc)!=1 or not value['vcpu']['min']<=count<=value['vcpu']['max']:raise ValueError('CPU datacenter/count unavailable')
+        quote={'type_id':value['id'],'flavor_id':expected['flavor_id'],'vcpus':count,
+            'ram_gib':str(Decimal(str(value['ramGbPerVcpu']))*count*Decimal(10**9)/Decimal(1024**3)),
+            'hour_usd':str(Decimal(str(value['price']['securePerVcpu']))*count),
+            'datacenter':'US-WA-1','availability':dc[0]['availability'],
+            'checked_utc':datetime.now(timezone.utc).isoformat()}
+        return validate_quote(quote)
+
 
 def pod_payload(prepared,volume_id):
     p=prepared['plan']; c=p['config']
-    return {'name':p['pod_name'],'imageName':c['image'],'cloudType':'SECURE',
+    result={'name':p['pod_name'],'imageName':c['image'],'cloudType':'SECURE',
         'computeType':'GPU','gpuTypeIds':[c['gpu']],'gpuCount':1,'interruptible':False,
         'allowedCudaVersions':['12.8'],'dataCenterIds':[c['datacenter']],
         'networkVolumeId':identifier(volume_id),'volumeMountPath':'/workspace',
@@ -161,13 +201,19 @@ def pod_payload(prepared,volume_id):
         'dockerEntrypoint':[], 'dockerStartCmd':['/opt/conda/bin/python','-m','coppertop.runpod_worker'],
         'env':{'COPPERTOP_RUN_ID':c['run_id'],'COPPERTOP_PLAN_SHA256':prepared['plan_sha256'],
                'COPPERTOP_RUNTIME_IMAGE':c['image']}}
+    if c.get('runtime_cache'):
+        from .runpod_prepare import CONTROL_START
+        cache=c['runtime_cache'];result['dockerStartCmd']=['/opt/conda/bin/python','-c',CONTROL_START]
+        result['env'].update(COPPERTOP_BOOTSTRAP_MODE='rollout',COPPERTOP_CONTROL_SHA256=cache['control_sha256'],
+            COPPERTOP_CACHE_BUNDLE='/workspace/coppertop/cache/'+cache['attempt']+'/bundle')
+    return result
 
 
 def _resource_matches(kind,value,prepared,volume_id=None):
     p=prepared['plan']; c=p['config']
     if kind=='networkvolumes':
-        return value.get('name')==p['volume_name'] and value.get('dataCenterId')==c['datacenter'] and value.get('size')==3
-    return (value.get('name')==p['pod_name'] and value.get('imageName')==c['image']
+        return value.get('name')==p['volume_name'] and value.get('dataCenterId')==c['datacenter'] and value.get('size')==p['limits']['network_volume_gb']
+    return (value.get('name')==p['pod_name'] and value.get('imageName',value.get('image'))==c['image']
             and value.get('env',{}).get('COPPERTOP_PLAN_SHA256')==prepared['plan_sha256']
             and (value.get('networkVolumeId') or value.get('networkVolume',{}).get('id'))==volume_id)
 
@@ -212,6 +258,13 @@ def cleanup(api,evidence,state,prepared,path,*,delete_unpublished=False):
                 current=api.request('GET','networkvolumes/'+volume)
                 if current is not None:
                     if not _resource_matches('networkvolumes',current,prepared): raise ValueError('Volume ownership changed')
+                    if prepared['plan']['config'].get('runtime_cache'):
+                        result.update(cache_retained=True,volume_id=volume,allocated_gb=60,
+                            stage_retained=not state.get('publication_verified',False),
+                            monthly_allocated_volume_usd=str(amount(prepared['plan']['config']['prices']['volume_gb_month_usd'])*60),
+                            required_action='recover any unpublished evidence; explicit owned-cache cleanup by original retention deadline',
+                            automatic_expiry_enforced=False)
+                        state['cleanup']=result;save(path,state);return result
                     source_possible=bool(state.get('pod_creation_attempted') or state.get('pod_id'))
                     if source_possible and not state.get('publication_verified'):
                         policy=validate_retention(prepared['plan'].get('archive_retention'))
@@ -275,11 +328,14 @@ def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_rece
     now=now or datetime.now(timezone.utc)
     age=(now-datetime.fromisoformat(c['prices']['checked_utc'])).total_seconds()
     if not 0<=age<=900: raise ValueError('Capacity and price quote must be refreshed within 15 minutes')
-    if publisher.bucket!=c['r2_bucket'] or publisher.prefix!=p['r2_prefix']:
-        raise ValueError('Exact fresh scoped R2 destination required')
-    expires=getattr(publisher,'session_expires_utc',None)
-    if not isinstance(expires,datetime) or expires.tzinfo is None or not 3540<=(expires-now).total_seconds()<=3600:
-        raise ValueError('Fresh R2 session with 3540 to 3600 seconds remaining required')
+    if publisher is None:
+        if not c.get('runtime_cache'):raise ValueError('Publisher required for the short prebuilt-image path')
+    else:
+        if publisher.bucket!=c['r2_bucket'] or publisher.prefix!=p['r2_prefix']:
+            raise ValueError('Exact fresh scoped R2 destination required')
+        expires=getattr(publisher,'session_expires_utc',None)
+        if not isinstance(expires,datetime) or expires.tzinfo is None or not 3540<=(expires-now).total_seconds()<=3600:
+            raise ValueError('Fresh R2 session with 3540 to 3600 seconds remaining required')
     from .image_check import pinned_dependencies
     root=Path(__file__).resolve().parents[1]
     native=cpu_receipt.get('native',{})
@@ -297,26 +353,36 @@ def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_rece
         target.write(canonical(state));target.flush();os.fsync(target.fileno())
     began=time.monotonic()
     try:
-        with hard_deadline(LIMITS['controller_seconds']):
-            with hard_deadline(LIMITS['setup_seconds']):
+        with hard_deadline(p['limits']['controller_seconds']):
+            with hard_deadline(p['limits']['setup_seconds']):
                 quote=api.quote(c['gpu'],c['datacenter'])
                 if (quote.get('gpu')!=c['gpu'] or quote.get('datacenter')!=c['datacenter']
                     or amount(quote['gpu_hour_usd'])>amount(c['prices']['gpu_hour_usd'])):
                     raise ValueError('Current capacity quote exceeds approved scope/price')
                 state['live_quote']=quote;save(journal,state)
-                for kind,name in (('pods',p['pod_name']),('networkvolumes',p['volume_name'])):
-                    if any(v.get('name')==name for v in api.request('GET',kind)):
-                        raise ValueError('Owned name already exists; recover instead of relaunch')
-                state['pending']='networkvolumes';save(journal,state)
-                value=api.request('POST','networkvolumes',{'name':p['volume_name'],'size':3,'dataCenterId':c['datacenter']})
-                state['volume_id']=identifier(value['id']);state['pending']=None;save(journal,state)
+                cache=c.get('runtime_cache')
+                if cache:
+                    state['volume_id']=cache['volume_id'];save(journal,state)
+                    value=api.request('GET','networkvolumes/'+state['volume_id'])
+                    if value is None or not _resource_matches('networkvolumes',value,prepared):raise ValueError('Prepared owned cache unavailable/changed')
+                    pods=api.request('GET','pods')
+                    if any(v.get('name')==p['pod_name'] or (v.get('networkVolumeId') or v.get('networkVolume',{}).get('id'))==state['volume_id'] for v in pods):raise ValueError('Cache is in use; no second writer')
+                else:
+                    for kind,name in (('pods',p['pod_name']),('networkvolumes',p['volume_name'])):
+                        if any(v.get('name')==name for v in api.request('GET',kind)):
+                            raise ValueError('Owned name already exists; recover instead of relaunch')
+                    state['pending']='networkvolumes';save(journal,state)
+                    value=api.request('POST','networkvolumes',{'name':p['volume_name'],'size':3,'dataCenterId':c['datacenter']})
+                    state['volume_id']=identifier(value['id']);state['pending']=None;save(journal,state)
                 transport=evidence(state['volume_id'])
+                if cache:transport.require_cache(prepared,cpu_receipt)
                 transport.stage_plan(prepared)
                 state['pending']='pods';state['pod_creation_attempted']=True;save(journal,state)
                 pod=api.request('POST','pods',pod_payload(prepared,state['volume_id']))
                 state['pod_id']=identifier(pod['id']);state['pending']=None;save(journal,state)
                 if amount(str(pod['costPerHr']))>amount(c['prices']['gpu_hour_usd']):
                     raise ValueError('Allocated Pod exceeds quoted GPU price')
+                if cache:transport.wait_bootstrap(prepared,state['pod_id'],p['limits']['setup_seconds'])
             with hard_deadline(LIMITS['run_seconds']):
                 receipt=transport.wait_receipt(prepared,state['pod_id'],LIMITS['run_seconds'])
                 if receipt.get('durable_archive_verified') is not True:raise ValueError('Verified archive stage required before GPU handoff')
@@ -330,18 +396,22 @@ def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_rece
             with hard_deadline(60):
                 while api.request('GET','pods/'+state['pod_id']) is not None: time.sleep(1)
             state['pod_absent']=True;save(journal,state)
-            with hard_deadline(LIMITS['publish_seconds']):
-                state['publication_started']=True;save(journal,state)
-                publication=transport.publish(prepared,receipt,directory/'fetch',publisher)
-                accept_publication(state,publication,receipt)
-                state['status']='passed' if receipt['status']=='passed' else 'failed'
+            if publisher is None:
+                state.update(publication_deferred=True,status='awaiting_publication')
                 save(journal,state)
+            else:
+                with hard_deadline(LIMITS['publish_seconds']):
+                    state['publication_started']=True;save(journal,state)
+                    publication=transport.publish(prepared,receipt,directory/'fetch',publisher)
+                    accept_publication(state,publication,receipt)
+                    state['status']='passed' if receipt['status']=='passed' else 'failed'
+                    save(journal,state)
     except BaseException as error:
         state['status']='failed';state['error_type']=type(error).__name__;save(journal,state)
     finally:
         # Scheduling/ready-marker failures may still leave a sealed record. Fetch
         # it once after verified termination, before deleting the evidence volume.
-        if state.get('pod_id') and state.get('volume_id') and not state.get('publication_started'):
+        if publisher is not None and state.get('pod_id') and state.get('volume_id') and not state.get('publication_started'):
             try:
                 with hard_deadline(60):
                     current=api.request('GET','pods/'+state['pod_id'])
@@ -350,7 +420,7 @@ def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_rece
                         api.request('DELETE','pods/'+state['pod_id'])
                     while api.request('GET','pods/'+state['pod_id']) is not None: time.sleep(1)
                 state['pod_absent']=True;state['publication_started']=True;save(journal,state)
-                remaining=min(LIMITS['publish_seconds'],LIMITS['handoff_seconds']-(time.monotonic()-began))
+                remaining=min(LIMITS['publish_seconds'],p['limits']['handoff_seconds']-(time.monotonic()-began))
                 if remaining<=0: raise TimeoutError('Overall evidence handoff deadline')
                 with hard_deadline(remaining):
                     transport=evidence(state['volume_id'])
@@ -369,7 +439,7 @@ def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_rece
         try: cleanup(api,evidence,state,prepared,journal)
         except BaseException as error:
             state['cleanup']={'error_type':type(error).__name__};save(journal,state)
-    if not state.get('report_key'):
+    if publisher is not None and not state.get('report_key'):
         # Even allocation/startup failures receive a durable bounded metadata report.
         try:
             with hard_deadline(60):
@@ -386,7 +456,7 @@ def execute(prepared,approved_sha256,directory,*,api,evidence,publisher,cpu_rece
         state['local_evidence']=dict(read_json(marker,1024),directory=str(directory/'fetch'))
     state.setdefault('runtime_status','unknown')
     state['publication_status']='verified' if state.get('publication_verified') else 'unverified'
-    if state['cleanup'].get('pod_absent') is not True or (state['cleanup'].get('volume_absent') is not True and not state['cleanup'].get('stage_retained')):
+    if state['cleanup'].get('pod_absent') is not True or (state['cleanup'].get('volume_absent') is not True and not state['cleanup'].get('stage_retained') and not state['cleanup'].get('cache_retained')):
         state['status']='failed';state['cleanup_incomplete']=True
     state['completed']=True;save(journal,state)
     return state
@@ -413,6 +483,11 @@ def main():
         prepared=prepare(read_json(args.config))
         if prepared['plan']['full_publication_live_verified'] is not True:
             parser.error('Full publication is blocked pending live archive validation and a newly approved plan')
+        if args.approved_plan_sha256!=prepared['plan_sha256']:
+            parser.error('Exact fresh rollout approval required before credential access')
+        cpu_receipt=read_json(args.cpu_receipt,65536)
+        if digest(canonical(cpu_receipt))!=prepared['plan']['config']['cpu_admission_sha256']:
+            parser.error('Exact real CPU receipt required before credential access')
     if args.recover:
         state=read_json(args.recover,1024**2);prepared=state['prepared']
         if digest(canonical(prepared['plan']))!=args.approved_plan_sha256:parser.error('Exact recovery approval required')
@@ -422,11 +497,11 @@ def main():
     # Only execution/recovery reads explicitly supplied credentials. No .env parsing,
     # credential creation, external messaging, or credential delivery to the Pod.
     from .runpod_evidence import make_transports
-    api,evidence,publisher=make_transports(publication=not args.recover)
+    api,evidence,publisher=make_transports(publication=not args.recover and not prepared['plan']['config'].get('runtime_cache'))
     if args.recover:
         cleanup(api,evidence,state,prepared,args.recover)
         if state.get('publication_verified'):
-            if state['cleanup'].get('pod_absent') is not True or state['cleanup'].get('volume_absent') is not True:raise SystemExit(1)
+            if state['cleanup'].get('pod_absent') is not True or not (state['cleanup'].get('volume_absent') or state['cleanup'].get('cache_retained')):raise SystemExit(1)
             return
         if not state.get('publication_verified') and state.get('publication_started'):
             # A crashed controller may not have saved its final upload disposition.
@@ -452,7 +527,8 @@ def main():
             with hard_deadline(LIMITS['publish_seconds']):
                 transport=evidence(state['volume_id']);receipt=transport.recovery_receipt(prepared,state['pod_id'])
                 result=transport.publish(prepared,receipt,args.recover.parent/'fetch',publisher,resume=True)
-                accept_publication(state,result,receipt);state['r2_upload_recovery_required']=False;save(args.recover,state)
+                accept_publication(state,result,receipt);state['r2_upload_recovery_required']=False
+                state['publication_deferred']=False;state['status']='passed' if receipt['status']=='passed' else 'failed';save(args.recover,state)
             cleanup(api,evidence,state,prepared,args.recover)
         elif args.delete_unpublished:
             if state.get('r2_upload_recovery_required'):
@@ -468,7 +544,7 @@ def main():
         return
     state=execute(prepared,args.approved_plan_sha256,args.output,
         api=api,evidence=evidence,publisher=publisher,cpu_receipt=read_json(args.cpu_receipt))
-    if state['status']!='passed' or state.get('cleanup',{}).get('volume_absent') is not True:
+    if state['status']!='passed' or not (state.get('cleanup',{}).get('volume_absent') or state.get('cleanup',{}).get('cache_retained')):
         raise SystemExit(1)
 
 

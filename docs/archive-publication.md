@@ -1,11 +1,19 @@
 # Episode archive publication
 
 The producer seals one uncompressed USTAR archive before copying it to durable
-storage. The CPU publisher uploads that seekable archive with 16 MiB multipart
-parts (at most four in flight), reads the entire uploaded object once through
+storage. The CPU publisher uploads a seekable archive up to 256 MiB with one
+streamed conditional PUT; larger archives and explicit multipart resumes use
+16 MiB parts (at most four in flight). It reads the entire uploaded object through
 SHA256, and only then writes and reads back a small completion receipt. It never
 publishes individual episode files. The existing short feasibility workloads keep
-their small-object path.
+their small-object path. The shared core is unchanged from
+`55b324807dc3c86428ed44c34eb892c686b79acc`, including durable phase and readback
+progress telemetry. The main task verified a 156,098,560-byte Mac-to-R2 archive
+(37.1 s upload, 202.0 s full SHA256 readback, 255.4 s total), its completion receipt
+and exact test-object/upload cleanup. The confirmation and core hashes are in
+[archive-live-admission.json](../containers/archive-live-admission.json).
+This test establishes neither a restored RunPod runtime nor RunPod S3 performance;
+the 1 GiB multipart boundary still needs its separately approved live validation.
 
 `coppertop/record_archive.py` is the shared Modal/RunPod interface:
 
@@ -16,7 +24,8 @@ staged = stage_archive(local_archive_path, descriptor, new_stage_directory,
 # Return the GPU control receipt only after stage_archive returns successfully.
 result = publish_archive(new_stage_directory / "episode.tar", staged, s3_store,
                          record=bounded_provenance,
-                         state=restored_upload_state, persist=durable_save_state)
+                         state=restored_upload_state, persist=durable_save_state,
+                         observe=durable_phase_telemetry)
 receipt = read_completion(s3_store, result["report_key"])
 unpack_archive(downloaded_archive_path, receipt["archive"], new_output_directory)
 ```
@@ -58,13 +67,21 @@ not depend on optional provider checksum response fields.
 R2 uses a distinct `mechanism_archive` role. It adds only multipart create, upload,
 list-parts, complete and abort operations to Get/Head/Put, for one dedicated
 content-addressed attempt prefix. It denies bucket/object enumeration, object
-deletion and unrelated keys. Single PUT is limited to 64 KiB; upload parts are
+deletion and unrelated keys. In-memory PUT is limited to a 64 KiB receipt; an
+ordinary seekable file can use streamed PUT up to 256 MiB. Upload parts are
 limited to 16 MiB. Request and byte quotas are locked across concurrent workers.
 The Cloudflare [temporary-credential action documentation](https://developers.cloudflare.com/r2/api/s3/temporary-credentials/)
 lists these actions; the [boto3 example](https://developers.cloudflare.com/r2/examples/aws/boto3/)
 documents the low-level multipart approach. This work did not mint credentials.
 
 ## Durability and cleanup
+
+Provider adapters may resolve their configured, owned mount root before
+appending relative attempt paths. The RunPod adapter carries the boundary from
+the parent's Modal fix `572af3a`. The generic archive functions still reject
+symlink source/destination paths, descendant links and archive-member traversal.
+Resolving an arbitrary archive path is not an allowed workaround. Local alias
+fixtures are not proof of a provider's real mount or durability barrier.
 
 `stage_archive` copies and hashes the payload, verifies staged bytes, then calls
 the provider commit barrier. The GPU control receipt includes the archive identity
