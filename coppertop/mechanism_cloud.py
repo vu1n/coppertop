@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from types import SimpleNamespace
 
@@ -25,7 +26,7 @@ from .r2_session import SessionScope, R2StoreFactory, mint
 from .reload_launch import (read_json, save, cli_json, hard_deadline, refresh_billing,
     selected_env, parent_credentials, delete_owned_volume, stop_and_audit_owned_app)
 from .streams import SMALL_BYTES, read_small
-from .record_archive import seal_directory, stage_archive, publish_archive, archive_ref
+from .record_archive import seal_directory, stage_archive, publish_archive, archive_ref, unpack_archive
 from .s3 import STREAMED_PUT_BYTES
 from .archive_retention import validate_retention, cleanup_disposition, retention_report
 
@@ -82,6 +83,9 @@ def prepare(ledger, attempt, workload='mechanism', gpu='L40S', retention=None):
         # Cover gate/startup/GPU/publication/cleanup without a session expiring
         # during the enlarged publisher budget. This requires explicit approval.
         p['auth']['ttl_seconds']=7200
+        p['archive_preflight']={'before_gpu':True,'same_owned_volume_and_gpu_mount':True,
+            'source_bytes':4096,'archive_bytes_max':32768,'provider_commit_and_reload':True,
+            'cpu_gate_deadline_seconds':610,'extra_volume':False,'r2_access':False}
         p['pricing'].update(r2_first_month_storage_unit_usd='.030',compute_storage_egress_envelope_usd='1.50')
         p['publication'] = {'format':'coppertop-episode-tar', 'part_bytes':16*1024**2,
             'concurrency':4, 'max_raw_bytes':1024**3, 'max_archive_bytes':1024**3+16*1024**2,
@@ -103,6 +107,24 @@ def prepare(ledger, attempt, workload='mechanism', gpu='L40S', retention=None):
         if full:
             p['pricing']['compute_storage_egress_envelope_usd'] = '2.00'
     return {'cloud_plan': p, 'cloud_plan_sha256': digest(canonical(p)), 'scope': scope}
+
+
+def archive_mount_preflight(mounted,attempt,*,commit,reload):
+    """Tiny real-mount round-trip inside the existing CPU gate, before GPU dispatch."""
+    started=time.monotonic()
+    probe=bytes(range(256))*16
+    with tempfile.TemporaryDirectory(prefix='coppertop-mount-preflight-') as temporary:
+        scratch=Path(temporary);source=scratch/'source';source.mkdir()
+        (source/'probe.bin').write_bytes(probe)
+        descriptor=seal_directory(source,scratch/'probe.tar')
+        if archive_ref(descriptor).size>32768:raise ValueError('Mount preflight archive exceeds bound')
+        stage=mounted/'mount-preflight'
+        staged=stage_archive(scratch/'probe.tar',descriptor,stage,run_id=attempt,commit=commit)
+        reload()  # Read the provider-committed view, not just this container's writes.
+        restored=unpack_archive(stage/'episode.tar',staged,scratch/'restored')
+        if (restored/'probe.bin').read_bytes()!=probe:raise ValueError('Mount preflight bytes differ')
+    return {'verified':True,'source_bytes':len(probe),'archive_bytes':archive_ref(staged).size,
+        'provider_commit_and_reload':True,'seconds':time.monotonic()-started}
 
 
 def output_inventory(directory, *, full=False):
@@ -211,15 +233,20 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
     def binding():
         if selected_worker(p.get('workload','mechanism')) != p['worker']: raise ValueError('Mounted worker plan differs')
     @app.function(**dict(common, name='mechanism-cache-gate', cpu=(4,4), memory=(16384,16384),
-        gpu=None, timeout=610, secrets=[], block_network=True, volumes={}))
+        gpu=None, timeout=610, secrets=[], block_network=True, volumes={MOUNT:mount} if full else {}))
     def gate():
-        binding(); require_native_interpreter(); loopback_gate(); source_gate()
+        binding()
+        preflight=archive_mount_preflight(Path(MOUNT).resolve(strict=True),p['attempt_id'],
+            commit=volume.commit,reload=volume.reload) if full else None
+        require_native_interpreter(); loopback_gate(); source_gate()
         require_dependencies(pinned_dependencies(Path('/app/requirements-gpu-smoke.lock'), Path('/app/requirements-r2.txt')))
         from .smoke_runtime import verify_snapshot
         verify_snapshot(MODEL, read_json(Path('/app/containers/gpu-smoke-pins.json'))['model'])
         result = simulator_preflight(runner)
-        return {'container_id': _container(os.environ.get('MODAL_TASK_ID')), 'status': result['status'],
+        receipt={'container_id': _container(os.environ.get('MODAL_TASK_ID')), 'status': result['status'],
                 'simulator': result, 'plan_sha256': prepared['cloud_plan_sha256']}
+        if full:receipt['archive_preflight']=preflight
+        return receipt
     @app.function(**dict(common, name='mechanism-feasibility', cpu=(4,4), memory=(65536,65536),
         gpu=resources['gpu'], timeout=resources['gpu_phase_seconds'], secrets=[], block_network=True, volumes={MOUNT: mount}))
     def evaluate():
@@ -384,6 +411,12 @@ def execute_phases(functions, prepared, output, *, admission, invoke, stopped, c
                 raise ValueError('Phase binding/stop verification failed')
             if name == 'gate' and result.get('status') != 'passed':
                 raise ValueError('CPU gate failed; GPU forbidden')
+            if name=='gate' and prepared['cloud_plan'].get('archive_preflight'):
+                probe=result.get('archive_preflight',{})
+                if (probe.get('verified') is not True or probe.get('provider_commit_and_reload') is not True
+                    or probe.get('source_bytes')!=4096 or type(probe.get('archive_bytes')) is not int
+                    or not 0<probe['archive_bytes']<=32768):
+                    raise ValueError('Verified real-mount archive preflight required; GPU forbidden')
             if name == 'publish':
                 prior=state['phases']['evaluate']; expected=digest(canonical(prior))
                 if (result.get('source_record_sha256') != expected or result.get('published_status') != prior['status']

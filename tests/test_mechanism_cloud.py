@@ -25,6 +25,49 @@ def ledger():
 
 
 class CloudTests(unittest.TestCase):
+    def test_cpu_mount_preflight_reads_committed_view_and_rejects_corruption(self):
+        for corrupt in (False,True):
+            with self.subTest(corrupt=corrupt),tempfile.TemporaryDirectory() as root:
+                physical=Path(root)/'physical';physical.mkdir()
+                alias=Path(root)/'alias';alias.symlink_to(physical,target_is_directory=True)
+                events=[]
+                def reload():
+                    events.append('reload')
+                    if corrupt:(physical/'mount-preflight'/'episode.tar').write_bytes(b'corrupt')
+                action=lambda:module.archive_mount_preflight(alias.resolve(strict=True),ATTEMPT,
+                    commit=lambda:events.append('commit'),reload=reload)
+                if corrupt:
+                    with self.assertRaisesRegex(ValueError,'Archive checksum'):action()
+                else:
+                    receipt=action();self.assertTrue(receipt['verified'])
+                    self.assertEqual(receipt['source_bytes'],4096);self.assertLessEqual(receipt['archive_bytes'],32768)
+                self.assertEqual(events,['commit','reload'])
+                self.assertTrue((physical/'mount-preflight'/'episode.tar').exists())
+
+    def test_full_baseline_refuses_gpu_without_verified_mount_preflight(self):
+        from test_record_archive import POLICY
+        value=ledger();value['cumulative_cap']='70.82'
+        prepared=module.prepare(value,ATTEMPT,'official_recording_full','A100-80GB',POLICY)
+        functions=SimpleNamespace(gate='gate',evaluate='evaluate',publish='publish')
+        specifications=module.create_functions(SimpleNamespace(__version__='1.6.1',App=App),
+            prepared,object(),Volume([]),Mock(),[]).app.definitions
+        self.assertIsNone(specifications['gate']['gpu'])
+        self.assertEqual(specifications['gate']['volumes'],specifications['evaluate']['volumes'])
+        for probe in ({},{'verified':False},{'verified':True,'source_bytes':4096,
+                'archive_bytes':10240,'provider_commit_and_reload':False}):
+            with self.subTest(probe=probe),tempfile.TemporaryDirectory() as root:
+                invoked=[]
+                def invoke(function,args,bound):
+                    invoked.append(function)
+                    return {'status':'passed','container_id':'ta-gate',
+                        'plan_sha256':prepared['cloud_plan_sha256'],'archive_preflight':probe}
+                with self.assertRaisesRegex(ValueError,'real-mount archive preflight'):
+                    module.execute_phases(functions,prepared,root,admission=lambda:None,invoke=invoke,
+                        stopped=lambda identity:True,cleanup=lambda:{'app_stopped':True,'volume_deleted':True,
+                            'active_containers':0,'active_sandboxes':0})
+                self.assertEqual(invoked,['gate'])
+                self.assertFalse(json.loads((Path(root)/'outcome.json').read_bytes()).get('gpu_started',False))
+
     def test_owned_stage_release_requires_compute_audit_and_verified_data_or_empty_stage(self):
         from test_record_archive import POLICY
         audit={'app_stopped':True,'active_containers':0,'active_sandboxes':0}
@@ -93,7 +136,8 @@ class CloudTests(unittest.TestCase):
                     'archive':archive,'durable_archive_verified':fail!='staging','record_sha256':'b'*64}
                 def invoke(function,args,bound):
                     events.append(function)
-                    if function=='gate':return {'container_id':'ta-gate','status':'passed','plan_sha256':prepared['cloud_plan_sha256']}
+                    if function=='gate':return {'container_id':'ta-gate','status':'passed','plan_sha256':prepared['cloud_plan_sha256'],
+                        'archive_preflight':{'verified':True,'source_bytes':4096,'archive_bytes':10240,'provider_commit_and_reload':True}}
                     if function=='evaluate':return evaluation
                     if fail=='publish':raise OSError('publication interrupted')
                     return {'container_id':'ta-pub','plan_sha256':prepared['cloud_plan_sha256'],

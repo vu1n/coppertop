@@ -128,3 +128,22 @@ for descendants and source files. The fake-provider regression uses the same
 symlinked mount layout through staging, publication and multipart resume.
 This fixes future staging; it cannot restore the completed attempt's lost worker
 bytes. Any new GPU attempt requires new spending authorization.
+
+The next approval plan now adds a real provider-boundary check before GPU dispatch.
+The existing CPU cache gate mounts the same owned Volume and subpath as the GPU,
+seals a4KiB deterministic fixture into an archive capped at32KiB, stages it,
+commits and reloads the Volume, then verifies the whole archive and restored bytes.
+This stays inside the gate's existing610s hard budget and adds no separate Volume,
+CPU container, R2 access or scheduler. A missing, failed or oversized preflight
+receipt forbids GPU dispatch. These checks have only run against local mocks;
+the actual Modal mount/commit/reload round-trip still needs approved execution.
+This is a storage-boundary fixture, not robot/model or official-loader execution.
+
+Current retained state is exactly the9,194-byte metadata Volume
+`vo-ZTJ3CANaIxouEDS7yVdVPL`, named
+`coppertop-mechanism-b187485658b65c94-outputs`. Its measured ongoing cost at the
+published rate is about$0.00000077/month before allowances. The full generated
+source payload and sealed archive were not durably staged or recovered and are
+unavailable after the disposable worker stopped. All compute was audited inactive.
+The retained metadata and prior evidence remain untouched; no deletion or new
+storage has been performed while preparing this preflight.
