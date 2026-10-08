@@ -6,11 +6,11 @@
   "support_level": "implemented local lifecycle; live validation blocked",
   "full_suite": {
     "command": ".venv/bin/python -m unittest discover -s tests -v",
-    "tests": 325,
+    "tests": 334,
     "skipped": 0,
     "status": "passed",
-    "seconds": 20.197,
-    "log": "/Users/vuln/Documents/Codex/2026-10-08/task/runpod-final-tests.log",
+    "seconds": 19.798,
+    "log": "/Users/vuln/Documents/Codex/2026-10-08/task/runpod-inventory-tests.log",
     "installed_modal_sdk": "1.6.1",
     "acquired_source_enabled": true,
     "pinned_official_evaluator_enabled": true,
@@ -19,12 +19,92 @@
   },
   "runpod_local_controls": {
     "tests": 19,
-    "coverage": ["approval/code/quote/session gates", "single-use ownership journal", "lost create responses", "exact resource ownership", "GPU absence before publication", "cleanup API failure and manual cleanup recovery", "multipart abort and volume deletion", "checksum and aggregate rejection", "complete CPU evidence preserved after publisher timeout", "compact worker sealing and child credential exclusion", "complete runtime tree inventory and symlink rejection", "paid CLI blocked pending shared publisher validation"]
+    "coverage": [
+      "approval/code/quote/session gates",
+      "single-use ownership journal",
+      "lost create responses",
+      "exact resource ownership",
+      "GPU absence before publication",
+      "cleanup API failure and manual cleanup recovery",
+      "multipart abort and volume deletion",
+      "checksum and aggregate rejection",
+      "complete CPU evidence preserved after publisher timeout",
+      "compact worker sealing and child credential exclusion",
+      "complete runtime tree inventory and symlink rejection",
+      "paid CLI blocked pending shared publisher validation"
+    ]
   },
-  "review": {"method": "local skeptical correctness pass using code-review skill", "remaining_concrete_local_findings": [], "diff_check": "passed"},
-  "actions": {"runpod_resources_created": false, "remote_inventory_performed": false, "bulk_transfers": false, "large_downloads": false, "credentials_created_or_transmitted": false, "credits_spent": false, "push_or_pr": false},
-  "remaining_live_gates": ["approval-bound CPU inventory of complete seed runtime and system closure", "exact export/build/registry/transfer footprint and budget approval", "real Linux portable image build and CPU admission", "shared A100 publisher diagnosis and validated full-run publication limits", "fresh exact capacity/rates and independent cleanup reachability", "separately approved first RunPod CUDA/EGL/model/full-rollout/publication attempt"],
-  "smallest_blocked_step": {"kind": "existing immutable seed CPU inventory only", "new_approval_required": true, "cpu_cores": 2, "memory_gib": 16, "execution_seconds": 900, "startup_seconds": 300, "cleanup_seconds": 180, "metadata_bytes": 262144, "gpu": false, "volumes": false, "secrets": false, "downloads": false, "bulk_output": false, "proposed_unapproved_reservation_usd": "0.20", "compute_arithmetic_usd": "0.1490478"},
-  "publication_blocker": {"source": "sibling A100 thread checkpoint", "rollout_controls": 205, "rollout_queries": 13, "approximate_evidence_mib": 147, "approximate_immutable_objects": 1939, "publisher_timeout_seconds": 900, "complete_release_verified": false, "shared_publisher_modified_here": false, "paid_cli_enabled": false},
-  "cost_examples_are_not_quotes": {"ada_run_only_with_full_first_month_storage_and_transfer_reservations_usd": "16.94", "a100_equivalent_usd": "17.69", "example_cap_unapproved_usd": "25", "setup_export_build_registry_excluded": true, "ongoing_r2_monthly_reservation_usd": "0.03", "provider_enforced_dollar_cap": false}
+  "review": {
+    "method": "local skeptical correctness pass using code-review skill",
+    "remaining_concrete_local_findings": [],
+    "diff_check": "passed"
+  },
+  "actions": {
+    "runpod_resources_created": false,
+    "remote_inventory_attempt_performed": true,
+    "remote_inventory_receipt_verified": false,
+    "bulk_transfers": false,
+    "large_downloads": false,
+    "new_credentials_created": false,
+    "existing_auth_used_readonly": true,
+    "raw_credentials_exposed_or_persisted": false,
+    "runpod_credits_spent": false,
+    "modal_reported_provisional_usd": "0.00738120",
+    "push_or_pr": false
+  },
+  "remaining_live_gates": [
+    "successful corrected CPU inventory receipt under fresh approval",
+    "exact export/build/registry/transfer footprint and budget approval",
+    "real Linux portable image build and CPU admission",
+    "parent shared publisher repair and validated full-run publication limits",
+    "fresh exact capacity/rates and independent cleanup reachability",
+    "separately approved first RunPod CUDA/EGL/model/full-rollout/publication attempt"
+  ],
+  "smallest_blocked_step": {
+    "approved": false,
+    "new_approval_required": true,
+    "cap_usd": "0.20",
+    "image": "im-uMab88d0cwA6MALkcTf5VW",
+    "cpu_cores": 2,
+    "memory_gib": 16,
+    "execution_seconds": 900,
+    "startup_seconds": 300,
+    "cleanup_seconds": 180,
+    "result_bytes": 262144,
+    "retries": 0,
+    "gpu": false,
+    "volumes": false,
+    "secrets": false,
+    "bulk_transfer": false,
+    "export_or_build": false
+  },
+  "publication_blocker": {
+    "source": "sibling A100 thread checkpoint",
+    "rollout_controls": 205,
+    "rollout_queries": 13,
+    "approximate_evidence_mib": 147,
+    "approximate_immutable_objects": 1939,
+    "publisher_timeout_seconds": 900,
+    "complete_release_verified": false,
+    "shared_publisher_modified_here": false,
+    "paid_cli_enabled": false,
+    "diagnosis_complete": true,
+    "first_put_seconds": 405,
+    "uploaded_objects": 602,
+    "uploaded_mib": 45.1,
+    "median_put_interval_seconds": 0.808,
+    "full_serial_projection_minutes": 33,
+    "full_trajectory_reconstructible_from_checked_survivors": false,
+    "repair_owned_by_parent": true
+  },
+  "cost_examples_are_not_quotes": {
+    "ada_run_only_with_full_first_month_storage_and_transfer_reservations_usd": "16.94",
+    "a100_equivalent_usd": "17.69",
+    "example_cap_unapproved_usd": "25",
+    "setup_export_build_registry_excluded": true,
+    "ongoing_r2_monthly_reservation_usd": "0.03",
+    "provider_enforced_dollar_cap": false
+  },
+  "inventory_and_readonly_regression_tests": 9,
+  "inventory_result": "docs/runpod-inventory-result.json"
 }

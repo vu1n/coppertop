@@ -3,15 +3,25 @@
 This branch implements local RunPod controls and an offline portable runtime
 recipe for the frozen Xiaomi/RoboCasa recording. No RunPod runtime, portable
 image, capacity, asset transfer, or live billing has been established by these
-tests. No paid action, credential creation, publishing, or bulk download is
-authorized by this document. The existing Modal approval is separate.
+tests. One separately approved CPU inventory attempt and existing-key read-only
+storage checks have now run; their limits and outcome are below. This document
+does not authorize another paid action, credential creation, publishing or bulk
+download. The existing Modal GPU approval is separate.
 
 The sibling A100 rollout succeeded at 205 controls and 13 queries, with about
 147 MiB and 1,939 immutable objects, but its shared CPU publisher timed out at
 900 s; the final report was absent and no complete release was verified. GPU and
 temporary Volume cleanup completed. The shared publisher's full-run scalability
 is therefore a **known unresolved live blocker**. This implementation reuses
-`mechanism_cloud.publish_directory` unchanged and awaits that thread's diagnosis.
+`mechanism_cloud.publish_directory` unchanged and awaits that thread's repair and
+full publication verification. Diagnosis found a serial PUT + HEAD + HEAD + GET
+path, about 7,760 requests: first PUT at 405 seconds, then 602 objects / 45.1 MiB
+over 495 seconds, with a 0.808-second median PUT interval. Full serial publication
+projects about 33 minutes. The initial delay lacks telemetry; the full trajectory
+cannot be reconstructed from checked survivors after source Volume deletion.
+The parent owns removal of duplicate HEADs, four-worker bounded concurrency,
+full GET/hash verification, telemetry and CPU latency validation. This checkout
+does not duplicate that repair.
 Passing smoke/mocked publication cannot establish the full-run path. Do not
 approve a full RunPod launch until the shared publication gate is resolved and
 its actual limits are incorporated in a newly reviewed plan; 900 s is a failed
@@ -21,6 +31,50 @@ The paid CLI consequently fails before credential access while
 through injected transports. Enabling the CLI requires a reviewed follow-up that
 binds the shared publisher's real validation and measured limits to a fresh plan;
 no runtime recipe or mocked receipt flips that gate.
+
+## Approved inventory attempt and storage access
+
+[Recorded evidence](runpod-inventory-result.json) identifies the one paid App
+`ap-hsgWOQjcCJiSyfcrP28Q1D` and call `fc-01M4DN3PJ805PMD66A7NJ7D562`.
+The function used the existing seed, two physical cores, 16 GiB, a 900-second
+execution limit, 300-second startup and 180-second cleanup; no GPU, Volume,
+mounted secrets, bulk export, image build or model loading was requested.
+The sandbox-only preliminary connection failed before creating any App; the
+provider App list verified that absence before the approved network invocation.
+
+The remote traceback reaches `push_outputs -> package_output -> blob_upload`:
+Modal tried to upload the asynchronous return through its internal R2 blob path,
+but the container's network block caused DNS failure. The worker reached output
+packaging; its complete inventory receipt was **not recovered**. No package,
+library, checkout or footprint result is established. An earlier input-bootstrap
+description was corrected after reading the traceback function names.
+The App is stopped, with independently verified zero containers and sandboxes.
+The refreshed meter reports **$0.00738120**, provisional, versus a conservative
+controller compute estimate of $0.01224205. Billing is not final and the separate
+$0.20 reservation remains held; unrelated budget ledgers were not changed.
+
+The local correction uses the official synchronous `Function.remote` API and
+returns JSON bytes bounded at 256 KiB, rather than the asynchronous path with a
+smaller negotiated inline limit. It retains the network block, zero retries and
+original resource limits. Exact approval is required for another attempt; no
+corrected remote invocation has run. Local API-selection and overflow tests do
+not establish the backend's real handoff behavior.
+
+Existing RunPod control and S3 authentication passed read-only checks:
+`GET /v1/networkvolumes` found zero volumes; S3 `ListBuckets` returned HTTP 200 and
+zero buckets at `https://s3api-us-wa-1.runpod.io`, signing region `US-WA-1`.
+This is a documented regional capability probe, not a configured-volume claim.
+No object read, write, multipart recovery or Pod mount has been verified.
+The controller now accepts the existing `RUNPOD_S3_ACCESS_KEY` alias as well as
+`RUNPOD_S3_ACCESS_KEY_ID`, rejecting conflicting values. Raw keys were used only
+in memory and were neither printed, saved, generated nor mounted on the worker.
+
+RunPod S3 buckets represent network-volume IDs, and the endpoint and signing
+region must match that volume's data center. S3 does not support CreateBucket,
+DeleteBucket or GetBucketLocation. Network volumes survive Pod termination;
+explicit REST volume deletion and owned incomplete-upload cleanup remain required.
+These API/lifecycle statements come from the official storage docs; the empty
+account check does not prove object-level behavior for a future volume.
 
 ## Frozen experiment and provider boundary
 
@@ -219,7 +273,7 @@ the same fresh prefix and bound, referenced by the local attempt journal.
 ## Remaining live gates and smallest blocked step
 
 The shared A100 publisher diagnosis owns the current scaling investigation. Await
-its concrete result; this thread makes no remote reads or duplicate investigation.
+its repair and full validation; this thread performs no duplicate investigation.
 Resolve full-run publication, including byte readback and surviving-evidence recovery,
 before approving the rollout in step 4. Do not simply increase timeout or spend.
 
@@ -231,8 +285,19 @@ before approving the rollout in step 4. Do not simply increase timeout or spend.
    totals. Stop if the export closure or ≤70 GiB bound is unavailable. Preserve all
    unrelated Apps and existing budget holds. At the checked standard function rates
    and maximum 1.75 region multiplier, `1380×(2×0.0000131 + 16×0.00000222)×1.75 =
-   $0.1490478`; propose a **separate $0.20 reservation**, subject to an exact reviewed
-   function/cleanup plan and refreshed ledger. This has not been executed or approved.
+   $0.1490478` plus at most $0.00000977 metadata egress. The first approved attempt
+   is consumed and its output handoff failed. A corrected single synchronous
+   invocation would need **fresh approval for up to $0.20** and the exact prepared
+   plan hash. No new attempt is authorized. The local preparation command makes
+   no remote call:
+
+   ```sh
+   PYTHONPATH=. python tools/run_runpod_inventory.py --prepare \
+     --output .local/corrected-inventory-plan.json
+   ```
+
+   Execution requires the matching `--approved-plan-sha256` after actual approval;
+   a flag or prepared file does not itself establish human authorization.
 2. Price and approve the exact export/build/registry/CPU-transfer phase from that
    inventory; source checkouts, licenses, strong manifest and current system closure
    must accompany the existing bytes. No new large models or asset ZIP acquisition.

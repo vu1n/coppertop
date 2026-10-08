@@ -144,6 +144,14 @@ class Evidence:
             raise ValueError('Incomplete uploads remain')
 
 
+def runpod_s3_access_key(values):
+    current=values.get('RUNPOD_S3_ACCESS_KEY_ID')
+    existing=values.get('RUNPOD_S3_ACCESS_KEY')
+    if current and existing and current!=existing:raise ValueError('Conflicting RunPod S3 identity aliases')
+    if not (current or existing):raise ValueError('Existing RunPod S3 identity required')
+    return current or existing
+
+
 def make_transports():
     """Explicit credentials supplied after approval; never mint or send them to GPU."""
     import boto3
@@ -160,7 +168,7 @@ def make_transports():
     def evidence(volume_id):
         config=RunpodVolumeConfig(volume_id,datacenter,f'https://s3api-{datacenter.lower()}.runpod.io/')
         client=boto3.client('s3',endpoint_url=config.endpoint,region_name=datacenter,config=options,
-            aws_access_key_id=os.environ['RUNPOD_S3_ACCESS_KEY_ID'],aws_secret_access_key=os.environ['RUNPOD_S3_SECRET_ACCESS_KEY'])
+            aws_access_key_id=runpod_s3_access_key(os.environ),aws_secret_access_key=os.environ['RUNPOD_S3_SECRET_ACCESS_KEY'])
         return Evidence(config,client)
     # These must be an already approved one-hour session scoped to the exact prefix.
     from .s3 import R2Config
