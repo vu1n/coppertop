@@ -161,29 +161,103 @@ oversized resumed parts, malformed/special tar members, role/query denial, and
 cleanup ordering. The fake Modal-function test interrupts publication and verifies
 that the durable journal reuses the same upload ID on explicit reinvocation.
 
-Final local verification: 324 CPU tests ran; 321 passed and three optional SDK
+Final local verification including the validation harness: 335 CPU tests ran;
+332 passed and three optional SDK
 checks skipped. All three SDK checks passed separately in the existing controller
-environment. No packages were installed. Independent
+environment, as did the eleven harness tests. No packages were installed. Independent
 correctness/structure and security/refutation reviews resolved destructive staging
 cleanup, oversized resumed parts, lost upload journals and sparse-header parsing.
 The size-bounded retention transitions and resource cost accounting are tested
 locally; no live provider capability check is claimed.
 
-## Minimal next live proposal (not authorized or executed)
+## Ready local CPU validation harness (live execution not authorized)
 
-Use one local CPU process on the Mac with the already-installed controller SDK;
-upload the synthetic 1939-file fixture to one fresh dedicated R2 prefix and fully
-verify its archive/receipt. No GPU, Modal/RunPod allocation, weights, assets or new
-dependency installation is needed. Use one short-lived scope with only the
-documented archive actions; no automatic retries. Bound the run to 10 minutes and
-remote storage to 150 MiB plus a 64 KiB receipt. Keep the local source until exact
-remote cleanup is verified.
+`coppertop.archive_validation` prepares the synthetic 1939-file fixture locally,
+seals its 156098560-byte archive, and creates a fresh exclusive run directory,
+random dedicated attempt prefix, public plan and disabled approval example. It
+never reads credentials or calls providers during preparation. The plan binds
+the archive hash, five named runtime-file hashes and Python executable path;
+it does not attest every transitive dependency or the interpreter binary.
 
-The next reviewed plan must specify retained-size/ongoing-storage terms and
-exact-key cleanup/abort authority. A failed local process leaves its preserved
-source available for an explicitly authorized recovery/deletion decision. The current archive session intentionally has no DeleteObject permission.
-An independently approved exact-key cleanup path is needed; existing recordings
-and earlier partial objects must be preserved. This proposal validates real R2
-multipart/session/SDK behavior; it does not validate Modal mount/preparation delay.
-Provider charges and any cumulative ceiling must be checked before approval using
-the actual account balance and current [R2 pricing](https://developers.cloudflare.com/r2/pricing/).
+The existing controller runtime has boto3/botocore 1.43.108 and s3transfer 0.19.2.
+No installation, GPU, Modal/RunPod allocation, weights or dataset download is
+needed. From the repository root, offline preparation is:
+
+```sh
+/Users/vuln/Documents/Codex/2026-10-05/task/gpu-smoke-check/controller-venv/bin/python -m coppertop.archive_validation --prepare .local/archive-validation-new
+```
+
+After direct approval of the exact plan, copy `approval.example.json` to
+`approval.json` in that directory and set its five explicit boolean approvals
+to true. These cover execution, session derivation, failure cleanup and unresolved
+cleanup storage acceptance. No secrets belong in this file. The execution command
+below is for that separately authorized step:
+
+```sh
+/Users/vuln/Documents/Codex/2026-10-05/task/gpu-smoke-check/controller-venv/bin/python -m coppertop.archive_validation --execute .local/archive-validation-new --approval .local/archive-validation-new/approval.json --env-file /Users/vuln/code/coppertop/.env.local
+```
+
+Execution validates approval before accessing existing local configuration. It
+permits at most two existing-token verification API requests under a separate
+120-second deadline, then locally derives a 20-minute publisher capability for
+the exact configured account, `coppertop` bucket and fresh attempt prefix.
+The parent token is never passed to the publisher child or written to evidence.
+The child gets only temporary publisher credentials and uses the existing
+`mechanism_archive` role with streamed full SHA256 readback and verified completion
+receipt. Both objects explicitly request `STANDARD` storage. Publication has a
+600-second subprocess deadline, no automatic retries/resume, and caps of 32 R2
+requests and 150 MiB + 64 KiB writes. Socket timeouts are 30 seconds connect /
+60 seconds read with one SDK attempt.
+
+Before each object-creating operation, a fresh-key HEAD must establish absence.
+An existing matching archive is rejected even on the shared publisher fast path.
+The intended owned key is fsynced before dispatch. Multipart state is atomically
+fsynced after each contiguous part. Metadata files are bounded to 64 KiB. Local
+source, sealed archive, journals and results are preserved on every outcome.
+
+On timeout, the parent kills and waits for the child before cleanup. Cleanup has
+its own 300-second hard deadline, including SDK setup, and derives a fresh
+20-minute capability for at most two exact journaled object paths. Only HeadObject,
+DeleteObject, AbortMultipartUpload and ListParts are permitted; there is no prefix,
+download, bucket listing, object enumeration or unrelated-key access. Cleanup
+uses at most 16 R2 requests. Publisher credentials have ten minutes beyond the
+execution budget; cleanup credentials have fifteen minutes beyond their cleanup
+budget. Credential expiry never acts as object expiry.
+
+On success or failure, cleanup aborts the exact known upload, checks ListParts
+reports NoSuchUpload, deletes only the synthetic attempt's objects and verifies
+absence with HEAD. Uncertain completion and receipt failure follow this same
+path. Invalid upload journals do not skip trusted exact-key deletion; abort
+verification fails explicitly. A lost CreateMultipartUpload response can leave
+an unknown upload ID, which is reported as unverified cleanup rather than widening
+access. `result.json` records process, publication and cleanup outcomes; the
+command fails if either publication or cleanup is unverified.
+
+Remote storage is intended to last under fifteen minutes after publication
+starts. No scheduler or expiry mechanism is added. If cleanup fails, the operator
+must resolve the exact reported resources; approval explicitly accepts bounded
+ongoing storage until resolution. No hard storage-duration guarantee is claimed.
+Verified cleanup means observed upload/object absence; killing the child cannot
+revoke a completion already accepted by R2. Late-completion ordering remains a
+real-provider verification limit.
+
+Current [R2 pricing](https://developers.cloudflare.com/r2/pricing/) is $0.015 per
+GB-month Standard storage, $4.50/million Class A, $0.36/million Class B and free
+egress. Nominal usage for the short run is below $0.001; a month at the
+157351936-byte cap is about $0.00236 before rounding. Daily peak storage and
+rounded billing units apply; account allowances are not assumed. The plan allows
+$0 cloud compute and a conservative $5 additional R2 invoice allowance: one added
+Class A, Class B and storage billing unit totals $4.875. This is an authorization
+allowance, not a provider-enforced invoice ceiling or lifetime retention cap.
+Billing-period boundaries, unrelated activity and unresolved storage can affect
+the invoice; reconcile actual account billing before launch. DeleteObject and
+AbortMultipartUpload are free operations. No new permanent key is requested.
+
+Offline tests drive the publisher child interface through a filesystem fake:
+24 requests including ownership HEADs and a second receipt verification, 10 parts,
+one full archive GET and two small receipt GETs. This extends the 19-request core
+measurement above. Controller mocks cover timeout, uncertain completion, receipt
+failure, expired cleanup credentials, invalid journals, destination collisions
+and source preservation. Real R2 sessions, permissions, multipart behavior and
+throughput remain unverified. Modal startup/mount delay and RunPod inventory are
+separate pending actions.
