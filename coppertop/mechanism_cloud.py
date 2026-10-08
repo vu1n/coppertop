@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -136,6 +137,9 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
     def evaluate():
         binding()
         target = Path(MOUNT)/'outputs'
+        # LocalStore atomically links objects; the live Volume rejected links.
+        # Finish on the worker filesystem, then copy checked bytes to the Volume.
+        scratch = Path('/tmp')/(p['attempt_id']+'-outputs')
         env = {key: os.environ[key] for key in ('PATH','HOME','LD_LIBRARY_PATH','NVIDIA_VISIBLE_DEVICES','CUDA_VISIBLE_DEVICES') if key in os.environ}
         env.update(HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1', MUJOCO_GL='egl', PYTHONPATH='/app')
         with (Path('/tmp')/(p['attempt_id']+'-worker.log')).open('wb') as log:
@@ -143,11 +147,14 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
                 module = 'coppertop.official_recording_worker' if p.get('workload') == 'official_recording' else 'coppertop.mechanism_runtime'
                 identity_args = ['--run-id',p['attempt_id']] if p.get('workload') == 'official_recording' else []
                 process = runner([SIMULATOR, '-m', module, '--execute-local',
-                    '--plan-sha256', p['worker_sha256'], '--output', str(target), *identity_args],
+                    '--plan-sha256', p['worker_sha256'], '--output', str(scratch), *identity_args],
                     stdout=log, stderr=log, env=env, timeout=250)
                 passed = process.returncode == 0
             except subprocess.TimeoutExpired:
                 passed = False
+        if scratch.exists():
+            output_inventory(scratch)
+            shutil.copytree(scratch,target)
         result_path = target/('result.json' if passed else 'failure.json')
         result = read_json(result_path, 65536) if result_path.is_file() else {'status':'failed','comparison_valid':False}
         recording = p.get('workload') == 'official_recording'
@@ -162,7 +169,12 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
         record['query_journal'] = read_json(target/'queries.json', 65536) if (target/'queries.json').is_file() else {'calls':[]}
         if len(canonical(record)) > 65536: raise ValueError('Metadata envelope exceeds bound')
         save(Path(MOUNT)/'record.json', record); volume.commit()
-        return record
+        # A full record triggered Modal's blob upload despite block_network.
+        # Keep the control response small; the CPU publisher reads the Volume.
+        receipt={key:record[key] for key in ('container_id','plan_sha256','attempt_id','status')}
+        receipt['record_sha256']=digest(canonical(record))
+        if len(canonical(receipt))>1024: raise ValueError('Control receipt exceeds inline bound')
+        return receipt
     @app.function(**dict(common, name='mechanism-cpu-publisher', cpu=(2,2), memory=(4096,4096),
         gpu=None, timeout=300, secrets=list(session), volumes={MOUNT: mount.with_mount_options(read_only=True)}))
     def publish(record):
@@ -184,6 +196,12 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
             if journal.is_file():
                 try: record['query_journal'] = read_json(journal, 32768)
                 except (OSError, ValueError): record['query_journal_unavailable'] = True
+        elif 'record_sha256' in record:
+            committed=read_json(Path(MOUNT)/'record.json',65536)
+            if (digest(canonical(committed))!=record['record_sha256']
+                    or any(committed.get(key)!=record.get(key) for key in ('container_id','plan_sha256','attempt_id','status'))):
+                raise ValueError('Committed feasibility receipt differs')
+            record=committed
         elif read_json(Path(MOUNT)/'record.json', 65536) != record:
             raise ValueError('Committed feasibility record differs')
         key = publish_directory(Path(MOUNT)/'outputs', record, store_factory('mechanism'))
@@ -217,7 +235,7 @@ def execute_phases(functions, prepared, output, *, admission, invoke, stopped, c
                 prior=state['phases']['evaluate']; expected=digest(canonical(prior))
                 if (result.get('source_record_sha256') != expected or result.get('published_status') != prior['status']
                         or not re.fullmatch('[0-9a-f]{64}', result.get('report_key',''))
-                        or (not prior.get('recovery') and result['report_key'] != expected)):
+                        or (not prior.get('recovery') and result['report_key'] != prior.get('record_sha256',expected))):
                     raise ValueError('Publication receipt differs')
         state['status'] = state['phases']['evaluate']['status']
         state['durable_report_verified'] = True

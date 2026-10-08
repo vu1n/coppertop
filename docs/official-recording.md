@@ -122,3 +122,11 @@ Preparing a plan reads source hashes and a proposed ledger only. This distinct
 attempt needs a fresh $6 additional / $70.82 cumulative budget, preserving all
 previous holds, before signing its one-hour CPU-only R2 session or allocating
 resources. The historical consumed mechanism attempt cannot be replayed.
+
+The first live recording failed at LocalStore's atomic hard-link write on the
+attached Volume, before inference. The worker now records on its local scratch
+filesystem, validates the full output budget and checksums, then copies bytes to
+the newly owned Volume. Core LocalStore atomic semantics remain unchanged.
+The GPU returns a small record-hash receipt rather than the complete report;
+CPU publication loads the hash-bound committed report from the Volume. This
+avoids Modal's observed blob upload on a worker with outbound network blocked.

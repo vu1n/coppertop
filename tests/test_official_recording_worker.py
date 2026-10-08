@@ -1,5 +1,8 @@
 """CPU launch contracts; fake processes never load models or allocate resources."""
 import json
+import os
+import pickle
+import shutil
 from pathlib import Path
 import socket
 import subprocess
@@ -10,7 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from coppertop import official_recording_worker as worker, mechanism_cloud
-from coppertop.chords import canonical,digest
+from coppertop.chords import LocalStore,canonical,digest
 from coppertop.performance_runtime import publish_listener_ready
 from test_mechanism_cloud import ledger, ATTEMPT
 from test_modal_reload import App, Volume
@@ -45,21 +48,40 @@ assert plan()['acceptance']['limits']['query_calls']==1
 
     def test_cloud_invokes_only_recording_worker_and_rejects_wrong_query_count(self):
         value=ledger();value['cumulative_cap']='70.82'
-        prepared=mechanism_cloud.prepare(value,ATTEMPT,'official_recording')
         for calls in (1,2):
             with self.subTest(calls=calls),tempfile.TemporaryDirectory() as root:
-                mount=Path(root);volume=Volume([])
+                mount=Path(root)/'volume';mount.mkdir();volume=Volume([])
+                attempt='mechanism-'+digest(root.encode())[:16]
+                prepared=mechanism_cloud.prepare(value,attempt,'official_recording')
+                self.addCleanup(shutil.rmtree,Path('/tmp')/(attempt+'-outputs'),True)
                 def runner(argv,**options):
                     self.assertEqual(argv[2],'coppertop.official_recording_worker')
-                    self.assertEqual(argv[-2:],['--run-id',ATTEMPT])
-                    target=mount/'outputs';target.mkdir()
+                    self.assertEqual(argv[-2:],['--run-id',attempt])
+                    target=Path(argv[argv.index('--output')+1]);target.mkdir()
+                    self.assertNotEqual(target,mount/'outputs')
+                    LocalStore(target/'store').put(b'raw-state')
                     (target/'result.json').write_bytes(canonical({'status':'recording_acceptance','query_calls':calls}))
                     return SimpleNamespace(returncode=0)
                 functions=mechanism_cloud.create_functions(SimpleNamespace(__version__='1.6.1',App=App),
-                    prepared,object(),volume,Mock(),[],runner)
-                with patch.object(mechanism_cloud,'MOUNT',str(mount)),patch.dict('os.environ',{'MODAL_TASK_ID':'ta-gpu'}):
+                    prepared,object(),volume,lambda role:LocalStore(Path(root)/'destination'),[],runner)
+                native_link=os.link
+                def link(source,destination):
+                    if Path(destination).is_relative_to(mount): raise PermissionError('Volume rejects hard links')
+                    return native_link(source,destination)
+                with patch.object(mechanism_cloud,'MOUNT',str(mount)),patch.dict('os.environ',{'MODAL_TASK_ID':'ta-gpu'}),patch('coppertop.chords.os.link',side_effect=link):
                     if calls==1:
-                        self.assertEqual(functions.evaluate()['status'],'passed')
+                        receipt=functions.evaluate()
+                        self.assertEqual(receipt['status'],'passed')
+                        self.assertLessEqual(len(canonical(receipt)),1024)
+                        self.assertLessEqual(len(pickle.dumps(receipt)),1024)
+                        self.assertNotIn('worker_plan',receipt)
+                        committed=json.loads((mount/'record.json').read_bytes())
+                        self.assertEqual(receipt['record_sha256'],digest(canonical(committed)))
+                        published=functions.publish(receipt)
+                        self.assertEqual(published['report_key'],receipt['record_sha256'])
+                        self.assertEqual(LocalStore(Path(root)/'destination').get(digest(b'raw-state')),b'raw-state')
+                        tampered=dict(receipt,record_sha256='0'*64)
+                        with self.assertRaises(ValueError):functions.publish(tampered)
                         self.assertEqual(volume.events,['commit'])
                     else:
                         with self.assertRaises(ValueError):functions.evaluate()

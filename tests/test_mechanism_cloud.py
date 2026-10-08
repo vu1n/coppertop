@@ -132,6 +132,33 @@ with patch.object(module,'read_json',return_value={}), patch.object(module,'prep
                 self.assertEqual(events[-1],'cleanup')
                 if failure=='gate': self.assertNotIn('evaluate',events)
 
+    def test_compact_receipt_binds_publication_to_committed_record_hash(self):
+        prepared=module.prepare(ledger(),ATTEMPT)
+        functions=SimpleNamespace(gate='gate',evaluate='evaluate',publish='publish')
+        committed={'status':'passed','objects':{},'result':{'status':'recording_acceptance'}}
+        receipt={'container_id':'ta-gpu','plan_sha256':prepared['cloud_plan_sha256'],
+            'attempt_id':ATTEMPT,'status':'passed','record_sha256':digest(canonical(committed))}
+        for corrupt in (False,True):
+            with self.subTest(corrupt=corrupt),tempfile.TemporaryDirectory() as root:
+                events=[]
+                def invoke(function,args,bound):
+                    events.append(function)
+                    if function=='gate':return {'container_id':'ta-cpu','status':'passed','plan_sha256':prepared['cloud_plan_sha256']}
+                    if function=='evaluate':return receipt
+                    self.assertEqual(args,(receipt,))
+                    return {'container_id':'ta-pub','plan_sha256':prepared['cloud_plan_sha256'],
+                        'published_status':'passed','source_record_sha256':digest(canonical(receipt)),
+                        'report_key':'0'*64 if corrupt else receipt['record_sha256']}
+                def cleanup():
+                    events.append('cleanup')
+                    return {'app_stopped':True,'volume_deleted':True,'active_containers':0,'active_sandboxes':0}
+                def execute():return module.execute_phases(functions,prepared,Path(root),admission=lambda:None,
+                    invoke=invoke,stopped=lambda _:True,cleanup=cleanup)
+                if corrupt:
+                    with self.assertRaisesRegex(ValueError,'Publication receipt'):execute()
+                else:self.assertEqual(execute()['status'],'passed')
+                self.assertEqual(events,['gate','evaluate','publish','cleanup'])
+
     def test_cleanup_failure_cannot_be_reported_as_pass(self):
         prepared=module.prepare(ledger(),ATTEMPT)
         with tempfile.TemporaryDirectory() as root:
