@@ -91,6 +91,7 @@ def output_inventory(directory, *, full=False):
     if any(path.is_symlink() for path in files) or sum(p.stat().st_size for p in files if p.is_file()) > byte_limit:
         raise ValueError('Output filesystem exceeds immutable publication bound')
     objects = {}
+    if not (directory/'store').exists(): return objects
     local = LocalStore(directory/'store')
     for path in (directory/'store'/'objects').glob('*/*'):
         if not path.is_file() or path.relative_to(directory/'store').as_posix() != object_path(path.name):
@@ -106,8 +107,8 @@ def output_inventory(directory, *, full=False):
 
 def publish_directory(directory, record, store, *, full=False):
     """CPU-only upload with immutable writes and complete byte/hash readback."""
-    local = LocalStore(Path(directory)/'store')
     objects = {} if record.get('artifact_error_type') else output_inventory(directory,full=full)
+    local = LocalStore(Path(directory)/'store') if objects or 'inventory' in record else None
     declared=json.loads(read_small(local,record['inventory'],1024**2)) if 'inventory' in record else record['objects']
     if 'inventory' in record:
         declared[record['inventory']]=local.stat(record['inventory']).size
@@ -213,19 +214,22 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
         if len(canonical(receipt))>1024: raise ValueError('Control receipt exceeds inline bound')
         return receipt
     @app.function(**dict(common, name='mechanism-cpu-publisher', cpu=(2,2), memory=(4096,4096),
-        gpu=None, timeout=resources['publisher_seconds'], secrets=list(session), volumes={MOUNT: mount.with_mount_options(read_only=True)}))
+        gpu=None, timeout=resources['publisher_seconds'], secrets=list(session), volumes={MOUNT: volume.with_mount_options(read_only=True)}))
     def publish(record):
         binding()
         incoming = digest(canonical(record))
+        # GPU scheduling can fail before its subdirectory exists. Mount the owned
+        # Volume root read-only, then read the attempt path without creating it.
+        directory=Path(MOUNT)/p['attempt_id']
         if record.get('recovery') is True:
             # Failed provider RPCs cannot bypass durable failure publication. Only
             # committed Volume bytes are available; missing/uncommitted data is explicit.
             record = dict(record)
-            path = Path(MOUNT)/'record.json'
+            path = directory/'record.json'
             if path.is_file():
                 try: record['committed_record'] = read_json(path, 32768)
                 except (OSError, ValueError): record['committed_record_unavailable'] = True
-            target = Path(MOUNT)/'outputs'
+            target = directory/'outputs'
             try: record['objects'] = output_inventory(target,full=full)
             except (OSError, ValueError) as error:
                 record['objects'] = {}; record['artifact_error_type'] = type(error).__name__
@@ -234,14 +238,14 @@ def create_functions(sdk, prepared, image, volume, store_factory, session, runne
                 try: record['query_journal'] = read_json(journal, 32768)
                 except (OSError, ValueError): record['query_journal_unavailable'] = True
         elif 'record_sha256' in record:
-            committed=read_json(Path(MOUNT)/'record.json',65536)
+            committed=read_json(directory/'record.json',65536)
             if (digest(canonical(committed))!=record['record_sha256']
                     or any(committed.get(key)!=record.get(key) for key in ('container_id','plan_sha256','attempt_id','status'))):
                 raise ValueError('Committed feasibility receipt differs')
             record=committed
-        elif read_json(Path(MOUNT)/'record.json', 65536) != record:
+        elif read_json(directory/'record.json', 65536) != record:
             raise ValueError('Committed feasibility record differs')
-        key = publish_directory(Path(MOUNT)/'outputs', record, store_factory('mechanism_full' if full else 'mechanism'),full=full)
+        key = publish_directory(directory/'outputs', record, store_factory('mechanism_full' if full else 'mechanism'),full=full)
         return {'container_id': _container(os.environ.get('MODAL_TASK_ID')), 'report_key': key,
                 'source_record_sha256': incoming, 'published_status': record['status'],
                 'plan_sha256': prepared['cloud_plan_sha256']}

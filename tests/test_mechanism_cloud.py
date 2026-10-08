@@ -90,7 +90,7 @@ with patch.object(module,'read_json',return_value={}), patch.object(module,'prep
 
     def test_recovery_publishes_metadata_when_artifact_inventory_is_corrupt(self):
         with tempfile.TemporaryDirectory() as root:
-            mount=Path(root)/'mount'; local=LocalStore(mount/'outputs'/'store')
+            mount=Path(root)/'mount'; local=LocalStore(mount/ATTEMPT/'outputs'/'store')
             key=local.put(b'original'); local.path(key).write_bytes(b'corrupted')
             destination=LocalStore(Path(root)/'r2')
             prepared=module.prepare(ledger(),ATTEMPT)
@@ -106,6 +106,29 @@ with patch.object(module,'read_json',return_value={}), patch.object(module,'prep
             self.assertEqual(durable['objects'],{})
             self.assertFalse(destination.path(key).exists())
             self.assertEqual(receipt['source_record_sha256'],digest(canonical(record)))
+
+    def test_recovery_before_gpu_mount_needs_no_volume_writes(self):
+        for workload in ('mechanism','official_recording_full'):
+            with self.subTest(workload=workload),tempfile.TemporaryDirectory() as root:
+                mount=Path(root)/'mount';mount.mkdir()
+                value=ledger()
+                if workload=='official_recording_full':value['cumulative_cap']='70.82'
+                prepared=module.prepare(value,ATTEMPT,workload)
+                destination=LocalStore(Path(root)/'r2')
+                functions=module.create_functions(SimpleNamespace(__version__='1.6.1',App=App),
+                    prepared,object(),Volume([]),lambda role:destination,[])
+                options=functions.app.definitions['publish']['volumes'][module.MOUNT].options
+                self.assertTrue(options['read_only']);self.assertNotIn('sub_path',options)
+                record={'recovery':True,'status':'failed','objects':{},'plan_sha256':prepared['cloud_plan_sha256']}
+                native=LocalStore.__init__
+                def reject_volume_writes(store,path):
+                    if Path(path).is_relative_to(mount):raise PermissionError('readonly Volume')
+                    native(store,path)
+                with patch.object(module,'MOUNT',str(mount)),patch.object(module,'_container',return_value='ta-publisher'),patch.object(LocalStore,'__init__',reject_volume_writes):
+                    receipt=functions.publish(record)
+                result=json.loads(destination.get(receipt['report_key']))
+                self.assertEqual(result['status'],'failed');self.assertEqual(list(mount.iterdir()),[])
+                if workload=='official_recording_full':self.assertEqual(result['object_count'],1)
 
     def test_publication_failure_and_cpu_gate_failure_always_cleanup(self):
         prepared=module.prepare(ledger(),ATTEMPT)

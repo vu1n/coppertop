@@ -78,6 +78,8 @@ assert plan(full=True)['acceptance']['limits']['query_calls']==38
                         self.assertNotIn('worker_plan',receipt)
                         committed=json.loads((mount/'record.json').read_bytes())
                         self.assertEqual(receipt['record_sha256'],digest(canonical(committed)))
+                        owned=mount/attempt;owned.mkdir()
+                        for path in (mount/'record.json',mount/'outputs'):path.rename(owned/path.name)
                         published=functions.publish(receipt)
                         self.assertEqual(published['report_key'],receipt['record_sha256'])
                         self.assertEqual(LocalStore(Path(root)/'destination').get(digest(b'raw-state')),b'raw-state')
@@ -128,11 +130,13 @@ assert plan(full=True)['acceptance']['limits']['query_calls']==38
                 record=json.loads((mount/'record.json').read_bytes())
                 self.assertNotIn('objects',record);self.assertLess(len(canonical(record)),65536)
                 self.assertEqual(record['object_count'],1002)
+                owned=mount/attempt;owned.mkdir()
+                for path in (mount/'record.json',mount/'outputs'):path.rename(owned/path.name)
                 published=functions.publish(receipt)
                 self.assertEqual(read_small(store,key,64*1024**2),raw)
                 self.assertEqual(published['report_key'],receipt['record_sha256'])
                 # Corrupting an inventoried object is rejected before publication.
-                LocalStore(mount/'outputs/store').path(key).write_bytes(b'corrupt')
+                LocalStore(mount/attempt/'outputs/store').path(key).write_bytes(b'corrupt')
                 with self.assertRaises(ValueError):functions.publish(receipt)
 
     def test_full_recovery_rejects_aggregate_before_any_write(self):
