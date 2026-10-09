@@ -201,3 +201,13 @@ test("operational histories preserve money, immutable specs, and one-shot permis
     }
   }
 });
+
+test("deadline expiry requests cleanup, retains liability, and preserves prior cancellation", () => {
+  const ledger = admitted();
+  assert.equal(mutate(ledger,{type:"timeout",runId:"run-one"}).failure,"SchemaRejected");
+  const expired = mutate(ledger,{type:"timeout",runId:"run-one"},1,now+60_000);
+  assert.equal(expired.run?.outcome,"timed_out"); assert.equal(expired.run?.held,100);
+  assert.equal(expired.run?.cleanup,"pending"); assert.equal(expired.run?.cancelRequested,true);
+  const cancelled = mutate(ledger,{type:"cancel",runId:"run-one",commandId:"cancel-one"}).ledger;
+  assert.equal(mutate(cancelled,{type:"timeout",runId:"run-one"},1,now+60_000).run?.outcome,"cancelled");
+});

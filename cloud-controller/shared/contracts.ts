@@ -68,6 +68,7 @@ export type Command =
   | { type: "execute"; runId: string; callId: string; bodyId: string }
   | { type: "uncertain"; runId: string }
   | { type: "cancel"; runId: string; commandId: string }
+  | { type: "timeout"; runId: string }
   | { type: "event"; runId: string; eventId: string; hash: string; callId: string }
   | { type: "artifact"; runId: string; revision: number; receipt: ArtifactReceipt }
   | { type: "cleanup"; runId: string; stoppedCallIds: string[]; generationDisabled: boolean }

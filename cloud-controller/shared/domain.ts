@@ -109,6 +109,15 @@ export function transition(current: Ledger, mutation: Mutation): Decision {
       if (run.phase !== "closed") { run.outcome = "cancelled"; run.phase = "cleanup_pending"; }
       enqueue(ledger, run, "cleanup", command.commandId);
       break;
+    case "timeout":
+      if (mutation.now < run.spec.deadline) return reject("SchemaRejected");
+      if (run.phase !== "closed") {
+        run.cancelRequested = true;
+        if (run.outcome === "pending") run.outcome = "timed_out";
+        run.phase = "cleanup_pending";
+        enqueue(ledger, run, "cleanup", "deadline-expired");
+      }
+      break;
     case "event":
       if (!idPattern.test(command.eventId) || !digestPattern.test(command.hash) || !run.callIds.includes(command.callId)) return reject("SchemaRejected");
       if (run.events[command.eventId] && run.events[command.eventId] !== command.hash) return reject("SpecConflict");
