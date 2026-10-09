@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { isRecord, jsonResponse, type ProviderCall } from "./contracts.ts";
+import { isRecord, jsonResponse, type FakeArtifact, type ProviderCall } from "./contracts.ts";
 
 /** Synthetic provider. Run in a separate Miniflare instance with separate SQLite persistence. */
 export class FakeProvider extends DurableObject {
@@ -18,6 +18,23 @@ export class FakeProvider extends DurableObject {
     if (request.method !== "POST") return jsonResponse({ error: "synthetic POST required" }, 405);
     const body: unknown = await request.json();
     if (!isRecord(body)) return jsonResponse({ error: "invalid envelope" }, 400);
+    if (url.pathname === "/artifact/put" || url.pathname === "/artifact/read") {
+      if (typeof body.key !== "string" || !/^runs\/[a-zA-Z0-9_-]{1,80}\/[a-f0-9]{64}\.json$/.test(body.key)) return jsonResponse({error:"invalid artifact key"},400);
+      const previous = read<FakeArtifact>("artifact", body.key);
+      if (url.pathname === "/artifact/read") return previous ? jsonResponse(previous) : jsonResponse({error:"missing artifact"},404);
+      if (typeof body.content !== "string" || typeof body.digest !== "string") return jsonResponse({error:"invalid content"},400);
+      const bytes = new TextEncoder().encode(body.content);
+      if (bytes.byteLength < 1 || bytes.byteLength > 4096) return jsonResponse({error:"artifact size cap"},400);
+      const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))).map(byte => byte.toString(16).padStart(2,"0")).join("");
+      if (digest !== body.digest || !body.key.endsWith(`/${digest}.json`)) return jsonResponse({error:"content digest mismatch"},409);
+      if (previous) return previous.digest === digest && previous.content === body.content ? jsonResponse(previous) : jsonResponse({error:"immutable artifact conflict"},409);
+      const artifact: FakeArtifact = {key:body.key,digest,content:body.content,bytes:bytes.byteLength};
+      // Awaiting hashing yields the actor: re-read before conditional insertion.
+      const raced = read<FakeArtifact>("artifact", body.key);
+      if (raced) return raced.digest === digest && raced.content === body.content ? jsonResponse(raced) : jsonResponse({error:"immutable artifact conflict"},409);
+      sql.exec("INSERT INTO records(kind,id,value) VALUES('artifact',?,?)",body.key,JSON.stringify(artifact));
+      return jsonResponse(artifact);
+    }
     if (url.pathname === "/record") {
       if (typeof body.id !== "string" || typeof body.event !== "string") return jsonResponse({error:"invalid observer event"},400);
       const previous = read<number>("observer", `${body.id}-${body.event}`) ?? 0;

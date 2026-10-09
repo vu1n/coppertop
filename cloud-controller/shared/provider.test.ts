@@ -5,6 +5,7 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 test("independent provider persists an ambiguous spawn through a workerd restart", { timeout: 30_000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "coppertop-provider-"));
@@ -18,9 +19,18 @@ test("independent provider persists an ambiguous spawn through a workerd restart
   try {
     const lost = await provider.dispatchFetch("http://provider/spawn", {method:"POST",body:JSON.stringify({runId:"one",generation:"one",loseReply:true})});
     assert.equal(lost.status, 503);
+    const content = JSON.stringify({result:"synthetic-valid"});
+    const digest = createHash("sha256").update(content).digest("hex");
+    const artifact = { key:`runs/one/${digest}.json`,digest,content };
+    const put = (value: unknown) => provider.dispatchFetch("http://provider/artifact/put",{method:"POST",body:JSON.stringify(value)});
+    assert.equal((await put(artifact)).status,200);
+    assert.equal((await put({...artifact,content:"replaced"})).status,409);
+    assert.equal((await put({...artifact,key:"../escape.json"})).status,400);
     await provider.dispose(); provider = new Miniflare(options);
     const records = await (await provider.dispatchFetch("http://provider/observe")).json() as Array<{kind:string;value:{runId:string}}>;
     assert.equal(records.filter(r=>r.kind==="call" && r.value.runId==="one").length,1);
+    const persisted = await (await provider.dispatchFetch("http://provider/artifact/read",{method:"POST",body:JSON.stringify({key:artifact.key})})).json() as {content:string;digest:string};
+    assert.equal(persisted.content,content); assert.equal(persisted.digest,digest);
     const disabled = await provider.dispatchFetch("http://provider/disable", {method:"POST",body:JSON.stringify({generation:"one"})});
     assert.equal(disabled.status,200);
     const late = await provider.dispatchFetch("http://provider/spawn", {method:"POST",body:JSON.stringify({runId:"one",generation:"one"})});

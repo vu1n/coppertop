@@ -86,6 +86,8 @@ export interface ProviderCall {
   cost: number;
 }
 
+export interface FakeArtifact { key: string; digest: string; content: string; bytes: number }
+
 export const jsonResponse = (value: unknown, status = 200): Response =>
   new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 
