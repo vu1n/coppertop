@@ -13,7 +13,7 @@ inputs; this is not a clean-checkout run or managed-service evidence.
 | Controller safety tests | 24 passed | One-use approval/atomic journal, raw evidence audit, pagination, bounded transient reads, ownership, transport ambiguity, deletion denial and bounds |
 | Native runtime behaviors | 5 passed | Actual Miniflare/workerd, supported native probes, evidence audit, timing gates, delayed cancellation, SQLite and service binding |
 | Partial-source provenance record | 1 completed | Hashes six named files; starts no runtime and claims no binding identity |
-| Required Python suite | 425 total, 3 skipped | 422 passed; unchanged Python; no official loader source enabled |
+| Required Python suite | 425 total, 3 skipped | 422 passed; no official loader source enabled |
 | Wrangler 4.144.0 dry-run packaging | 3 passed | Both Workers and namespace deletion migration; no upload |
 | Whitespace check | Passed | `git diff --check` |
 | Managed execution / deletion | Not run | Separate approval and billing gate |
@@ -64,8 +64,9 @@ resources, account settings, credentials or subscriptions were changed.
 All [thirteen review dispositions](REVIEW.md) are recorded. On the updated working
 tree, `npm run check` passed strict typecheck, compiler hygiene and **30 total
 checks: 24 controller regressions, five actual runtime behaviors and one
-partial-source provenance record** (49.590 seconds). The required offline Python
-suite passed 425 total with three skips in 28.318 seconds. Whitespace checks passed.
+partial-source provenance record** (49.590 seconds). The initial required offline Python
+suite passed 425 total with three skips in 28.318 seconds before the fixture
+correction below. Whitespace checks passed.
 
 All three dry-run bundles were refreshed with:
 
@@ -76,5 +77,26 @@ npm run package -- ct-native-review-10 ../../.local/managed-canary-review-packag
 Their final hashes are listed above; provider and retirement bundle bytes remain
 identical, and the controller bundle changed for timing/evidence/wait behavior.
 No approval document was supplied or consumed for a managed run. Exclusive-claim
-regressions used only disposable temporary local directories. Source changes after
-checks are limited to these evidence and review documents.
+regressions used only disposable temporary local directories. Canary executable inputs remain unchanged after these checks. The subsequent
+CI-fixture correction below changes only a Python test helper and documentation.
+
+
+## Hosted CPU fixture correction
+
+The first updated-head [CPU run](https://github.com/vu1n/coppertop/actions/runs/37981796769)
+failed in the unchanged lost-ack Runpod source-spool test, during temporary
+filesystem cleanup: `OSError: [Errno 39] Directory not empty: 'remote'`.
+The fixture registered subprocess termination with unittest.addCleanup, which ran
+after TemporaryDirectory exited; its producer could still create another part
+while the directory was being removed. The whole sidecar CI run passed.
+
+A test-only follow-up uses ExitStack to terminate/wait for every owned subprocess
+before the enclosing temporary directory is removed, for the three fixture users.
+No provider adapter or production behavior changed. All seven source-spool tests
+passed in 3.046 seconds. The complete Python suite was rerun after this correction;
+the final result is recorded below. Canary sources, lockfiles, build digest and
+all three bundle hashes are unchanged.
+
+Final required offline Python result after the fixture correction: **425 total,
+422 passed, three skipped**, in **29.166 seconds**. No model/dataset download or
+external provider call occurred.

@@ -29,3 +29,11 @@ Managed deployment, instance deletion/termination semantics, namespace migration
 propagation and Worker deletion permissions remain unverified. No deployment,
 spending, merge, Modal call, credential change or security change was performed.
 Host-process loss remains untested, and realProviderReady remains false.
+
+
+The first CPU CI attempt on 06ffd1c exposed a preexisting local subprocess/tempdir
+teardown race in the source-spool fixture, unrelated to managed-canary code.
+The follow-up fixes test cleanup ordering only, reruns the seven affected tests
+and the full Python suite, and preserves the production adapter and canary graph.
+This is tracked in the [evidence](EVIDENCE.md#hosted-cpu-fixture-correction), rather
+than hiding the failed attempt with repeated CI retries.
