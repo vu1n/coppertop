@@ -3,6 +3,10 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 upstream="$repo_root/.local/upstream/effect"
 [[ $(git -C "$upstream" rev-parse HEAD) == aa48e3fac02d43bf7825d7005968586d26a79ae3 ]] || exit 1
+git -C "$upstream" diff --quiet && git -C "$upstream" diff --cached --quiet || {
+  echo 'Upstream tracked source, lockfile or patches differ from the pinned commit' >&2
+  exit 1
+}
 destination="$upstream/packages/platform/cloudflare/test/integration/coppertop"
 mkdir -p "$destination"
 cp "$repo_root/cloud-controller/lane-b/worker.ts" "$destination/worker.ts"
