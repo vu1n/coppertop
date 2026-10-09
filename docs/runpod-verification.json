@@ -265,5 +265,19 @@
     "network_volume_peak_arithmetic": "passed",
     "shared_core_exact_55b3248_bytes_and_proof_hashes": "passed",
     "final_test_count": 389
+  },
+  "PR_stack_validation": {
+    "base_branch": "pr/full-recording-archive",
+    "base_commit": "dda676f63c88d32ba563708eefc992271ee8feca",
+    "branch": "pr/runpod-support",
+    "tested_merge_commit": "3e5e274004eb23fd35e4e13dce1639960fdbc399",
+    "tests": 416,
+    "seconds": 39.144,
+    "skipped": 0,
+    "status": "passed",
+    "log": "/Users/vuln/Documents/Codex/2026-10-08/task/runpod-stacked-pr-tests.log",
+    "shared_core_unchanged": true,
+    "paid_execution_authorized": false,
+    "uncommitted_main_worker_inputs_included": false
   }
 }

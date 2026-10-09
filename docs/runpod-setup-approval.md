@@ -138,7 +138,7 @@ compressed before allocation; no layers were downloaded for this proposal.
 
 ## OpenGL and system closure
 
-The seed is Python 3.11.13 / glibc 2.35 on Ubuntu Jammy, with native Torch 2.8 / CUDA 12.8 / 
+The seed is Python 3.11.13 / glibc 2.35 on Ubuntu Jammy, with native Torch 2.8 / CUDA 12.8 /
 FlashAttention 2.8.3 and simulator CPU Torch 2.7.1 / MuJoCo 3.3.1. Keep the existing
 PyTorch digest; the RunPod Ubuntu 24.04 image remains an unverified candidate.
 
