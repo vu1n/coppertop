@@ -7,6 +7,7 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
+    "allowJs": true,
     "types": ["node", "@cloudflare/workers-types"]
   },
   "include": ["*.ts", "../shared/contracts.ts", "../shared/domain.ts"]

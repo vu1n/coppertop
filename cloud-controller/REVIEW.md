@@ -107,3 +107,17 @@ independent production security audit. Host-process-loss recovery remains
 untested, and paid DO rounding prevents asserting a $1 bound from the currently
 available account reads. No Mac, Modal, real provider, GPU, deployment,
 subscription, authentication setup, credential creation or merge was used.
+
+
+## PR 10 managed-canary review follow-up
+
+The [thirteen dispositions](managed-canary/REVIEW.md) distinguish implemented
+fixes from retained live-API and recovery caveats. Final local validation now has
+24 controller regressions, five actual workerd behaviors and one partial-source
+provenance record; the former hash-printing record is no longer counted as runtime
+execution. Raw evidence is retained and accepted locally, suite approval is
+consumed once per executor journal, cleanup authority survives loss of the spend
+approval file, and timing/cancellation/polling/pagination regressions pass. The
+observer shares the Workflow scheduler, and a managed pass would establish only
+no-restart controls, leaving the provisional choice and host-loss gate unchanged.
+The [updated evidence](managed-canary/EVIDENCE.md) records exact packaging hashes.

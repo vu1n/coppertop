@@ -115,6 +115,12 @@ are unchanged.
 No supported host-process-loss injection was established in the inspected
 Workflow API. An activity timeout or lifecycle restart does not close that gate.
 Reports preserve `hostProcessLoss: "untested"` and `realProviderReady: false`.
+A managed pass would establish only the pinned build's no-restart native
+primitive and ledger controls. It is a prerequisite control result, not recovery
+evidence; it neither satisfies the managed-test criterion above nor changes the
+provisional choice. Approve that run only if this control result is worth the
+approval on its own. The separate observer shares the managed Workflow scheduler,
+while deadline containment relies on Durable Object alarms.
 Before integration, retain the explicit choice between a supported matching test
 and documented managed durability relied on as an unverified assumption.
 

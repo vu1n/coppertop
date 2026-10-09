@@ -86,8 +86,14 @@ export const CanaryProbe = Workflow.make(services, {
             payload,
             { mode: probe, event: "first-attempt" },
           );
-          if (probe === "timeout-retry" && attempt.count === 1)
-            await new Promise<void>(() => {});
+          if (probe === "timeout-retry" && attempt.count === 1) {
+            await client.call("/provider/record", payload, {
+              mode: probe,
+              event: "timeout-delay-start",
+            });
+            // Pending timed I/O avoids workerd's no-I/O hung-promise detector.
+            await scheduler.wait(5_000);
+          }
           return attempt.count;
         }),
         {
@@ -156,7 +162,9 @@ export const CanaryProbe = Workflow.make(services, {
           "durable-event",
           {
             type: "canary-release",
-            timeout: probe === "event-timeout" ? "3 seconds" : "20 seconds",
+            // Longer than the bounded controller readiness/delivery path,
+            // including its explicit activity retry/timeout ceilings.
+            timeout: probe === "event-timeout" ? "3 seconds" : "15 minutes",
           },
         ).pipe(
           Effect.catch((error) =>
@@ -377,6 +385,7 @@ export const CanaryController = Workflow.make(services, {
           await client.call("/ledger/cleanup", payload);
           return {
             ...report,
+            evidence: { payload, snapshot, ledger, statuses },
             cleanup: "synthetic-contained",
             deploymentCleanup: "controller-must-delete-temporary-resources",
           };

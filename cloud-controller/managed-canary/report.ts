@@ -27,20 +27,32 @@ export function acceptance(
     snapshot.observations.find(
       (row) => row.mode === mode && row.event === event,
     )?.count ?? 0;
+  const at = (mode: string, event: string) =>
+    snapshot.observations.find(
+      (row) => row.mode === mode && row.event === event,
+    )?.at ?? NaN;
   const gates = {
     control: count("control", "probe-complete") === 1,
     timeoutRetry:
       count("timeout-retry", "first-attempt") >= 2 &&
+      count("timeout-retry", "timeout-delay-start") === 1 &&
+      at("timeout-retry", "first-attempt") -
+        at("timeout-retry", "timeout-delay-start") >=
+        1000 &&
       count("timeout-retry", "probe-complete") === 1,
     durableSleep:
       count("sleep", "sleep-start") === 1 &&
-      count("sleep", "sleep-complete") === 1,
+      count("sleep", "sleep-complete") === 1 &&
+      at("sleep", "sleep-complete") - at("sleep", "sleep-start") >= 10_000,
     durableEvent:
       count("event", "wait-start") === 1 &&
       count("event", "event-received") === 1,
     eventTimeout:
       count("event-timeout", "wait-start") === 1 &&
-      count("event-timeout", "event-timeout") === 1,
+      count("event-timeout", "event-timeout") === 1 &&
+      at("event-timeout", "event-timeout") -
+        at("event-timeout", "wait-start") >=
+        3000,
     cancellation:
       count("cancel", "wait-start") === 1 &&
       count("cancel", "cancel-observed") === 1 &&

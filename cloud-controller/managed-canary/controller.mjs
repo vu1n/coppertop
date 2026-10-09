@@ -3,6 +3,8 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { acceptance } from "./report.ts";
+import { canonical } from "./contracts.ts";
 
 export const ACCOUNT_ID = "a06ff95ff66e0f58f269da6d2fb99021"; // Previously returned by Cloudflare, not a credential.
 const root = dirname(fileURLToPath(import.meta.url));
@@ -142,7 +144,7 @@ export function plan(suiteId, buildIdentity, now = Date.now()) {
       executionMilliseconds: 1_800_000,
     },
     billingGate: {
-      verified: false,
+      verification: "operator-attestation-required",
       dollarCap: 1,
       subscriptionChangeAuthorized: false,
       reason:
@@ -157,6 +159,8 @@ export function requireApproval(p, approval, now = Date.now()) {
     approval?.approved !== true ||
     approval?.suiteId !== p.params.suiteId ||
     approval?.buildDigest !== p.params.buildDigest ||
+    approval?.deadline !== p.params.deadline ||
+    approval?.cleanupAuthorized !== true ||
     approval?.incrementalDollarCap !== 1 ||
     approval?.billingHeadroomVerified !== true ||
     approval?.subscriptionChangeAuthorized !== false
@@ -170,6 +174,68 @@ export function requireApproval(p, approval, now = Date.now()) {
     p.accountId !== ACCOUNT_ID
   )
     throw new Error("Expired or mismatched deployment scope");
+}
+export function executionState(p) {
+  return {
+    suiteId: p.params.suiteId,
+    buildDigest: p.params.buildDigest,
+    deadline: p.params.deadline,
+    cleanupAuthorized: true,
+    providerAttempted: false,
+    controllerAttempted: false,
+  };
+}
+export async function claimExecution(
+  p,
+  dir,
+  registry = join(root, "../../.local/managed-canary-executions"),
+) {
+  await mkdir(registry, { recursive: true });
+  const record = JSON.stringify({ state: executionState(p) }, null, 2) + "\n";
+  // Exclusive, permanent per-suite claim survives teardown and re-planning.
+  // It is local protection, not a Cloudflare/account-wide replay barrier.
+  await writeFile(join(registry, `${p.params.suiteId}.json`), record, {
+    flag: "wx",
+  });
+  await writeFile(join(dir, "execution.json"), record, { flag: "wx" });
+}
+export function requireCleanupReceipt(p, receipt) {
+  const state = receipt?.state;
+  if (
+    state?.suiteId !== p.params.suiteId ||
+    state?.buildDigest !== p.params.buildDigest ||
+    state?.deadline !== p.params.deadline ||
+    state?.cleanupAuthorized !== true ||
+    typeof state.providerAttempted !== "boolean" ||
+    typeof state.controllerAttempted !== "boolean"
+  )
+    throw new Error("Cleanup receipt scope/authority mismatch");
+  return state;
+}
+export function auditOutput(p, output) {
+  if (Buffer.byteLength(JSON.stringify(output) ?? "") > 1_048_576)
+    throw new Error("Evidence size bound exceeded");
+  const evidence = output?.evidence;
+  if (canonical(evidence?.payload ?? {}) !== canonical(p.params))
+    throw new Error("Evidence plan identity mismatch");
+  const local = acceptance(
+    p.params,
+    evidence.snapshot,
+    evidence.ledger,
+    evidence.statuses,
+  );
+  if (
+    local.supportedGatesPass !== true ||
+    output.supportedGatesPass !== true ||
+    output.version !== local.version ||
+    output.suiteId !== local.suiteId ||
+    output.buildDigest !== local.buildDigest ||
+    output.hostProcessLoss !== "untested" ||
+    output.realProviderReady !== false ||
+    canonical(output.gates ?? {}) !== canonical(local.gates)
+  )
+    throw new Error("Local evidence acceptance differs from reported verdict");
+  return local;
 }
 export async function materialize(p, dir) {
   await mkdir(dir, { recursive: true });
@@ -239,14 +305,18 @@ export async function ownedNamespaces(api, providerName) {
         (row) => row.script === providerName && row.class === "CanaryStore",
       ),
     );
-    const info = response.result_info;
-    if (
-      !info ||
-      !Number.isSafeInteger(info.total_pages) ||
-      info.total_pages < 0
-    )
-      throw new Error("Namespace pagination cannot establish absence");
-    if (page >= info.total_pages) return owned;
+    const total = response.result_info?.total_pages;
+    if (total !== undefined) {
+      if (
+        !Number.isSafeInteger(total) ||
+        total < 0 ||
+        (total < page && response.result.length)
+      )
+        throw new Error("Namespace pagination cannot establish absence");
+      if (page >= total) return owned;
+    }
+    // The pinned SDK also establishes exhaustion from an empty page.
+    if (response.result.length === 0) return owned;
   }
   throw new Error("Namespace pagination safety limit exceeded");
 }
@@ -301,6 +371,8 @@ export async function cleanup(api, p, state, deploy) {
   }
   if (state.controllerAttempted)
     await attempt(`worker:${p.names.controller}`, async () => {
+      // Deliberately non-forced SDK script deletion: bindings may refuse it.
+      // Never implicitly force-delete a Durable Object namespace.
       const path = `${base}/workers/scripts/${p.names.controller}`;
       if (!(await absent(api, `${path}/settings`))) await api.delete(path);
       if (!(await absent(api, `${path}/settings`)))
@@ -333,11 +405,15 @@ export async function execute(
   {
     deploy,
     save,
+    claim,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now = Date.now,
   } = {},
 ) {
   requireApproval(p, approval, now());
+  if (typeof claim !== "function")
+    throw new Error("Durable one-use execution claim required");
+  await claim();
   const base = `/accounts/${ACCOUNT_ID}`;
   for (const name of [p.names.provider, p.names.controller])
     if (!(await absent(api, `${base}/workers/scripts/${name}/settings`)))
@@ -351,13 +427,8 @@ export async function execute(
       );
   if ((await ownedNamespaces(api, p.names.provider)).length)
     throw new Error("Temporary namespace already exists; no reuse permitted");
-  const state = {
-    suiteId: p.params.suiteId,
-    buildDigest: p.params.buildDigest,
-    providerAttempted: false,
-    controllerAttempted: false,
-  };
-  let output, runFailure;
+  const state = executionState(p);
+  let output, localAcceptance, runFailure;
   try {
     state.providerAttempted = true;
     await save({ state });
@@ -378,10 +449,45 @@ export async function execute(
       if (await absent(api, `${path}/${p.params.suiteId}-controller`))
         throw error;
     }
+    let readFailures = 0;
     for (let sample = 0; sample < 900 && now() < p.params.deadline; sample++) {
-      const response = await api.get(`${path}/${p.params.suiteId}-controller`);
-      const result = response.result;
+      let response;
+      try {
+        response = await api.get(`${path}/${p.params.suiteId}-controller`);
+        readFailures = 0;
+      } catch (error) {
+        const transient =
+          error?.status === 429 ||
+          (error?.status >= 500 && error?.status <= 599) ||
+          ["APIConnectionError", "APIConnectionTimeoutError"].includes(
+            error?.name,
+          );
+        if (!transient || ++readFailures > 3) throw error;
+        await sleep(2000);
+        continue;
+      }
+      const result = response?.result;
+      if (
+        !result ||
+        ![
+          "queued",
+          "running",
+          "paused",
+          "waiting",
+          "waitingForPause",
+          "complete",
+          "errored",
+          "terminated",
+        ].includes(result.status)
+      )
+        throw new Error("Controller status schema unsupported");
       if (result.status === "complete") {
+        const raw =
+          typeof result.output === "string"
+            ? result.output
+            : JSON.stringify(result.output);
+        if (typeof raw !== "string" || Buffer.byteLength(raw) > 1_048_576)
+          throw new Error("Controller evidence missing or exceeds size bound");
         output =
           typeof result.output === "string"
             ? JSON.parse(result.output)
@@ -394,17 +500,9 @@ export async function execute(
     }
     if (output === undefined)
       throw new Error("Canary deadline or status budget exhausted");
-    if (
-      output?.supportedGatesPass !== true ||
-      output?.suiteId !== p.params.suiteId ||
-      output?.buildDigest !== p.params.buildDigest ||
-      output?.hostProcessLoss !== "untested" ||
-      output?.realProviderReady !== false
-    )
-      throw new Error(
-        "Supported acceptance or source identity was not verified",
-      );
-    await save({ state, output });
+    await save({ state, output }); // Preserve bounded raw evidence before auditing/deletion.
+    localAcceptance = auditOutput(p, output);
+    await save({ state, output, localAcceptance });
   } catch (error) {
     runFailure = {
       name: error?.name ?? "Error",
@@ -412,7 +510,13 @@ export async function execute(
     };
   } finally {
     const stopped = await cleanup(api, p, state, deploy);
-    await save({ state, output, runFailure, cleanup: stopped });
+    await save({
+      state,
+      output,
+      localAcceptance,
+      runFailure,
+      cleanup: stopped,
+    });
     if (runFailure || !stopped.confirmed)
       throw new Error(
         "Canary execution/cleanup incomplete; retain its local receipt and report blockers",
@@ -446,6 +550,14 @@ export async function main(args) {
     throw new Error("Expected plan, package, execute, or cleanup");
   const dir = resolve(root, directory);
   if (command === "plan" || command === "package") {
+    try {
+      await readFile(join(dir, "execution.json"));
+      throw new Error(
+        "Execution receipt exists; preserve its original plan for cleanup",
+      );
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
     const p = plan(suite, await buildDigest());
     await materialize(p, dir);
     if (command === "package")
@@ -479,14 +591,16 @@ export async function main(args) {
   );
   if (JSON.stringify(p) !== JSON.stringify(expected))
     throw new Error("Plan differs from current source or fixed scope");
-  const approval = approvalPath
-    ? JSON.parse(await readFile(resolve(approvalPath), "utf8"))
-    : undefined;
-  requireApproval(
-    p,
-    approval,
-    command === "cleanup" ? p.params.deadline - 1 : Date.now(),
-  );
+  const approval =
+    command === "execute" && approvalPath
+      ? JSON.parse(await readFile(resolve(approvalPath), "utf8"))
+      : undefined;
+  let receipt;
+  if (command === "execute") requireApproval(p, approval);
+  else {
+    receipt = JSON.parse(await readFile(join(dir, "execution.json"), "utf8"));
+    requireCleanupReceipt(p, receipt);
+  }
   await materialize(p, dir); // Recreate configs from the validated scope before any mutation.
   const deploy = (name) =>
     wrangler(["deploy", "--config", join(dir, `${name}.json`)]);
@@ -499,17 +613,15 @@ export async function main(args) {
   try {
     if (command === "execute")
       console.log(
-        JSON.stringify(await execute(api, p, approval, { deploy, save })),
+        JSON.stringify(
+          await execute(api, p, approval, {
+            deploy,
+            save,
+            claim: () => claimExecution(p, dir),
+          }),
+        ),
       );
     else {
-      const receipt = JSON.parse(
-        await readFile(join(dir, "execution.json"), "utf8"),
-      );
-      if (
-        receipt.state?.suiteId !== p.params.suiteId ||
-        receipt.state?.buildDigest !== p.params.buildDigest
-      )
-        throw new Error("Cleanup receipt scope mismatch");
       const result = await cleanup(api, p, receipt.state, deploy);
       await save({ ...receipt, cleanup: result });
       console.log(JSON.stringify(result));

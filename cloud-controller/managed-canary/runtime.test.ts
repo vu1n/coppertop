@@ -8,7 +8,8 @@ import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import type { Ledger, Decision } from "../shared/contracts.ts";
 import { MODES, type Envelope } from "./contracts.ts";
-import type { IndependentSnapshot } from "./report.ts";
+import { acceptance, type IndependentSnapshot } from "./report.ts";
+import { auditOutput } from "./controller.mjs";
 
 const bundles = Promise.all(
   ["workflow.ts", "provider.ts"].map((file) =>
@@ -25,6 +26,7 @@ const bundles = Promise.all(
 const driver = `export default {async fetch(request,env) {
  const path=new URL(request.url).pathname;
  if(path==='/start'){const params=await request.json();return Response.json({id:(await env.CONTROL.create({id:params.suiteId+'-controller',params})).id});}
+ if(path==='/start-probe'){const params=await request.json();return Response.json({id:(await env.PROBES.create({id:params.suiteId+'-'+params.mode,params})).id});}
  if(path==='/status'){const body=await request.json();return Response.json(await (await env[body.binding].get(body.id)).status());}
  return env.PROVIDER.fetch(request);
 }}`;
@@ -150,6 +152,12 @@ test(
               gates: Record<string, boolean>;
               hostProcessLoss: string;
               realProviderReady: boolean;
+              evidence: {
+                payload: Envelope;
+                snapshot: IndependentSnapshot;
+                ledger: Ledger;
+                statuses: Record<string, string>;
+              };
             };
           }
         | undefined;
@@ -171,6 +179,35 @@ test(
       );
       assert.equal(result.output?.hostProcessLoss, "untested");
       assert.equal(result.output?.realProviderReady, false);
+      assert.ok(result.output);
+      assert.equal(
+        auditOutput({ params: f.payload }, result.output).supportedGatesPass,
+        true,
+      );
+      const evidence = result.output.evidence;
+      for (const [probe, event, gate] of [
+        ["sleep", "sleep-complete", "durableSleep"],
+        ["event-timeout", "event-timeout", "eventTimeout"],
+      ] as const) {
+        const broken = structuredClone(evidence.snapshot);
+        broken.observations.find(
+          (row) => row.mode === probe && row.event === event,
+        )!.at = 0;
+        assert.equal(
+          acceptance(f.payload, broken, evidence.ledger, evidence.statuses)
+            .gates[gate],
+          false,
+        );
+      }
+      const missingDelay = structuredClone(evidence.snapshot);
+      missingDelay.observations = missingDelay.observations.filter(
+        (row) => row.event !== "timeout-delay-start",
+      );
+      assert.equal(
+        acceptance(f.payload, missingDelay, evidence.ledger, evidence.statuses)
+          .gates.timeoutRetry,
+        false,
+      );
       const snapshot = await f.call<IndependentSnapshot>("/provider/snapshot");
       const ledger = await f.call<Ledger>("/ledger/snapshot");
       assert.equal(snapshot.calls.length, 6);
@@ -183,7 +220,7 @@ test(
         ),
       );
       let applicationBytes = Buffer.byteLength(
-        JSON.stringify({ snapshot, ledger }),
+        JSON.stringify({ snapshot, ledger, controller: result }),
       );
       for (const probe of MODES) {
         const status = await f.call<{
@@ -325,7 +362,7 @@ test(
   },
 );
 
-test("record tested source and binding identity", async () => {
+test("print partial source hashes (provenance record, no runtime behaviour)", async () => {
   const sourceFiles = [
     "contracts.ts",
     "provider.ts",
@@ -381,6 +418,50 @@ test(
         (await f.call<Ledger>("/ledger/snapshot")).grant.revoked,
         true,
       );
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  "cancel probe remains waiting beyond the old 20-second race window",
+  { timeout: 40_000 },
+  async () => {
+    const f = await fixture();
+    try {
+      await f.call("/ledger/admit", { mode: "cancel" });
+      await f.call("/start-probe", { mode: "cancel" });
+      let ready = false;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const snapshot =
+          await f.call<IndependentSnapshot>("/provider/snapshot");
+        ready = snapshot.observations.some(
+          (row) => row.mode === "cancel" && row.event === "wait-start",
+        );
+        if (ready) break;
+        await pause(250);
+      }
+      assert.equal(ready, true);
+      await pause(21_000);
+      const status = await f.call<{ status: string }>("/status", {
+        binding: "PROBES",
+        id: `${f.payload.suiteId}-cancel`,
+      });
+      // The pinned emulator labels event waits running; managed status may
+      // expose waiting. Either must remain live, rather than timing out.
+      assert.ok(["running", "waiting"].includes(status.status));
+      const snapshot = await f.call<IndependentSnapshot>("/provider/snapshot");
+      assert.equal(
+        snapshot.observations.some(
+          (row) => row.mode === "cancel" && row.event === "probe-complete",
+        ),
+        false,
+      );
+      const stopped = await f.call<Decision>("/ledger/cancel", {
+        mode: "cancel",
+      });
+      assert.equal(stopped.run?.cleanup, "confirmed");
     } finally {
       await f.close();
     }
