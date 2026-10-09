@@ -1,0 +1,52 @@
+{"workerBytes":1633472,"workerGzipBytes":341463,"upgradeChangesModuleBytes":true}
+{"regression":"initial","observationMillis":2500,"observerEntries":1,"initialActivityRows":0,"initialDeferredRows":0,"initialClockRows":0,"initialAlarm":null}
+{"engineGate":"initial-activity-autonomous-recovery","passed":false}
+✖ REGRESSION: initial Activity autonomous recovery without target contact (6630.320476ms)
+[11:37:40.768] ERROR (#35): Workflow parent resume failed Error: Cause([Die(Error: synthetic child-to-parent wake lost)])
+{"regression":"child-parent","observationMillis":2500,"observerParentCompletions":0,"droppedWakeAttempts":6,"parentAlarm":null,"parentResumePending":0,"childResult":"Complete","parentResult":"Suspended"}
+{"engineGate":"child-parent-wake-autonomous-recovery","passed":false}
+✖ REGRESSION: exhausted child-to-parent wake retries survive isolate loss (12545.754671ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20422.522766
+
+✖ failing tests:
+
+test at packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:110:1
+✖ REGRESSION: initial Activity autonomous recovery without target contact (6630.320476ms)
+  AssertionError [ERR_ASSERTION]: initial-activity-autonomous-recovery
+      at gate (file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:96:58)
+      at file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:123:3
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:92:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:159:1
+✖ REGRESSION: exhausted child-to-parent wake retries survive isolate loss (12545.754671ms)
+  AssertionError [ERR_ASSERTION]: child-parent-wake-autonomous-recovery
+      at gate (file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:96:58)
+      at file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:178:3
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:92:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

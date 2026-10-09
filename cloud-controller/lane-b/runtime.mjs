@@ -126,10 +126,13 @@ test("REGRESSION: initial Activity autonomous recovery without target contact", 
 }))
 
 test("durable clock resumes autonomously after restart", withRuntime(async f => {
-  await f.fetch("/execute?name=Clock&id=clock&discard=true")
+  const deadline = Date.now() + 10_000
+  await f.fetch(`/execute?name=Clock&id=clock&deadline=${deadline}&discard=true`)
   await f.waitTarget("/snapshot?name=Clock&id=clock", row => row.clocks.length === 1 && row.alarm !== null)
   await f.restart()
-  await f.waitObserver("clock", "done") // no target contact after restart
+  // Rule out completion in the old isolate while setOptions prepared the restart.
+  assert.equal(await f.count("clock", "done"), 0)
+  await f.waitObserver("clock", "done", 1, 15_000) // no target contact after restart
   assert.equal(await f.count("clock", "done"), 1)
 }))
 
@@ -189,11 +192,12 @@ test("typed completion races a durable absolute deadline with replayed Activity"
   await f.restart()
   assert.equal((await f.fetch("/poll?name=Race&id=race")).exit.value, "provider-complete")
   assert.equal(await f.count("race", "winner-deadline"), 0)
-  const secondDeadline = Date.now() + 5000
+  const secondDeadline = Date.now() + 10_000
   await f.fetch(`/execute?name=Race&id=timeout&deadline=${secondDeadline}&discard=true`)
   await f.waitTarget("/snapshot?name=Race&id=timeout", row => row.clocks.length === 1)
   await f.restart()
-  await f.waitObserver("timeout", "winner-deadline", 1, 10_000)
+  assert.equal(await f.count("timeout", "winner-deadline"), 0)
+  await f.waitObserver("timeout", "winner-deadline", 1, 15_000)
   await f.fetch("/complete?name=Race&id=timeout&value=late-completion")
   assert.equal((await f.fetch("/poll?name=Race&id=timeout")).exit.value, "deadline")
 }))

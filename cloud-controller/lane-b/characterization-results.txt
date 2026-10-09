@@ -1,0 +1,25 @@
+{"workerBytes":1633472,"workerGzipBytes":341463,"upgradeChangesModuleBytes":true}
+✔ completed Activity is deduplicated and survives restart/code version change (3663.731645ms)
+{"regression":"initial","observationMillis":2500,"observerEntries":1,"initialActivityRows":0,"initialDeferredRows":0,"initialClockRows":0,"initialAlarm":null}
+{"engineGate":"initial-activity-autonomous-recovery","passed":false}
+✔ REGRESSION: initial Activity autonomous recovery without target contact (8956.178703ms)
+✔ durable clock resumes autonomously after restart (13328.329072ms)
+✔ deferred-only suspension stays suspended until legitimate external completion (4049.758409ms)
+✔ deterministic defect does not hot-loop through restart (7262.316216ms)
+[11:35:54.851] ERROR (#35): Workflow parent resume failed Error: Cause([Die(Error: synthetic child-to-parent wake lost)])
+{"regression":"child-parent","observationMillis":2500,"observerParentCompletions":0,"droppedWakeAttempts":6,"parentAlarm":null,"parentResumePending":0,"childResult":"Complete","parentResult":"Suspended"}
+{"engineGate":"child-parent-wake-autonomous-recovery","passed":false}
+✔ REGRESSION: exhausted child-to-parent wake retries survive isolate loss (15576.457973ms)
+✔ typed completion races a durable absolute deadline with replayed Activity (16727.273613ms)
+✔ application definition guard quarantines suspended work on upgrade (3490.430661ms)
+✔ interrupt completion persists through restart (6534.785142ms)
+✔ shared one-shot ledger stops ambiguous spawn replay; cancellation reconciles cleanup/accounting (9663.324062ms)
+✔ atomic admission and immutable receipt survive workerd replay (6460.919281ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 98635.38019

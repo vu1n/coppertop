@@ -52,8 +52,8 @@ const mutate = (command: Mutation["command"]) => Effect.promise(async () => {
 const layers = Layer.mergeAll(
   Initial.toLayer(({ id }) => activity("first", record(id, "entered").pipe(Effect.andThen(Effect.never)))),
   Completed.toLayer(({ id }) => activity("completed", record(id, "activity").pipe(Effect.as(COPPERTOP_BUILD_VERSION)))),
-  Clock.toLayer(({ id }) => Effect.gen(function*() {
-    yield* DurableClock.sleep({ name: "wake", duration: "800 millis" })
+  Clock.toLayer(({ id, deadline }) => Effect.gen(function*() {
+    yield* DurableClock.sleep({ name: "wake", duration: Math.max(0, deadline - Date.now()) })
     yield* record(id, "done")
     return "clock-done"
   })),
