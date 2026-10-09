@@ -8,6 +8,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
     "test": "node --test --test-concurrency=1 runtime.test.ts",
     "check": "npm run typecheck && npm test",
     "test:acceptance": "node --test --test-concurrency=1 runtime.test.ts",

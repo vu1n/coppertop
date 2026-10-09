@@ -64,6 +64,7 @@ footprint:
   creates:
     - cloud-controller/README.md
     - cloud-controller/DECISION.md
+    - cloud-controller/REVIEW.md
     - .github/workflows/cloud-sidecar.yml
 gate: "Private draft PR and remote commit verified; CI results and remaining blockers reported without overstating runtime evidence."
 ```
@@ -77,3 +78,9 @@ flowchart TD
   CT_002 ==> CT_004["CT-004 draft delivery / deep"]
   CT_003 ==> CT_004
 ```
+
+## Execution status
+
+CT-001, CT-002 and CT-003 are integrated. Shared checks pass. Both lanes executed actual workerd tests with independent durable observers; each retains two failed unattended recovery gates. Lane B's full cold install and formatting are blocked by external dependency/plugin fetch failures. The execution gate records failures rather than weakening engine acceptance. CT-004 correctness, structure and static security reviews are complete. Private draft publication, remote commit and hosted CI results are recorded in the PR and final handoff; no merge or deployment is authorized.
+
+Footprints above describe creation relative to the recorded starting commit. Validate them against that base tree after implementation, rather than treating delivered files as an invalid original plan.

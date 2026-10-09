@@ -6,8 +6,9 @@ This is a local synthetic evaluation of `effect-cf` wrapping Cloudflare's native
 
 ```sh
 cd cloud-controller/lane-a
-npm ci --cache /workspace/coppertop/.local/npm-cache
+npm ci --ignore-scripts --cache ../../.local/npm-cache
 npm run typecheck
+npm run lint
 npm run test:acceptance
 npm run test:characterize
 ```
