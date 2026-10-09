@@ -6,6 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
+import { isRecord } from "./contracts.ts";
 
 test("independent provider persists an ambiguous spawn through a workerd restart", { timeout: 30_000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "coppertop-provider-"));
@@ -26,9 +27,13 @@ test("independent provider persists an ambiguous spawn through a workerd restart
     assert.equal((await put(artifact)).status,200);
     assert.equal((await put({...artifact,content:"replaced"})).status,409);
     assert.equal((await put({...artifact,key:"../escape.json"})).status,400);
+    const record = (id:string,event:string) => provider.dispatchFetch("http://provider/record",{method:"POST",body:JSON.stringify({id,event})});
+    await record("a-b","c"); await record("a-b","c"); await record("a","b-c");
     await provider.dispose(); provider = new Miniflare(options);
-    const records = await (await provider.dispatchFetch("http://provider/observe")).json() as Array<{kind:string;value:{runId:string}}>;
-    assert.equal(records.filter(r=>r.kind==="call" && r.value.runId==="one").length,1);
+    const records = await (await provider.dispatchFetch("http://provider/observe")).json() as Array<{kind:string;subjectId?:string;event?:string;value:unknown}>;
+    assert.equal(records.filter(r=>r.kind==="call" && isRecord(r.value) && r.value.runId==="one").length,1);
+    assert.equal(records.find(row=>row.subjectId==="a-b" && row.event==="c")?.value,2);
+    assert.equal(records.find(row=>row.subjectId==="a" && row.event==="b-c")?.value,1);
     const persisted = await (await provider.dispatchFetch("http://provider/artifact/read",{method:"POST",body:JSON.stringify({key:artifact.key})})).json() as {content:string;digest:string};
     assert.equal(persisted.content,content); assert.equal(persisted.digest,digest);
     const disabled = await provider.dispatchFetch("http://provider/disable", {method:"POST",body:JSON.stringify({generation:"one"})});

@@ -14,7 +14,12 @@ export class FakeProvider extends DurableObject {
     const put = (kind: string, id: string, value: unknown): void => {
       sql.exec("INSERT OR REPLACE INTO records(kind,id,value) VALUES(?,?,?)", kind, id, JSON.stringify(value));
     };
-    if (url.pathname === "/observe") return jsonResponse(sql.exec<{kind: string; id: string; value: string}>("SELECT * FROM records ORDER BY kind,id").toArray().map(row => ({ kind: row.kind, id: row.id, value: JSON.parse(row.value) as unknown })));
+    if (url.pathname === "/observe") return jsonResponse(sql.exec<{kind: string; id: string; value: string}>("SELECT * FROM records ORDER BY kind,id").toArray().map(row => {
+      const value = JSON.parse(row.value) as unknown;
+      if (row.kind !== "observer") return { kind: row.kind, id: row.id, value };
+      const [subjectId, event] = JSON.parse(row.id) as [string, string];
+      return { kind: row.kind, id: `${subjectId}-${event}`, subjectId, event, value };
+    }));
     if (request.method !== "POST") return jsonResponse({ error: "synthetic POST required" }, 405);
     const body: unknown = await request.json();
     if (!isRecord(body)) return jsonResponse({ error: "invalid envelope" }, 400);
@@ -37,8 +42,9 @@ export class FakeProvider extends DurableObject {
     }
     if (url.pathname === "/record") {
       if (typeof body.id !== "string" || typeof body.event !== "string") return jsonResponse({error:"invalid observer event"},400);
-      const previous = read<number>("observer", `${body.id}-${body.event}`) ?? 0;
-      put("observer", `${body.id}-${body.event}`, previous + 1);
+      const key = JSON.stringify([body.id, body.event]);
+      const previous = read<number>("observer", key) ?? 0;
+      put("observer", key, previous + 1);
       return jsonResponse({ count: previous + 1 });
     }
     if (url.pathname === "/disable") {
