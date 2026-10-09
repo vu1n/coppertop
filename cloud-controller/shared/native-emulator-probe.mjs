@@ -36,11 +36,11 @@ async function persistedSleep(directory) {
       const due = sleep && [...active.values()].find((row) => row.hash === sleep.groupKey);
       if (before && sleep && due &&
           !states.some((row) => row.event === 9 && row.groupKey === sleep.groupKey)) {
-        assert.equal(JSON.parse(sleep.metadata).durationMs, 3000);
+        assert.equal(JSON.parse(sleep.metadata).durationMs, 10_000);
         return {
           database: relative(directory, path),
           before: { id: before.id, event: before.event, target: before.target },
-          sleep: { id: sleep.id, event: sleep.event, target: sleep.target, durationMs: 3000 },
+          sleep: { id: sleep.id, event: sleep.event, target: sleep.target, durationMs: 10_000 },
           queuedSleep: { targetTimestamp: due.target_timestamp, action: due.action },
         };
       }
@@ -131,7 +131,7 @@ export function nativeEmulatorControls({
   const count = (records, id, event) => records.find((row) =>
     row.kind === "observer" && row.subjectId === id && row.event === event)?.value ?? 0;
 
-  test(`${lane} plain native: no-restart do/sleep/do control completes`, { timeout: 30_000 }, async () => {
+  test(`${lane} plain native: no-restart do/sleep/do control completes`, { timeout: 45_000 }, async () => {
     const f = await fixture();
     const id = "raw-control";
     try {
@@ -142,7 +142,7 @@ export function nativeEmulatorControls({
         records = await f.observe();
         if (count(records, id, "complete") === 1) break;
         await pause(100);
-      } while (Date.now() - start < 8000);
+      } while (Date.now() - start < 20_000);
       assert.equal(count(records, id, "before"), 1);
       assert.equal(count(records, id, "complete"), 1);
       console.log(JSON.stringify({ rawNative: lane, method: "no-restart", observerWaitMs: Date.now() - start, records }));
@@ -151,7 +151,7 @@ export function nativeEmulatorControls({
 
   for (const method of ["dispose-recreate", "setOptions"]) {
     test(`${lane} plain native: EMULATOR CHARACTERIZATION (not acceptance) ${method} during durable sleep`,
-      { timeout: 35_000 }, async () => {
+      { timeout: 45_000 }, async () => {
         const f = await fixture();
         const id = `raw-${method === "setOptions" ? "set-options" : method}`;
         try {
@@ -164,25 +164,42 @@ export function nativeEmulatorControls({
             await pause(50);
           } while (Date.now() - start < 2000);
           assert(checkpoint, "generated SQLite must prove first STEP_SUCCESS, SLEEP_START and queued sleep before restart");
-          assert(checkpoint.queuedSleep.targetTimestamp - Date.now() > 1500, "restart must precede sleep due time");
           const before = await f.observe();
           assert.equal(count(before, id, "before"), 1);
           assert.equal(count(before, id, "complete"), 0);
+          const originalDueMs = checkpoint.queuedSleep.targetTimestamp;
+          const restartStartedMs = Date.now();
+          const remainingAtRestartMs = originalDueMs - restartStartedMs;
+          assert(remainingAtRestartMs > 8000,
+            `invalid fault window: only ${remainingAtRestartMs}ms remain before sleep is due`);
           await f.restart(method);
+          const restartedAtMs = Date.now();
+          const remainingAfterRestartMs = originalDueMs - restartedAtMs;
           // All target inspection ends before restart. Only this independently alive observer is read below.
           const immediate = await f.observe();
-          assert.equal(count(immediate, id, "complete"), 0, "completion must remain absent immediately after restart");
-          const observerStart = Date.now();
+          const remainingAtFirstObservationMs = originalDueMs - Date.now();
+          const observationDeadlineMs = Math.max(restartedAtMs + 8000, originalDueMs + 3000);
+          console.log(JSON.stringify({
+            rawNativeRestartWindow: lane, method, originalDueMs, remainingAtRestartMs,
+            restartDurationMs: restartedAtMs - restartStartedMs,
+            remainingAfterRestartMs, remainingAtFirstObservationMs,
+            immediateCompletion: count(immediate, id, "complete"), observationDeadlineMs,
+          }));
+          assert(remainingAfterRestartMs > 0 && remainingAtFirstObservationMs > 0,
+            "invalid fault window: original sleep was due before the restarted observer check");
+          assert.equal(count(immediate, id, "complete"), 0,
+            "invalid fault window: completion must remain absent immediately after restart");
           let records = immediate;
           do {
             await pause(100);
             records = await f.observe();
             assert.equal(count(records, id, "complete"), 0, "characterized local stall changed; investigate rather than promote managed acceptance");
-          } while (Date.now() - observerStart < 8000);
+          } while (Date.now() < observationDeadlineMs);
           assert.equal(count(records, id, "before"), 1);
           console.log(JSON.stringify({
             rawNative: lane, method, checkpoint, immediateCompletion: 0,
-            observerOnlyWindowMs: Date.now() - observerStart, records,
+            remainingAtRestartMs, remainingAfterRestartMs, observationDeadlineMs,
+            observerOnlyWindowMs: Date.now() - restartedAtMs, records,
             inference: "this pinned local do/sleep/do program stalled; no universal or managed-runtime conclusion",
           }));
         } finally { await f.cleanup(); }

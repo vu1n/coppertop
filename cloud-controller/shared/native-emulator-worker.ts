@@ -13,7 +13,7 @@ export class RawNativeWorkflow extends WorkflowEntrypoint<{ OBSERVER: Fetcher },
       return { id, event: name };
     };
     await step.do("raw-before", () => record("before"));
-    await step.sleep("raw-sleep", "3 seconds");
+    await step.sleep("raw-sleep", "10 seconds");
     await step.do("raw-after", () => record("complete"));
     return { id };
   }
