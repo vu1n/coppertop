@@ -81,3 +81,27 @@ jobs:
         run: node node_modules/vitest/vitest.mjs run packages/platform/cloudflare/test/integration/Workflow.test.ts packages/platform/cloudflare/test/CloudflareWorkflowEngine.test.ts
       - name: Characterize controls and two known engine failures
         run: bash cloud-controller/lane-b/run.sh
+
+  managed-canary:
+    name: Managed canary local controls and packaging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+          cache-dependency-path: |
+            cloud-controller/lane-a/package-lock.json
+            cloud-controller/managed-canary/package-lock.json
+      - name: Install pinned persisted codecs and managed package
+        run: |
+          npm ci --prefix cloud-controller/lane-a --ignore-scripts
+          npm ci --prefix cloud-controller/managed-canary --ignore-scripts
+      - name: Typecheck, compiler hygiene and bounded local controls
+        working-directory: cloud-controller/managed-canary
+        run: npm run check
+      - name: Package private Workers and deletion migration without upload
+        working-directory: cloud-controller/managed-canary
+        run: npm run package -- ct-ci-native-canary ../../.local/managed-canary-ci

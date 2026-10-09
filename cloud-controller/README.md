@@ -26,7 +26,10 @@ npm test
 
 Each lane's evidence file records its commands, exact runtime and acceptance results. Run the native and upstream suites separately. Both strict acceptance commands expose known recovery gaps; characterization checks must never be read as acceptance passing.
 
-No provider accounts, credentials, datasets, model weights, GPU hardware or deployment are needed. Synthetic API handlers and fault injection routes are local test fixtures. They do not establish production authentication, authorization or an integration-ready Modal gateway. No deployment script is supplied.
+No provider accounts, credentials, datasets, model weights, GPU hardware or deployment are needed. Synthetic API handlers and fault injection routes are local test fixtures. They do not establish production authentication, authorization or an integration-ready Modal gateway. The initial local fixtures have no deployment script. The additive
+[managed canary package](managed-canary/README.md) supplies private entrypoints,
+bounded local controls and nonmutating deployment packaging. Its deployment and
+spending approval remain separate; no managed run has occurred.
 
 ## Real-provider boundary
 

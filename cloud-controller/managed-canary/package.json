@@ -1,0 +1,32 @@
+{
+  "name": "coppertop-managed-native-canary",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.19.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
+    "test": "node --test --test-concurrency=1 plan.test.mjs runtime.test.ts",
+    "plan": "node controller.mjs plan",
+    "package": "node controller.mjs package",
+    "check": "npm run typecheck && npm run lint && npm test"
+  },
+  "dependencies": {
+    "effect": "4.0.2",
+    "effect-cf": "0.53.0",
+    "@effect/sql-sqlite-do": "4.0.2",
+    "cloudflare": "5.2.0",
+    "undici": "7.29.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260926.1",
+    "@types/node": "24.10.0",
+    "esbuild": "0.25.12",
+    "miniflare": "5.20260926.1-alpha",
+    "typescript": "5.9.3",
+    "wrangler": "4.144.0"
+  }
+}

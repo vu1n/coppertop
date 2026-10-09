@@ -1,0 +1,61 @@
+
+> coppertop-managed-native-canary@0.0.0 check
+> npm run typecheck && npm run lint && npm test
+
+
+> coppertop-managed-native-canary@0.0.0 typecheck
+> tsc --noEmit
+
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+
+> coppertop-managed-native-canary@0.0.0 lint
+> tsc --noEmit --noUnusedLocals --noUnusedParameters
+
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+
+> coppertop-managed-native-canary@0.0.0 test
+> node --test --test-concurrency=1 plan.test.mjs runtime.test.ts
+
+✔ plan has two private Workers, eight instances, one namespace and no real providers (1.668966ms)
+✔ implementation permission never substitutes for deployment/spend/headroom approval (0.613014ms)
+✔ 403 and network failures do not imply missing resources or permission to overwrite (1.621635ms)
+✔ lost controller launch reply is reconciled once; cleanup removes only exact owned resources (1.893685ms)
+✔ ambiguous partial deployment is cleaned while preserving source scope (0.631011ms)
+✔ namespace cleanup denial preserves Worker and durable cleanup authority (0.343438ms)
+✔ cleanup with no attempted deployment performs no deletion (0.168794ms)
+✔ finite runner polling budget expires and still attempts cleanup (4.678473ms)
+✔ failed supported evidence never returns success even when cleanup succeeds (0.863142ms)
+✔ namespace pagination ambiguity blocks deployment before any mutation (0.387584ms)
+{"evidence":"local native execution, not managed recovery","applicationBytes":164011,"report":{"version":1,"suiteId":"ct-local-managed","buildDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","gates":{"control":true,"timeoutRetry":true,"durableSleep":true,"durableEvent":true,"eventTimeout":true,"cancellation":true,"oneShot":true,"accounting":true,"receipts":true,"containment":true,"nativeTerminal":true},"supportedGatesPass":true,"hostProcessLoss":"untested","realProviderReady":false,"cleanup":"synthetic-contained","deploymentCleanup":"controller-must-delete-temporary-resources"}}
+✔ six supported native probes plus controller and independent observer execute with one-shot accounting (12767.228026ms)
+✔ transactional duplicate admission, ambiguous dispatch and body claims preserve lifetime budget (594.514358ms)
+✔ independent deadline alarm contains synthetic calls without target workflow contact (11022.617212ms)
+{"source":[{"file":"contracts.ts","sha256":"5e411a342d0fd544b51a2f81cacbf80820c0684a9e88ee51b972cd2c993fcb39"},{"file":"provider.ts","sha256":"3b86a060f5aa44259d3ff6ff32c4276bdd0a9a0bc13820211ddf279449cbadc1"},{"file":"workflow.ts","sha256":"63613ee70b97f4f3937a951f596c205e9fe2bb3bb945f9989615c33d8724b12b"},{"file":"report.ts","sha256":"13bc693f87e91dd48bf9f421e71ca3c12db815fe782747fe1b2145fd21b5374a"},{"file":"runtime.test.ts","sha256":"2bee55e63cef403cc3a6282926ff7bb72fb3f8c5a15890ac376ea9be8f5feea9"},{"file":"package-lock.json","sha256":"069316d669d5d76a6fef59a3b60af120d958ba6624cdeea86e2de2f817897e94"}],"node":"v24.19.0","mode":"local controls; managed gates not run; host loss untested"}
+✔ record tested source and binding identity (2.876335ms)
+✔ receipt replay survives generation fencing and partial cleanup retires admission (343.395939ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25185.47036
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
