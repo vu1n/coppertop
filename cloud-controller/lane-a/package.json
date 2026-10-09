@@ -1,0 +1,30 @@
+{
+  "name": "coppertop-native-cloud-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.19.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-concurrency=1 runtime.test.ts",
+    "check": "npm run typecheck && npm test",
+    "test:acceptance": "node --test --test-concurrency=1 runtime.test.ts",
+    "test:safety": "node --test --test-concurrency=1 --test-skip-pattern=\"autonomous recovery|suspended control.*after workerd restart\" runtime.test.ts",
+    "test:characterize": "COPPERTOP_CHARACTERIZE_RUNTIME_GAPS=1 node --test --test-concurrency=1 runtime.test.ts",
+    "check:characterize": "npm run typecheck && npm run test:characterize"
+  },
+  "dependencies": {
+    "effect": "4.0.2",
+    "effect-cf": "0.53.0",
+    "@effect/sql-sqlite-do": "4.0.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260926.1",
+    "@types/node": "24.10.0",
+    "esbuild": "0.25.12",
+    "miniflare": "5.20260926.1-alpha",
+    "typescript": "5.9.3"
+  }
+}
