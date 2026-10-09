@@ -96,7 +96,9 @@ export function transition(current: Ledger, mutation: Mutation): Decision {
       if (!run.callIds.includes(command.callId)) {
         run.callIds.push(command.callId);
         // Late/duplicate starts remain owned even after a previous cleanup observation.
-        if (run.cleanup === "confirmed") { run.cleanup = "unconfirmed"; run.phase = "recovery_required"; ledger.quarantined = true; }
+        if (run.cleanup === "confirmed" || run.accounting === "settled") {
+          run.cleanup = "unconfirmed"; run.phase = "recovery_required"; ledger.quarantined = true;
+        }
         if (run.cancelRequested) enqueue(ledger, run, "cleanup", `late-${command.callId}`);
       }
       break;
@@ -132,6 +134,7 @@ export function transition(current: Ledger, mutation: Mutation): Decision {
       break;
     case "cleanup":
       if (!command.generationDisabled || !run.callIds.every(id => command.stoppedCallIds.includes(id))) {
+        if (run.cleanup === "confirmed" || run.accounting === "settled") ledger.quarantined = true;
         run.cleanup = "unconfirmed"; run.phase = "recovery_required";
       } else {
         run.cleanup = "confirmed";

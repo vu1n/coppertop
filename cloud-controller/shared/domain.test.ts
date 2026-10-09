@@ -211,3 +211,15 @@ test("deadline expiry requests cleanup, retains liability, and preserves prior c
   const cancelled = mutate(ledger,{type:"cancel",runId:"run-one",commandId:"cancel-one"}).ledger;
   assert.equal(mutate(cancelled,{type:"timeout",runId:"run-one"},1,now+60_000).run?.outcome,"cancelled");
 });
+
+test("contradictory cleanup after settlement cannot admit spending around a late call", () => {
+  let ledger = admitted();
+  ledger = mutate(ledger,{type:"cancel",runId:"run-one",commandId:"cancel-one"}).ledger;
+  ledger = mutate(ledger,{type:"cleanup",runId:"run-one",stoppedCallIds:[],generationDisabled:true}).ledger;
+  ledger = mutate(ledger,{type:"settle",runId:"run-one",cost:1}).ledger;
+  ledger = mutate(ledger,{type:"cleanup",runId:"run-one",stoppedCallIds:[],generationDisabled:false}).ledger;
+  ledger = mutate(ledger,{type:"register",runId:"run-one",callId:"new-late-call"}).ledger;
+  assert.equal(ledger.quarantined,true);
+  assert.equal(ledger.runs["run-one"]?.cleanup,"unconfirmed");
+  assert.equal(mutate(ledger,{type:"submit",spec:spec("second",999),digest}).failure,"Quarantined");
+});
