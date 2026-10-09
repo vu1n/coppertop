@@ -284,12 +284,19 @@ def rollout(args):
             from .official_recording import evaluate_recorded
             from .chords import LocalStore
             from .performance_eval import runtime_sources
+            runtime_identity={}
+            if os.environ.get('COPPERTOP_RUNPOD_RUNTIME'):
+                runtime_identity=read_json(Path(os.environ['COPPERTOP_RUNPOD_RUNTIME']),1024)
+                if (set(runtime_identity)!={'provider','image','runtime_export_sha256','cpu_admission_sha256'}
+                    or runtime_identity['provider']!='RunPod'):
+                    raise ValueError('RunPod runtime provenance differs')
             stats,chords_release=evaluate_recorded(entry,TracedGym(),client,settings,get_task_horizon,
                 convert_action,args.output,task=p['task'],task_index=p['task_index'],episode_index=episode,
                 seed=args.seed,run_id=args.record_run_id,store=LocalStore(args.output/'store'),
                 provenance={'source_pins':p['source_pins'],'source_blobs':p['source_blobs'],
                     'model':p['model'],'runtime_sha256':runtime_sources(recording=True),
-                    'cached_image':p['cached_image'],'image_validation':p['image_validation'],
+                    'cached_image':runtime_identity.get('image',p['cached_image']),
+                    'image_validation':runtime_identity or p['image_validation'],
                     'policy_seed':p['policy_seed'],'real_simulation':True,
                     'recipe':dict(p['recipe'],replan_steps=settings.replan_steps)})
             record['chords_release']=chords_release

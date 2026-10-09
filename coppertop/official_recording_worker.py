@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import signal
 from pathlib import Path
 import subprocess
 import time
@@ -121,7 +122,9 @@ def validate_recording(output, *, entry=None, full=False):
                 or any(type(episode.get(name)) not in (int,float) or not math.isfinite(episode[name]) or episode[name]<0
                     for name in ('wall_seconds','inference_seconds','model_load_seconds'))):
             raise ValueError('Full official outcome/timing fields differ')
-        result.update(success=episode['success'],initial_observation_sha256=episode['initial_observation_sha256'],
+        result.update(success=episode['success'],terminated=rows[-1]['terminated'],
+            truncated=rows[-1]['truncated'],horizon_reached=steps==600,
+            initial_observation_sha256=episode['initial_observation_sha256'],
             wall_seconds=episode['wall_seconds'],inference_seconds=episode['inference_seconds'],
             model_load_seconds=episode['model_load_seconds'],cadence=16,horizon=600,split='development',
             claim='full frozen official recording baseline; not a data utility improvement')
@@ -165,6 +168,10 @@ def execute(output, approved_sha256, *, run_id, popen=subprocess.Popen, perform=
 
 
 def main():
+    def terminate(signum,frame):
+        raise SystemExit('Owned worker terminated')
+    # The Pod controller's timeout must unwind execute's server cleanup.
+    signal.signal(signal.SIGTERM,terminate)
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute-local',action='store_true',required=True)
     parser.add_argument('--plan-sha256',required=True)

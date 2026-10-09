@@ -310,3 +310,21 @@ last entered phase durable. Multipart telemetry and explicit recovery remain int
 The old plan is single-use and no longer matches the revised implementation hash.
 The minimum next validation is a newly prepared and explicitly approved local CPU
 single-PUT upload/readback/receipt/cleanup test; it needs no GPU or model download.
+
+## RunPod integration and subsequent shared evidence
+
+The main task subsequently verified the 156,098,560-byte streamed single-PUT
+archive, full SHA256 readback, completion receipt and exact test cleanup
+(37.1 s upload, 202.0 s readback, 255.4 s total). The earlier checkpoints above
+remain historical evidence. The confirmation and unchanged shared-core hashes
+are bound in [archive-live-admission.json](../containers/archive-live-admission.json).
+This establishes neither full-size multipart completion nor RunPod runtime/S3
+performance; no paid validation was duplicated in the RunPod task.
+
+The [RunPod preparation controls](runpod-preparation.md) add bounded source export,
+local relay, container-disk restoration and owned-cache recovery. The recording
+adapter applies parent fix `572af3a` by resolving only its configured provider
+mount root before appending run/archive paths. The generic archive functions
+continue to reject symlink source/destination paths, descendant links and member
+traversal. Resolving an arbitrary archive path is not an allowed workaround.
+Actual provider mount/bootstrap admission and paid rollout remain separate gates.

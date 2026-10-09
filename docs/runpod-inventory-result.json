@@ -1,0 +1,302 @@
+{
+  "app_id": "ap-hsgWOQjcCJiSyfcrP28Q1D",
+  "approved_attempt": {
+    "plan": {
+      "app_name": "coppertop-runpod-inventory-dfe4fed91aec403f",
+      "approval_basis": "User approved $0.20 CPU-only inventory in parent thread 01a118bb-2901-70c2-ba85-455718f0902e",
+      "approved_cap_usd": "0.20",
+      "attempt": "inventory-dfe4fed91aec403f",
+      "bulk_transfers": false,
+      "compute_bound_usd": "0.1490538000",
+      "downloads": false,
+      "environment": "main",
+      "gpu": null,
+      "image": "im-uMab88d0cwA6MALkcTf5VW",
+      "kind": "approved_runpod_preparation_cpu_inventory",
+      "launcher_sha256": "00b9d20400432a39991bb79eb507ace6ce34551bd05532bfa09e0fad7a80859e",
+      "limits": {
+        "cleanup_seconds": 180,
+        "controller_seconds": 1200,
+        "cpu_cores": 2,
+        "execution_seconds": 900,
+        "memory_mib": 16384,
+        "result_bytes": 262144,
+        "retries": 0,
+        "startup_seconds": 300
+      },
+      "metadata_egress_bound_usd": "0.00000976562500",
+      "model_loading": false,
+      "new_image_builds": false,
+      "region": "us",
+      "secrets": [],
+      "source_pins": {
+        "robocasa": "456174f62b89b8fca99eaaf33949c29fec9cfc2a",
+        "robosuite": "5ce6643f3092639d08f7b0f90ed1c6a84f50552c",
+        "xiaomi": "0dd7aef8dc87296246aae812a1f59ccb708e5546"
+      },
+      "volumes": {}
+    },
+    "plan_sha256": "c990be03f58c73c9430c092868707e2d74944b1d0b17ba4831b0566fec0d9f51"
+  },
+  "asset_or_weight_transfer": false,
+  "billing": {
+    "app_id": "ap-hsgWOQjcCJiSyfcrP28Q1D",
+    "billing_final": false,
+    "checked_utc": "2026-10-08T11:54:51.486560+00:00",
+    "full_reservation_retained_usd": "0.20",
+    "reported_usd": "0.00738120",
+    "rows": [
+      {
+        "cost": "0.00738120",
+        "description": "coppertop-runpod-inventory-dfe4fed91aec403f",
+        "environment": "main",
+        "interval_start": "2026-10-08T11:00:00+00:00",
+        "object_id": "ap-hsgWOQjcCJiSyfcrP28Q1D"
+      }
+    ]
+  },
+  "cleanup": {
+    "active_containers": 0,
+    "active_sandboxes": 0,
+    "app_id": "ap-hsgWOQjcCJiSyfcrP28Q1D",
+    "app_snapshot": [
+      {
+        "app_id": "ap-hsgWOQjcCJiSyfcrP28Q1D",
+        "created_at": "2026-10-08 18:41:48+07:00",
+        "description": "coppertop-runpod-inventory-dfe4fed91aec403f",
+        "state": "stopped",
+        "stopped_at": "2026-10-08 18:43:40+07:00",
+        "tasks": "0"
+      }
+    ],
+    "app_stopped": true,
+    "checked_utc": "2026-10-08T11:54:51.486560+00:00"
+  },
+  "content_checksums_revalidated": false,
+  "controller_compute_provisional_upper_usd": "0.012242042030499160106500",
+  "function_call_id": "fc-01M4DN3PJ805PMD66A7NJ7D562",
+  "initial_input_bootstrap_description_was_incorrect": true,
+  "known_historical_model_and_asset_bytes": 34185733733,
+  "local_cpu_handoff_preservation_kept": true,
+  "local_followup": {
+    "async_spawn_removed": true,
+    "bounded_return": "JSON bytes <=262144",
+    "cleanup_race_retry_inside_original_180_seconds": true,
+    "fresh_exact_approval_hash_required": true,
+    "network_block_retained": true,
+    "public_modal_api": "Function.remote",
+    "tested_locally_only": true
+  },
+  "network_block_enabled": true,
+  "next_inventory_proposal": {
+    "approved": false,
+    "bulk_transfer": false,
+    "cap_usd": "0.20",
+    "cleanup_seconds": 180,
+    "cpu_cores": 2,
+    "execution_seconds": 900,
+    "export_or_build": false,
+    "gpu": false,
+    "image": "im-uMab88d0cwA6MALkcTf5VW",
+    "memory_gib": 16,
+    "new_approval_required": true,
+    "result_bytes": 262144,
+    "retries": 0,
+    "secrets": false,
+    "startup_seconds": 300,
+    "volumes": false
+  },
+  "no_new_attempt_after_failure": true,
+  "outcome": "inventory receipt unavailable; output handoff failed",
+  "package_library_and_size_findings": null,
+  "recovery": {
+    "app_id": "ap-hsgWOQjcCJiSyfcrP28Q1D",
+    "function_call_ids": [
+      "fc-01M4DN3PJ805PMD66A7NJ7D562"
+    ],
+    "log_command_exit_code": 0,
+    "new_tasks_launched": false,
+    "remote_error_types": [
+      "ClientConnectorDNSError"
+    ],
+    "remote_python_frames": [
+      {
+        "function": "_create_direct_connection",
+        "line": 1445,
+        "path": "/__modal/deps/aiohttp/connector.py"
+      },
+      {
+        "function": "_resolve_host",
+        "line": 1061,
+        "path": "/__modal/deps/aiohttp/connector.py"
+      },
+      {
+        "function": "_resolve_host_with_throttle",
+        "line": 1092,
+        "path": "/__modal/deps/aiohttp/connector.py"
+      },
+      {
+        "function": "resolve",
+        "line": 40,
+        "path": "/__modal/deps/aiohttp/resolver.py"
+      },
+      {
+        "function": "getaddrinfo",
+        "line": 868,
+        "path": "/opt/conda/lib/python3.11/asyncio/base_events.py"
+      },
+      {
+        "function": "run",
+        "line": 58,
+        "path": "/opt/conda/lib/python3.11/concurrent/futures/thread.py"
+      },
+      {
+        "function": "getaddrinfo",
+        "line": 974,
+        "path": "/opt/conda/lib/python3.11/socket.py"
+      },
+      {
+        "function": "handle_input_exception",
+        "line": 987,
+        "path": "/pkg/modal/_runtime/container_io_manager.py"
+      },
+      {
+        "function": "run_input_sync",
+        "line": 190,
+        "path": "/pkg/modal/_container_entrypoint.py"
+      },
+      {
+        "function": "push_outputs",
+        "line": 1036,
+        "path": "/pkg/modal/_runtime/container_io_manager.py"
+      },
+      {
+        "function": "output_items",
+        "line": 471,
+        "path": "/pkg/modal/_runtime/container_io_manager.py"
+      },
+      {
+        "function": "package_output",
+        "line": 453,
+        "path": "/pkg/modal/_runtime/container_io_manager.py"
+      },
+      {
+        "function": "format_blob_data",
+        "line": 376,
+        "path": "/pkg/modal/_utils/blob_utils.py"
+      },
+      {
+        "function": "blob_upload",
+        "line": 369,
+        "path": "/pkg/modal/_utils/blob_utils.py"
+      },
+      {
+        "function": "blob_upload_with_results",
+        "line": 359,
+        "path": "/pkg/modal/_utils/blob_utils.py"
+      },
+      {
+        "function": "_blob_upload",
+        "line": 336,
+        "path": "/pkg/modal/_utils/blob_utils.py"
+      },
+      {
+        "function": "_blob_upload_with_fallback",
+        "line": 263,
+        "path": "/pkg/modal/_utils/blob_utils.py"
+      },
+      {
+        "function": "upload_to_s3_url",
+        "line": 329,
+        "path": "/pkg/modal/_utils/blob_utils.py"
+      },
+      {
+        "function": "f_wrapped",
+        "line": 420,
+        "path": "/pkg/modal/_utils/async_utils.py"
+      },
+      {
+        "function": "wait_for",
+        "line": 452,
+        "path": "/opt/conda/lib/python3.11/asyncio/tasks.py"
+      },
+      {
+        "function": "_upload_to_s3_url",
+        "line": 125,
+        "path": "/pkg/modal/_utils/blob_utils.py"
+      },
+      {
+        "function": "__aenter__",
+        "line": 1473,
+        "path": "/__modal/deps/aiohttp/client.py"
+      },
+      {
+        "function": "_request",
+        "line": 761,
+        "path": "/__modal/deps/aiohttp/client.py"
+      },
+      {
+        "function": "_connect_and_send_request",
+        "line": 716,
+        "path": "/__modal/deps/aiohttp/client.py"
+      },
+      {
+        "function": "connect",
+        "line": 598,
+        "path": "/__modal/deps/aiohttp/connector.py"
+      },
+      {
+        "function": "_create_connection",
+        "line": 1122,
+        "path": "/__modal/deps/aiohttp/connector.py"
+      },
+      {
+        "function": "_create_direct_connection",
+        "line": 1451,
+        "path": "/__modal/deps/aiohttp/connector.py"
+      }
+    ],
+    "result_recovered": false
+  },
+  "remaining_gates": [
+    "fresh approval and real successful corrected CPU inventory",
+    "exact environment/system closure and measured export/image size",
+    "separate export/build/registry/transfer approval",
+    "parent shared publisher repair and full publication verification",
+    "separate RunPod storage/object/multipart/mount and CUDA/EGL/full-rollout live validation"
+  ],
+  "remote_error_type": "ClientConnectorDNSError",
+  "remote_stage": "push_outputs -> package_output -> blob_upload",
+  "runpod_readonly_access": {
+    "bucket_semantics": "network-volume ID",
+    "checked_utc": "2026-10-08T11:40:29.401723+00:00",
+    "control": {
+      "network_volume_count": 0,
+      "status": "passed",
+      "volumes": []
+    },
+    "credential_values_persisted": false,
+    "endpoint_selection": "documented US-WA-1 capability probe; no configured volume assumed",
+    "keys_created": false,
+    "live_object_operations_verified": false,
+    "pod_created": false,
+    "s3": {
+      "bucket_count": 0,
+      "bucket_ids": [],
+      "http_status": 200,
+      "operation": "ListBuckets",
+      "status": "passed"
+    },
+    "s3_endpoint": "https://s3api-us-wa-1.runpod.io",
+    "s3_signing_region": "US-WA-1",
+    "status": "passed",
+    "upload_multipart_and_mount_semantics_verified": false,
+    "volume_lifecycle": "persists Pod termination; explicit network-volume deletion required",
+    "writes_performed": false
+  },
+  "runpod_resources_created": false,
+  "schema_version": 1,
+  "shared_publisher_modified_here": false,
+  "worker_inventory_status": "unverified; receipt not recovered",
+  "worker_reached_output_packaging": true
+}

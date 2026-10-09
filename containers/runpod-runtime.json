@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "kind": "offline_runtime_export_contract",
+  "validated_seed": "im-uMab88d0cwA6MALkcTf5VW",
+  "base": "pytorch/pytorch@sha256:417bd75df6365104c283ea4c1651fb3530d9eb5a4c2fafa51943cff2a94e6385",
+  "candidate_only": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+  "platform": "linux/amd64",
+  "python": "3.11",
+  "native": {
+    "prefix": "/opt/conda",
+    "torch": "2.8.0",
+    "cuda": "12.8",
+    "flash_attention": "2.8.3",
+    "cxx11_abi": true
+  },
+  "simulator": {
+    "prefix": "/work/sim",
+    "pins": "requirements-simulator.lock",
+    "pin_count": 129,
+    "torch": "2.7.1+cpu",
+    "mujoco": "3.3.1"
+  },
+  "source_pins": {
+    "xiaomi": "0dd7aef8dc87296246aae812a1f59ccb708e5546",
+    "robocasa": "456174f62b89b8fca99eaaf33949c29fec9cfc2a",
+    "robosuite": "5ce6643f3092639d08f7b0f90ed1c6a84f50552c"
+  },
+  "required_trees": [
+    "opt/conda",
+    "usr/local",
+    "work/sim",
+    "work/xiaomi",
+    "work/robocasa",
+    "work/robosuite",
+    "work/model",
+    "work/build-evidence"
+  ],
+  "required_files": [
+    "opt/conda/bin/python",
+    "work/sim/bin/python",
+    "work/build-evidence/assets.json",
+    "work/xiaomi/deploy/client.py",
+    "work/xiaomi/deploy/server.py",
+    "work/xiaomi/eval_robocasa365/entry.py"
+  ],
+  "system_packages": [
+    "libegl1",
+    "libopengl0",
+    "libgl1",
+    "libgles2",
+    "libglvnd0",
+    "libgl1-mesa-dri",
+    "libglib2.0-0",
+    "ffmpeg"
+  ],
+  "model_manifest": "containers/gpu-smoke-pins.json",
+  "model_bytes": 10122585561,
+  "extracted_asset_bytes": 24063148172,
+  "extracted_asset_files": 123236,
+  "archive_required": false,
+  "rootfs_bytes_ceiling": 75161927680,
+  "export_manifest_bytes_ceiling": 67108864,
+  "status": "seed CPU inventory verified; portable cache not exported/restored; full strong export/system-deb closure and pinned libopengl0 addition required",
+  "seed_inventory": {
+    "path": "containers/runpod-seed-inventory.json",
+    "sha256": "0f56b5acf693a99a219a57ed65df729ea4b104acbe18ec7fd9d8b35a03c4ab5f",
+    "bytes": 49340,
+    "status": "CPU metadata verified; not portable-image admission",
+    "python": "3.11.13",
+    "glibc": "2.35",
+    "distinct_tree_logical_bytes": 47492000203,
+    "native_distribution_count": 132,
+    "simulator_distribution_count": 132,
+    "simulator_lock_matches": 129,
+    "system_package_rows": 352,
+    "required_library_missing": "libOpenGL.so.0",
+    "system_deb_closure_verified": false,
+    "cuda_executed": false,
+    "content_checksums_revalidated": false
+  }
+}

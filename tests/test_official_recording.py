@@ -257,9 +257,15 @@ class RecordingTests(unittest.TestCase):
         with patch.dict('sys.modules',{'client':SimpleNamespace(Client=object),'imageio':imageio,'imageio.v2':imageio.v2}):
             spec=importlib.util.spec_from_file_location('fixture_official',path);entry=importlib.util.module_from_spec(spec);spec.loader.exec_module(entry)
         # Use the actual pinned state/history/evaluator code, still fake physics/model.
-        for horizon in (4,16,600):
-            with self.subTest(horizon=horizon),tempfile.TemporaryDirectory() as root:
-                stop=min(horizon,33)
+        native_observation=observation
+        def bounded_observation(index):
+            value=native_observation(index%80)
+            value.update({name:np.arange(width,dtype=np.float64)+index*100+i*10
+                          for i,(name,width) in enumerate(STATE_FIELDS)})
+            return value
+        for horizon,stop in ((4,4),(16,16),(600,33),(600,601)):
+            with self.subTest(horizon=horizon,stop=stop),tempfile.TemporaryDirectory() as root,patch(__name__+'.observation',bounded_observation):
+                controls=min(horizon,stop)
                 env=Env(stop);client=Client();store=LocalStore(Path(root)/'store')
                 stats,key=evaluate_recorded(entry,SimpleNamespace(make=lambda *a,**kw:env),client,settings(horizon=horizon),lambda task:600,
                     tuple,root,task='CoffeeSetupMug',task_index=3,episode_index=0,seed=1150,run_id='official-code-fixture',
@@ -267,19 +273,21 @@ class RecordingTests(unittest.TestCase):
                 record=json.loads(store.get(json.loads(store.get(key))['episodes'][0]))
                 video=Path(root)/'CoffeeSetupMug/episode_000_seed_1150_failure.mp4'
                 self.assertEqual(store.get(record['official_video']['sha256']),video.read_bytes())
-                self.assertFalse(record['official_video']['transcoded']);self.assertEqual(len(client.calls),(stop+15)//16)
-                self.assertEqual(stats['episodes'][0]['steps'],stop);self.assertTrue(env.closed)
+                self.assertFalse(record['official_video']['transcoded']);self.assertEqual(len(client.calls),(controls+15)//16)
+                self.assertEqual(stats['episodes'][0]['steps'],controls);self.assertTrue(env.closed)
                 if horizon==600:
                     from coppertop.official_recording_worker import validate_recording
-                    episode={'status':'completed','model_queries':3,'seed':1150,'steps':33,'chords_release':key,
+                    episode={'status':'completed','model_queries':(controls+15)//16,'seed':1150,'steps':controls,'chords_release':key,
                         'success':False,'initial_observation_sha256':'a'*64,'wall_seconds':1.2,
                         'inference_seconds':.2,'model_load_seconds':.1}
                     (Path(root)/'episode.json').write_bytes(canonical(episode))
                     checked=validate_recording(Path(root),entry=entry,full=True)
-                    self.assertEqual(checked['source_frames'],34);self.assertEqual(checked['query_calls'],3)
+                    self.assertEqual(checked['source_frames'],controls+1);self.assertEqual(checked['query_calls'],(controls+15)//16)
                     self.assertFalse(checked['success'])
+                    self.assertEqual(checked['terminated'],controls==stop);self.assertFalse(checked['truncated'])
+                    self.assertEqual(checked['horizon_reached'],controls==600)
                     bad_queries=json.loads(store.get(record['queries']))
-                    bad_queries['queries'][2]['discarded_offsets']=[]
+                    bad_queries['queries'][-1]['discarded_offsets']=[]
                     bad_record=dict(record,queries=store.put(canonical(bad_queries)))
                     manifest=json.loads(store.get(key));manifest['episodes']=[store.put(canonical(bad_record))]
                     episode['chords_release']=store.put(canonical(manifest))

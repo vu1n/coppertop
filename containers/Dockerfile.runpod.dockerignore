@@ -1,0 +1,14 @@
+*
+!coppertop/
+!coppertop/*.py
+!tools/
+!tools/run_cpu_image_repair.py
+!containers/
+!containers/*.json
+!containers/Dockerfile.runpod
+!requirements-gpu-smoke.lock
+!requirements-simulator.lock
+!requirements-r2.txt
+!runtime/
+!runtime/**
+!runtime-manifest.json

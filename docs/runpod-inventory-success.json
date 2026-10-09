@@ -1,0 +1,296 @@
+{
+  "app_id": "ap-MZjFFGDVPWiPbhDko11GMh",
+  "approved_attempt": {
+    "plan": {
+      "app_name": "coppertop-runpod-inventory-1e08aed174dc4f7d",
+      "approval_basis": "Fresh exact approval required; previous single $0.20 attempt is consumed; no automatic retry",
+      "approved_cap_usd": "0.20",
+      "attempt": "inventory-1e08aed174dc4f7d",
+      "bulk_transfers": false,
+      "compute_bound_usd": "0.1490538000",
+      "downloads": false,
+      "environment": "main",
+      "gpu": null,
+      "image": "im-uMab88d0cwA6MALkcTf5VW",
+      "kind": "runpod_preparation_cpu_inventory",
+      "launcher_sha256": "f7a40b77c3f9b539fecce858feb12ebf7aa77d2c4f6db0964111f63627750da1",
+      "limits": {
+        "cleanup_seconds": 180,
+        "controller_seconds": 1200,
+        "cpu_cores": 2,
+        "execution_seconds": 900,
+        "memory_mib": 16384,
+        "result_bytes": 262144,
+        "retries": 0,
+        "startup_seconds": 300
+      },
+      "metadata_egress_bound_usd": "0.00000976562500",
+      "model_loading": false,
+      "new_image_builds": false,
+      "region": "us",
+      "secrets": [],
+      "source_pins": {
+        "robocasa": "456174f62b89b8fca99eaaf33949c29fec9cfc2a",
+        "robosuite": "5ce6643f3092639d08f7b0f90ed1c6a84f50552c",
+        "xiaomi": "0dd7aef8dc87296246aae812a1f59ccb708e5546"
+      },
+      "volumes": {}
+    },
+    "plan_sha256": "483a1cc8604aa42523188b3cefc5065536f3be40b12322ee0457ba6292e940ae"
+  },
+  "authorization_basis": "User approved one revised CPU-only inventory, up to USD0.20, in source thread 01a118bb-2901-70c2-ba85-455718f0902e; this attempt is consumed",
+  "billing": {
+    "app_id": "ap-MZjFFGDVPWiPbhDko11GMh",
+    "billing_final": false,
+    "checked_utc": "2026-10-08T15:15:34.127470+00:00",
+    "full_reservation_retained_usd": "0.20",
+    "reported_usd": "0.00600720",
+    "rows": [
+      {
+        "cost": "0.00600720",
+        "description": "coppertop-runpod-inventory-1e08aed174dc4f7d",
+        "environment": "main",
+        "interval_start": "2026-10-08T15:00:00+00:00",
+        "object_id": "ap-MZjFFGDVPWiPbhDko11GMh"
+      }
+    ]
+  },
+  "cleanup": {
+    "active_containers": 0,
+    "active_sandboxes": 0,
+    "app_id": "ap-MZjFFGDVPWiPbhDko11GMh",
+    "app_stopped": true,
+    "checked_utc": "2026-10-08T15:15:34.127470+00:00"
+  },
+  "limits": {
+    "bulk_transfers": false,
+    "complete_symlink_closure_checked": false,
+    "complete_system_deb_closure_acquired": false,
+    "content_checksums_revalidated": false,
+    "cuda_executed": false,
+    "model_instantiated": false,
+    "new_credentials": false,
+    "portable_image_built": false,
+    "r2_uploads": false,
+    "render_reset_executed": false,
+    "runpod_resources_created": false
+  },
+  "observations": {
+    "assets_receipt": {
+      "archive_presence_checked": false,
+      "archives": [
+        {
+          "expected_bytes": 543180421,
+          "extracted_bytes": 545204854,
+          "files": 225,
+          "received_bytes": 543180421,
+          "status": "completed"
+        },
+        {
+          "expected_bytes": 1184675536,
+          "extracted_bytes": 1196546822,
+          "files": 900,
+          "received_bytes": 1184675536,
+          "status": "completed"
+        },
+        {
+          "expected_bytes": 529745465,
+          "extracted_bytes": 1443420911,
+          "files": 6048,
+          "received_bytes": 529745465,
+          "status": "completed"
+        },
+        {
+          "expected_bytes": 2163884721,
+          "extracted_bytes": 6444097576,
+          "files": 39936,
+          "received_bytes": 2163884721,
+          "status": "completed"
+        },
+        {
+          "expected_bytes": 5773223039,
+          "extracted_bytes": 12980520150,
+          "files": 58733,
+          "received_bytes": 5773223039,
+          "status": "completed"
+        },
+        {
+          "expected_bytes": 791939656,
+          "extracted_bytes": 1453357859,
+          "files": 17394,
+          "received_bytes": 791939656,
+          "status": "completed"
+        }
+      ],
+      "content_checksums_revalidated": false,
+      "receipt_sha256": "a60d0329699c320c25b8fcd70408adbb34771beb564f43c14a8550c453646633",
+      "status": "completed"
+    },
+    "distinct_resolved_trees": {
+      "/opt/conda": {
+        "allocated_bytes_unique_inode": 9581715968,
+        "directories": 8681,
+        "logical_file_bytes": 9560449338,
+        "regular_files": 80150,
+        "symlinks": 2668
+      },
+      "/usr/local": {
+        "allocated_bytes_unique_inode": 4096,
+        "directories": 12,
+        "logical_file_bytes": 3405,
+        "regular_files": 2,
+        "symlinks": 1
+      },
+      "/work/build-evidence": {
+        "allocated_bytes_unique_inode": 22562304,
+        "directories": 1,
+        "logical_file_bytes": 22557360,
+        "regular_files": 19,
+        "symlinks": 0
+      },
+      "/work/model": {
+        "allocated_bytes_unique_inode": 10122602496,
+        "directories": 4,
+        "logical_file_bytes": 10122587772,
+        "regular_files": 64,
+        "symlinks": 0
+      },
+      "/work/robocasa": {
+        "allocated_bytes_unique_inode": 24177315328,
+        "directories": 12251,
+        "logical_file_bytes": 24144979496,
+        "regular_files": 124129,
+        "symlinks": 0
+      },
+      "/work/robosuite": {
+        "allocated_bytes_unique_inode": 911037440,
+        "directories": 209,
+        "logical_file_bytes": 910679856,
+        "regular_files": 1371,
+        "symlinks": 0
+      },
+      "/work/sim": {
+        "allocated_bytes_unique_inode": 2742534144,
+        "directories": 5637,
+        "logical_file_bytes": 2727489935,
+        "regular_files": 58081,
+        "symlinks": 4
+      },
+      "/work/xiaomi": {
+        "allocated_bytes_unique_inode": 3295744,
+        "directories": 41,
+        "logical_file_bytes": 3253041,
+        "regular_files": 135,
+        "symlinks": 0
+      }
+    },
+    "distinct_tree_gib": 44.23037190269679,
+    "distinct_tree_logical_bytes": 47492000203,
+    "full_rootfs_size_measured": false,
+    "glibc": "2.35",
+    "image": "im-uMab88d0cwA6MALkcTf5VW",
+    "machine": "x86_64",
+    "native_distribution_count": 132,
+    "native_flash_attention": "2.8.3",
+    "native_torch": {
+      "cuda_build": "12.8",
+      "cxx11_abi": true,
+      "version": "2.8.0+cu128"
+    },
+    "oci_layers_measured": false,
+    "pip_check_exit_codes": {
+      "native": 0,
+      "simulator": 0
+    },
+    "python": "3.11.13",
+    "required_library_gap": {
+      "admission_requirement_retained": true,
+      "library": "libOpenGL.so.0",
+      "native": "unavailable",
+      "package": "libopengl0",
+      "pinned_offline_addition_verified": false,
+      "simulator": "unavailable"
+    },
+    "simulator_base_prefix": "/opt/conda",
+    "simulator_distribution_count": 132,
+    "simulator_extra_distributions": {
+      "pip": "24.0",
+      "robocasa": "1.0.1",
+      "robosuite": "1.5.2"
+    },
+    "simulator_lock_differences": {},
+    "simulator_locked_distribution_count": 129,
+    "simulator_mujoco": "3.3.1",
+    "simulator_resolved_executable": "/opt/conda/bin/python3.11",
+    "simulator_torch": {
+      "cuda_build": null,
+      "cxx11_abi": true,
+      "version": "2.7.1+cpu"
+    },
+    "sources": {
+      "robocasa": {
+        "expected": "456174f62b89b8fca99eaaf33949c29fec9cfc2a",
+        "matches": true,
+        "revision": "456174f62b89b8fca99eaaf33949c29fec9cfc2a",
+        "tracked_clean": true
+      },
+      "robosuite": {
+        "expected": "5ce6643f3092639d08f7b0f90ed1c6a84f50552c",
+        "matches": true,
+        "revision": "5ce6643f3092639d08f7b0f90ed1c6a84f50552c",
+        "tracked_clean": true
+      },
+      "xiaomi": {
+        "expected": "0dd7aef8dc87296246aae812a1f59ccb708e5546",
+        "matches": true,
+        "revision": "0dd7aef8dc87296246aae812a1f59ccb708e5546",
+        "tracked_clean": true
+      }
+    },
+    "system_package_count": 352
+  },
+  "outcome": "bounded synchronous CPU inventory passed; independent stopped-App audit passed",
+  "receipt": {
+    "bytes": 49340,
+    "path": "containers/runpod-seed-inventory.json",
+    "sha256": "0f56b5acf693a99a219a57ed65df729ea4b104acbe18ec7fd9d8b35a03c4ab5f",
+    "worker_seconds": 73.98787738799999
+  },
+  "remaining_gates": [
+    "Price and separately approve exact export, offline system-deb closure including libopengl0 addition, Linux CPU build, registry retention and transfer",
+    "Strong exported-file/checksum/link manifest and actual rootfs/OCI layer-size measurement; fail at 70GiB export/rootfs ceilings",
+    "Passing actual portable-image CPU admission; seed inventory is not that receipt",
+    "Parent-owned real shared archive completion/readback/telemetry repair",
+    "Fresh RunPod capacity/rates, exact retention and financial authorization, cleanup reachability",
+    "Separately approved RunPod CUDA/EGL/model/full-rollout, archive handoff/readback and owned volume/incomplete-upload cleanup"
+  ],
+  "schema_version": 1,
+  "state": {
+    "app_id": "ap-MZjFFGDVPWiPbhDko11GMh",
+    "app_snapshot": [
+      {
+        "app_id": "ap-MZjFFGDVPWiPbhDko11GMh",
+        "created_at": "2026-10-08 22:07:34+07:00",
+        "description": "coppertop-runpod-inventory-1e08aed174dc4f7d",
+        "state": "stopped",
+        "stopped_at": "2026-10-08 22:09:10+07:00",
+        "tasks": "0"
+      }
+    ],
+    "billing_final": false,
+    "cleanup": {
+      "active_containers": 0,
+      "active_sandboxes": 0,
+      "app_stopped": true
+    },
+    "cleanup_seconds": 10.745473166927695,
+    "compute_provisional_upper_usd": "0.011516096010537545564200",
+    "elapsed_seconds": 106.62064633402042,
+    "holds_released": false,
+    "inventory_bytes": 49340,
+    "plan_sha256": "483a1cc8604aa42523188b3cefc5065536f3be40b12322ee0457ba6292e940ae",
+    "reported_metered_usd": "0.00600720",
+    "reservation_usd": "0.20",
+    "status": "passed"
+  }
+}
