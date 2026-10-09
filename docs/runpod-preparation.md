@@ -78,7 +78,29 @@ or creates credentials:
 ## Storage, throughput and failure rules
 
 The archive is one ≤50 GiB stream split into at most thirteen ≤4 GiB files.
-Source scratch must have ≥52 GiB free, and the Mac requires ≥64 GiB free.
+The live source adapter uses a single ≤64 MiB acknowledged spool file and
+assembles those shards on the Mac. The pinned Modal1.6.1 Sandbox cannot request
+`ephemeral_disk`; it never writes the full archive on source disk. Before package
+transfer, actual source free space must cover two ≤2 GiB package copies, two
+≤16 MiB code copies, the ≤64 MiB manifest, ≤64 MiB spool, an 8 MiB probe and
+2 GiB margin: **6,618,611,712 bytes**. Uploaded package/code tar files and the
+probe are deleted before export. The spool export separately admits 2 GiB plus
+the manifest and spool against actual remaining free space. No source disk
+capacity is assumed or extra source storage resource purchased. The local-only
+`--export-root` utility still requires ≥52 GiB free; the live adapter uses
+`--spool-root`. The Mac requires ≥64 GiB free.
+
+Each spool part is copied once through `Sandbox.filesystem.copy_to_local`,
+verified by size/SHA256 and streamed into the normal local shards. Only then
+does an exact index/hash acknowledgement delete that part and release the
+producer. At most 800 parts and 2,048 metadata/ack commands are allowed, with
+the original 50 GiB byte and 3,600 s export bounds. Partial copies, lost
+acknowledgements, checksum failures and deadline failures stop without replay
+or a complete bundle marker. Completion requires source process exit, manifest
+identity, aggregate tar size/SHA256 and part count agreement. A recent 8 MiB
+probe and each full-size part transfer must fit conservative remaining-time
+admission. This adapter still needs approved live SDK throughput/memory/disk
+validation on the real seed.
 The exported strong manifest covers all files, modes and links, all full source
 checkouts, frozen model/assets, package metadata and admitted code. No deleted
 asset ZIP or new weight download is used. Failed exports retain partial files

@@ -16,13 +16,13 @@ import time
 from .chords import canonical, digest
 from .reload_launch import hard_deadline, read_json, stop_and_audit_owned_app
 from .runpod_bootstrap import verify_packages
-from .runpod_bundle import BOUNDS, GIB, validate_descriptor
+from .runpod_bundle import BOUNDS, GIB, SplitWriter, validate_descriptor, validate_manifest
 from .runpod_cloud import identifier, save
 from .runpod_evidence import missing, runpod_s3_access_key
-from .runpod_prepare import verify_control
-from .runpod_relay import Relay, copy_shards, feasibility
+from .runpod_prepare import LIMITS, verify_control
+from .runpod_relay import Relay, check_memory, feasibility
 from .runpod_staging import RunpodVolumeConfig
-from .streams import checked, ObjectRef, CHUNK_BYTES, file_ref
+from .streams import checked, ObjectRef, CHUNK_BYTES, file_ref, file_chunks
 
 
 def pack_debs(directory,target):
@@ -94,11 +94,16 @@ class ModalSource:
                     'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1'})
             save(output/'source-state.json',dict(ownership,app_id=self.app.app_id,sandbox_id=self.sandbox.object_id,pending=None))
             remote='/tmp/coppertop-export';fs=self.sandbox.filesystem
+            # The pinned Sandbox API cannot request ephemeral_disk. Admit the
+            # bounded package/spool peak instead of writing a 50GiB source tar.
+            self.command('/opt/conda/bin/python','-c',
+                "import shutil; assert min(shutil.disk_usage(p).free for p in ('/','/tmp')) >= %d, 'Source scratch admission failed'"%
+                p['limits']['source_free_bytes'],seconds=30)
             self.command('/opt/conda/bin/python','-c',"from pathlib import Path; import os; Path('/tmp/coppertop-probe').write_bytes(os.urandom(8388608))",seconds=30)
             before=time.monotonic();fs.copy_to_local('/tmp/coppertop-probe',output/'probe.bin');elapsed=time.monotonic()-before
             if (output/'probe.bin').stat().st_size!=8*1024**2:raise ValueError('Source transfer probe size differs')
             sample={'bytes':8*1024**2,'seconds':elapsed,'checked_utc':datetime.now(timezone.utc).isoformat()}
-            feasibility([sample],bytes_each=50*GIB,seconds_left=7020-(time.monotonic()-began)-3600)
+            feasibility([sample],bytes_each=50*GIB,seconds_left=p['limits']['export_seconds'])
             (output/'probe.bin').unlink()
             fs.copy_from_local(control,'/tmp/coppertop-control.tar')
             self.command('/opt/conda/bin/python','-c',untar_code('/app','/tmp/coppertop-control.tar'),seconds=60)
@@ -106,23 +111,79 @@ class ModalSource:
             self.command('/opt/conda/bin/python','-c',untar_code('/debs','/tmp/coppertop-debs.tar'),seconds=120)
             debtar.unlink()
             self.command('/opt/conda/bin/python','-m','coppertop.runpod_bootstrap','--verify-packages','/debs',seconds=300)
-            self.command('/opt/conda/bin/python','-m','coppertop.runpod_bundle','--export-root','/',
-                '--output',remote,'--seconds','3600',seconds=3600)
-            for name,limit in (('bundle.json',65536),('manifest.json',BOUNDS['manifest'])):
-                fs.copy_to_local(remote+'/'+name,output/name)
-                if (output/name).stat().st_size>limit:raise ValueError('Source metadata bound')
-            descriptor=validate_descriptor(read_json(output/'bundle.json',65536))
-            # Re-measure right before copying, after the potentially long export.
-            before=time.monotonic();fs.copy_to_local('/tmp/coppertop-probe',output/'probe.bin');elapsed=time.monotonic()-before
-            sample={'bytes':8*1024**2,'seconds':elapsed,'checked_utc':datetime.now(timezone.utc).isoformat()}
-            (output/'probe.bin').unlink()
-            copy_shards(fs,remote,output,descriptor,journal=output/'copy-state.json',sample=sample,
-                seconds_left=7020-(time.monotonic()-began))
+            self.command('/opt/conda/bin/python','-c',
+                "from pathlib import Path; [Path(p).unlink() for p in ('/tmp/coppertop-control.tar','/tmp/coppertop-debs.tar','/tmp/coppertop-probe')]",
+                seconds=30)
+            self.collect_spool(remote,output,seconds=min(p['limits']['export_seconds'],
+                int(7020-(time.monotonic()-began))))
         return output
-    def command(self,*args,seconds):
+    def collect_spool(self,remote,output,*,seconds):
+        """Copy exactly once per acknowledged part, assembling normal shards locally."""
+        if not 0<seconds<=LIMITS['export_seconds']:raise ValueError('Source streaming deadline')
+        output=Path(output);deadline=time.monotonic()+seconds;fs=self.sandbox.filesystem
+        process=self.sandbox.exec('/opt/conda/bin/python','-m','coppertop.runpod_bundle','--spool-root','/',
+            '--output',remote,'--seconds',str(seconds),timeout=seconds)
+        writer=SplitWriter(output,shard_bytes=BOUNDS['shard'],tar_bytes=BOUNDS['tar'],deadline=deadline)
+        state={'status':'incomplete','copied_bytes':0,'requested_bytes':0,'parts':0,'commands':0,'pending':None}
+        journal=output/'copy-state.json';save(journal,state);value=None
+        try:
+            with hard_deadline(seconds):
+                while True:
+                    if time.monotonic()>=deadline:raise TimeoutError('Source streaming deadline')
+                    if state['commands']>=LIMITS['source_metadata_commands']:raise ValueError('Source metadata command ceiling')
+                    state['commands']+=1;save(journal,state)
+                    status=json.loads(self.command('/opt/conda/bin/python','-m','coppertop.runpod_bundle',
+                        '--spool-status',remote,seconds=min(30,max(1,int(deadline-time.monotonic()))),output=True))
+                    if status.get('kind')=='waiting':
+                        if process.poll() is not None:raise ValueError('Source export ended without completion')
+                        continue
+                    if value is None:
+                        fs.copy_to_local(remote+'/manifest.json',output/'manifest.json')
+                        value=validate_manifest(read_json(output/'manifest.json',BOUNDS['manifest']))
+                    if status.get('kind')=='complete':
+                        expected={'kind':'complete','parts':state['parts'],'manifest_sha256':digest(canonical(value)),
+                            'tar_sha256':writer.whole.hexdigest(),'tar_bytes':writer.total}
+                        if status!=expected or process.wait()!=0:raise ValueError('Source streaming completion differs')
+                        writer.close()
+                        descriptor=validate_descriptor(dict(schema_version=1,manifest_sha256=expected['manifest_sha256'],
+                            tar_sha256=expected['tar_sha256'],tar_bytes=expected['tar_bytes'],shards=writer.refs))
+                        save(output/'bundle.json',descriptor)
+                        state.update(status='complete',pending=None);save(journal,state)
+                        return descriptor
+                    if (set(status)!={'kind','index','sha256','size'} or status['kind']!='part'
+                        or type(status['index']) is not int or status['index']!=state['parts']
+                        or state['parts']>=LIMITS['source_spool_parts']
+                        or not 0<status['size']<=BOUNDS['spool']):raise ValueError('Source spool identity/count/size differs')
+                    ref=ObjectRef(status['sha256'],status['size'])
+                    state['requested_bytes']+=ref.size;state['pending']=status;save(journal,state)
+                    if state['requested_bytes']>BOUNDS['tar']:raise ValueError('Source copy byte ceiling')
+                    incoming=output/'incoming.tar';before=time.monotonic();check_memory()
+                    fs.copy_to_local(remote+'/part.tar',incoming);check_memory()
+                    if incoming.is_symlink() or file_ref(incoming)!=ref:raise ValueError('Source spool copy checksum differs')
+                    for chunk in checked(file_chunks(incoming),ref):writer.write(chunk)
+                    incoming.unlink();state['copied_bytes']=writer.total
+                    # Refresh the admission using each actual transfer, after the
+                    # initial inventory; never replay a failed copy or ack.
+                    if ref.size>=8*1024**2 and writer.total<BOUNDS['tar']:
+                        estimate=60+2*(BOUNDS['tar']-writer.total)*(time.monotonic()-before)/ref.size
+                        if estimate>deadline-time.monotonic():
+                            raise ValueError('Measured source spool rate exceeds remaining deadline')
+                    if state['commands']>=LIMITS['source_metadata_commands']:raise ValueError('Source metadata command ceiling')
+                    state['commands']+=1;save(journal,state)
+                    self.command('/opt/conda/bin/python','-m','coppertop.runpod_bundle','--ack-spool',remote,
+                        '--index',str(status['index']),'--sha256',ref.sha256,
+                        seconds=min(30,max(1,int(deadline-time.monotonic()))))
+                    state['parts']+=1;state['pending']=None;save(journal,state)
+        finally:
+            writer.close()  # Keep verified local partial shards on any failure.
+    def command(self,*args,seconds,output=False):
         process=self.sandbox.exec(*args,timeout=seconds)
         with hard_deadline(seconds):
             if process.wait()!=0:raise ValueError('Bounded source command failed; preserve only local evidence')
+            if output:
+                raw=process.stdout.read()
+                if len(raw)>65536:raise ValueError('Source metadata response bound')
+                return raw
     def close(self):
         if self.closed:return
         if self.app is None:self.closed=True;return

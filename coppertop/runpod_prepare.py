@@ -25,6 +25,8 @@ ROOT=Path(__file__).resolve().parents[1]
 LIMITS={'overall_seconds':21600,'source_seconds':7200,'relay_seconds':7200,'CPU_seconds':7200,
     'export_seconds':3600,'CPU_work_seconds':6300,'cleanup_seconds':300,'rootfs_bytes':70*GIB,
     'export_bytes':50*GIB,'volume_gb':60,'container_gb':100,'local_free_bytes':64*GIB,
+    'source_spool_bytes':BOUNDS['spool'],'source_spool_parts':800,'source_metadata_commands':2048,
+    'source_free_bytes':2*BOUNDS['debs']+2*BOUNDS['code']+BOUNDS['manifest']+BOUNDS['spool']+8*1024**2+2*GIB,
     'retention_days':14,'automatic_retries':0}
 
 # The tiny public start command authenticates the code archive before importing

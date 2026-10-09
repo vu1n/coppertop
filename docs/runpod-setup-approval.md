@@ -90,9 +90,21 @@ This is a ceiling, not a claim that those unacquired packages fit.
 
 Split that single tar stream into at most thirteen ≤4 GiB files. Modal's public
 filesystem API reads files up to 5 GB, so a single 50 GiB `copy_to_local` call is
-invalid. Copy shards individually with the installed public API and verify each
-local hash. No whole-file in-memory read and no asynchronous bulk return.
+invalid. The live adapter copies one ≤64 MiB spool file at a time, verifies its
+local hash, appends it to those local shards, then acknowledges its deletion
+before another source part is produced. At most 800 parts / 2,048 bounded
+metadata and ack commands, zero replay and a 3,600 s combined export/copy deadline
+are bound into the approval plan. No whole-file in-memory read or bulk return.
 [Modal filesystem API](https://modal.com/docs/guide/sandbox-files).
+
+The pinned Modal1.6.1 Sandbox API does not support `ephemeral_disk`, so source
+archive storage is bounded to one spool file plus the ≤64 MiB manifest. Actual
+source free space must be at least **6,618,611,712 bytes** before package upload:
+two ≤2 GiB package copies, two ≤16 MiB code copies, the manifest, spool, 8 MiB
+probe and 2 GiB safety margin. Remote package/code tar files and probe are
+deleted before streaming. The source never accumulates a 50 GiB archive; the
+local standalone exporter keeps its original ≥52 GiB scratch guard.
+[Modal Sandbox API](https://modal.com/docs/sdk/py/latest/Sandbox).
 
 The local controller uploads those same shards with existing RunPod S3 keys,
 16 MiB multipart parts from the existing shared uploader, at most four concurrent
@@ -182,6 +194,9 @@ produce an incomplete receipt and cleanup handoff, not another attempt.
 Modal calculation: `7200×(2×0.00003942 +16×0.00000667)×1.75`. Those are Sandbox
 rates, not the cheaper Function rates used for the inventory. Keep existing
 reservations separate and hold the new one until reconciled bills.
+The bounded source spool uses the existing Sandbox writable layer, with actual
+disk admission and no new disk allocation or storage charge in this proposal.
+CPU/RAM, 55 GiB egress, two-hour source lifetime and the USD12 cap stay fixed.
 [Modal pricing](https://modal.com/pricing),
 [region multipliers](https://modal.com/docs/guide/region-selection),
 [egress billing](https://modal.com/docs/guide/network-egress-billing).

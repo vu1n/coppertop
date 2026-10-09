@@ -279,5 +279,40 @@
     "shared_core_unchanged": true,
     "paid_execution_authorized": false,
     "uncommitted_main_worker_inputs_included": false
+  },
+  "PR_review_corrections": {
+    "shared_preflight": {
+      "commit": "81871791a855b7ab438fd202094d13dc2763aa93",
+      "probe_removal_committed_and_reloaded": true,
+      "empty_stage_after_pre_mount_GPU_failure_deleted": true,
+      "local_tests": 347,
+      "skipped": 0,
+      "seconds": 34.857,
+      "status": "passed",
+      "CI": "https://github.com/vu1n/coppertop/actions/runs/37879291278/job/113655006303"
+    },
+    "source_export": {
+      "review": "https://github.com/vu1n/coppertop/pull/8#discussion_r4226092212",
+      "route": "One acknowledged64MiB source spool -> official filesystem copy -> verified local shards",
+      "source_archive_accumulates": false,
+      "source_spool_bytes": 67108864,
+      "source_free_admission_bytes": 6618611712,
+      "source_parts_max": 800,
+      "source_metadata_commands_max": 2048,
+      "source_extra_storage_allocation": false,
+      "financial_proposal_cap_usd": "12.00",
+      "financial_proposal_subtotal_usd": "9.768056",
+      "paid_authorized": false,
+      "actual_full_seed_export_or_SDK_throughput_verified": false
+    },
+    "local_validation": {
+      "tests": 425,
+      "skipped": 0,
+      "seconds": 54.3,
+      "status": "passed",
+      "command": "Same full local command recorded in local_validation, with installed controller SDKs and acquired official source; unrestricted only for loopback listener",
+      "source_spool_tests": 7,
+      "scope": "Tiny real tar/file/native subprocess adapter controls plus injected Modal creation; checksum/lost-ack/part-command limits/timeout/disk/restore checks; no provider allocation"
+    }
   }
 }

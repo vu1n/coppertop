@@ -17,7 +17,7 @@ from .streams import CHUNK_BYTES, ObjectRef, checked, file_chunks, file_ref
 
 GIB=1024**3
 BOUNDS={'tar':50*GIB,'shard':4*GIB,'shards':13,'manifest':64*1024**2,
-        'debs':2*GIB,'code':16*1024**2,'rootfs':70*GIB,'entries':500000}
+        'debs':2*GIB,'code':16*1024**2,'rootfs':70*GIB,'entries':500000,'spool':64*1024**2}
 
 
 def safe_name(name):
@@ -110,6 +110,19 @@ class SplitWriter:
     def close(self):self.finish_shard()
 
 
+def write_tar(root,value,writer):
+    with tarfile.open(fileobj=writer,mode='w|',format=tarfile.PAX_FORMAT) as archive:
+        for name,item in sorted(value['entries'].items()):
+            member=tarfile.TarInfo(name);member.mode=item['mode'];member.mtime=0
+            if item['kind']=='directory':member.type=tarfile.DIRTYPE;archive.addfile(member)
+            elif item['kind']=='link':member.type=tarfile.SYMTYPE;member.linkname=item['target'];archive.addfile(member)
+            else:
+                path=Path(root)/name;member.size=item['size']
+                if file_ref(path)!=ObjectRef(item['sha256'],item['size']):raise ValueError('Source changed before tar')
+                with path.open('rb') as source:archive.addfile(member,source)
+                if file_ref(path)!=ObjectRef(item['sha256'],item['size']):raise ValueError('Source changed during tar')
+
+
 def export(root,output,*,max_seconds=6000,shard_bytes=BOUNDS['shard']):
     """No source writes; failed exclusive export remains incomplete and recoverable."""
     if not 0<shard_bytes<=BOUNDS['shard'] or not 0<max_seconds<=6720:raise ValueError('Export limits')
@@ -122,22 +135,82 @@ def export(root,output,*,max_seconds=6000,shard_bytes=BOUNDS['shard']):
         value=manifest(root,deadline=deadline);save(output/'manifest.json',value)
         writer=SplitWriter(output,shard_bytes=shard_bytes,tar_bytes=BOUNDS['tar'],deadline=deadline)
         try:
-            with tarfile.open(fileobj=writer,mode='w|',format=tarfile.PAX_FORMAT) as archive:
-                for name,item in sorted(value['entries'].items()):
-                    member=tarfile.TarInfo(name);member.mode=item['mode'];member.mtime=0
-                    if item['kind']=='directory':member.type=tarfile.DIRTYPE;archive.addfile(member)
-                    elif item['kind']=='link':member.type=tarfile.SYMTYPE;member.linkname=item['target'];archive.addfile(member)
-                    else:
-                        path=Path(root)/name;member.size=item['size']
-                        if file_ref(path)!=ObjectRef(item['sha256'],item['size']):raise ValueError('Source changed before tar')
-                        with path.open('rb') as source:archive.addfile(member,source)
-                        if file_ref(path)!=ObjectRef(item['sha256'],item['size']):raise ValueError('Source changed during tar')
+            write_tar(root,value,writer)
         finally:writer.close()
         descriptor={'schema_version':1,'manifest_sha256':digest(canonical(value)),
             'tar_sha256':writer.whole.hexdigest(),'tar_bytes':writer.total,'shards':writer.refs}
         validate_descriptor(descriptor)
         save(output/'bundle.json',descriptor)
     return descriptor
+
+
+class SpoolWriter:
+    """One bounded file; never produce another until the Mac verifies and removes it."""
+    def __init__(self,directory,*,deadline,part_bytes=BOUNDS['spool']):
+        if not 0<part_bytes<=BOUNDS['spool']:raise ValueError('Spool part ceiling')
+        self.directory=Path(directory);self.deadline=deadline;self.part_bytes=part_bytes
+        self.stream=None;self.size=0;self.total=0;self.index=0;self.whole=hashlib.sha256()
+    def write(self,data):
+        if time.monotonic()>=self.deadline:raise TimeoutError('Source spool deadline')
+        if self.total+len(data)>BOUNDS['tar']:raise ValueError('Tar byte ceiling')
+        original=len(data);self.whole.update(data);self.total+=original
+        while data:
+            if self.stream is None:self.stream=(self.directory/'part.tar').open('xb');self.size=0
+            count=min(len(data),self.part_bytes-self.size)
+            self.stream.write(data[:count]);self.size+=count;data=data[count:]
+            if self.size==self.part_bytes:self.finish_part()
+        return original
+    def finish_part(self):
+        if self.stream is None:return
+        self.stream.flush();os.fsync(self.stream.fileno());self.stream.close();self.stream=None
+        ref=file_ref(self.directory/'part.tar')
+        save(self.directory/'ready.json',{'kind':'part','index':self.index,**ref.to_dict()})
+        while (self.directory/'ready.json').exists():
+            if time.monotonic()>=self.deadline:raise TimeoutError('Source spool acknowledgement deadline')
+            time.sleep(.05)
+        if (self.directory/'part.tar').exists():raise ValueError('Source spool deletion unverified')
+        self.index+=1
+    def abort(self):
+        if self.stream:self.stream.close();self.stream=None
+
+
+def export_spool(root,output,*,max_seconds=3600,part_bytes=BOUNDS['spool']):
+    """Stream through a bounded acknowledged file, without a source archive copy."""
+    if not 0<max_seconds<=6720:raise ValueError('Export limits')
+    output=Path(output)
+    if output.exists() or output.is_symlink():raise ValueError('Fresh export directory required')
+    output.mkdir(parents=True)
+    if shutil.disk_usage(output).free<2*GIB+BOUNDS['manifest']+part_bytes:
+        raise ValueError('Source spool scratch needs2GiB plus bounded manifest and part free')
+    deadline=time.monotonic()+max_seconds
+    writer=SpoolWriter(output,deadline=deadline,part_bytes=part_bytes)
+    try:
+        with hard_deadline(max_seconds):
+            value=manifest(root,deadline=deadline);save(output/'manifest.json',value)
+            write_tar(root,value,writer);writer.finish_part()
+            receipt={'kind':'complete','parts':writer.index,'manifest_sha256':digest(canonical(value)),
+                'tar_sha256':writer.whole.hexdigest(),'tar_bytes':writer.total}
+            save(output/'ready.json',receipt)
+            return receipt
+    except BaseException:
+        writer.abort()
+        raise
+
+
+def spool_status(output,*,max_seconds=20):
+    deadline=time.monotonic()+max_seconds;path=Path(output)/'ready.json'
+    while not path.exists():
+        if time.monotonic()>=deadline:return {'kind':'waiting'}
+        time.sleep(.05)
+    return read_json(path,65536)
+
+
+def acknowledge_spool(output,index,sha256):
+    output=Path(output);value=read_json(output/'ready.json',65536)
+    if value.get('kind')!='part' or value.get('index')!=index or value.get('sha256')!=sha256:
+        raise ValueError('Source spool acknowledgement differs')
+    (output/'part.tar').unlink()
+    (output/'ready.json').unlink()  # Deletion is the barrier allowing the next part.
 
 
 def validate_descriptor(value):
@@ -225,9 +298,20 @@ def restore(bundle,destination,*,volume,free_bytes=None,max_seconds=5400):
 
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--export-root',type=Path,required=True)
-    parser.add_argument('--output',type=Path,required=True);parser.add_argument('--seconds',type=int,default=6000)
-    args=parser.parse_args();export(args.export_root,args.output,max_seconds=args.seconds)
+    parser=argparse.ArgumentParser(description=__doc__)
+    modes=parser.add_mutually_exclusive_group(required=True)
+    modes.add_argument('--export-root',type=Path);modes.add_argument('--spool-root',type=Path)
+    modes.add_argument('--spool-status',type=Path);modes.add_argument('--ack-spool',type=Path)
+    parser.add_argument('--output',type=Path);parser.add_argument('--seconds',type=int,default=6000)
+    parser.add_argument('--index',type=int);parser.add_argument('--sha256')
+    args=parser.parse_args()
+    if args.spool_status:
+        print(canonical(spool_status(args.spool_status)).decode());return
+    if args.ack_spool:
+        acknowledge_spool(args.ack_spool,args.index,args.sha256);return
+    if args.output is None:parser.error('--output required for export')
+    if args.spool_root:export_spool(args.spool_root,args.output,max_seconds=args.seconds)
+    else:export(args.export_root,args.output,max_seconds=args.seconds)
 
 
 if __name__=='__main__':main()
