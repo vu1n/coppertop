@@ -119,10 +119,17 @@ def archive_mount_preflight(mounted,attempt,*,commit,reload):
         descriptor=seal_directory(source,scratch/'probe.tar')
         if archive_ref(descriptor).size>32768:raise ValueError('Mount preflight archive exceeds bound')
         stage=mounted/'mount-preflight'
-        staged=stage_archive(scratch/'probe.tar',descriptor,stage,run_id=attempt,commit=commit)
-        reload()  # Read the provider-committed view, not just this container's writes.
-        restored=unpack_archive(stage/'episode.tar',staged,scratch/'restored')
-        if (restored/'probe.bin').read_bytes()!=probe:raise ValueError('Mount preflight bytes differ')
+        if stage.exists() or stage.is_symlink():raise ValueError('Fresh mount preflight stage required')
+        try:
+            staged=stage_archive(scratch/'probe.tar',descriptor,stage,run_id=attempt,commit=commit)
+            reload()  # Read the provider-committed view, not just this container's writes.
+            restored=unpack_archive(stage/'episode.tar',staged,scratch/'restored')
+            if (restored/'probe.bin').read_bytes()!=probe:raise ValueError('Mount preflight bytes differ')
+        finally:
+            if stage.exists():shutil.rmtree(stage)
+            commit()
+            reload()  # Persist and observe probe removal before GPU dispatch.
+            if stage.exists() or stage.is_symlink():raise ValueError('Mount preflight removal unverified')
     return {'verified':True,'source_bytes':len(probe),'archive_bytes':archive_ref(staged).size,
         'provider_commit_and_reload':True,'seconds':time.monotonic()-started}
 

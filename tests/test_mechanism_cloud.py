@@ -33,7 +33,8 @@ class CloudTests(unittest.TestCase):
                 events=[]
                 def reload():
                     events.append('reload')
-                    if corrupt:(physical/'mount-preflight'/'episode.tar').write_bytes(b'corrupt')
+                    if corrupt and (physical/'mount-preflight').exists():
+                        (physical/'mount-preflight'/'episode.tar').write_bytes(b'corrupt')
                 action=lambda:module.archive_mount_preflight(alias.resolve(strict=True),ATTEMPT,
                     commit=lambda:events.append('commit'),reload=reload)
                 if corrupt:
@@ -41,8 +42,37 @@ class CloudTests(unittest.TestCase):
                 else:
                     receipt=action();self.assertTrue(receipt['verified'])
                     self.assertEqual(receipt['source_bytes'],4096);self.assertLessEqual(receipt['archive_bytes'],32768)
-                self.assertEqual(events,['commit','reload'])
-                self.assertTrue((physical/'mount-preflight'/'episode.tar').exists())
+                self.assertEqual(events,['commit','reload','commit','reload'])
+                self.assertFalse((physical/'mount-preflight').exists())
+
+    def test_preflight_only_stage_is_deleted_after_gpu_and_publication_fail(self):
+        from test_record_archive import POLICY
+        value=ledger();value['cumulative_cap']='70.82'
+        prepared=module.prepare(value,ATTEMPT,'official_recording_full','A100-80GB',POLICY)
+        functions=SimpleNamespace(gate='gate',evaluate='evaluate',publish='publish')
+        audit={'app_stopped':True,'active_containers':0,'active_sandboxes':0}
+        with tempfile.TemporaryDirectory() as root,patch.object(module,'delete_owned_volume') as delete:
+            mount=Path(root)/'mount';mount.mkdir()
+            volume=SimpleNamespace(iterdir=lambda *args,**kwargs:[
+                SimpleNamespace(type=1,size=p.stat().st_size) for p in mount.rglob('*') if p.is_file()])
+            def invoke(function,args,bound):
+                if function=='gate':
+                    probe=module.archive_mount_preflight(mount,ATTEMPT,commit=lambda:None,reload=lambda:None)
+                    return {'status':'passed','container_id':'ta-gate',
+                        'plan_sha256':prepared['cloud_plan_sha256'],'archive_preflight':probe}
+                raise OSError('GPU never mounted; publication unavailable')
+            def cleanup():
+                outcome=json.loads((Path(root)/'outcome.json').read_bytes())
+                self.assertTrue(outcome['gpu_started'])
+                return module.cleanup_owned_stage(object(),volume,name='owned',identity='vo-owned',audit=audit,
+                    gpu_started=outcome['gpu_started'],publication_verified=False,policy=POLICY,rate='0.09')
+            with self.assertRaises(OSError):
+                module.execute_phases(functions,prepared,root,admission=lambda:None,invoke=invoke,
+                    stopped=lambda identity:True,cleanup=cleanup)
+            delete.assert_called_once()
+            outcome=json.loads((Path(root)/'outcome.json').read_bytes())
+            self.assertTrue(outcome['cleanup']['volume_deleted'])
+            self.assertFalse(outcome['cleanup'].get('volume_retained_for_recovery',False))
 
     def test_full_baseline_refuses_gpu_without_verified_mount_preflight(self):
         from test_record_archive import POLICY
