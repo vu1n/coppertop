@@ -16,7 +16,9 @@ const sourceFile = join(miniflareRoot, "dist/src/workers/workflows/binding.worke
 const miniflareRequire = createRequire(join(miniflareRoot, "package.json"));
 nativeEmulatorControls({
   Miniflare, build, lane: "lane-b", shared, compatibilityDate: "2026-08-01", sourceFile,
-  options: (base, persistence) => ({ ...base, durableObjectsPersist: persistence }),
+  options: (base, persistence) => ({
+    ...base, durableObjectsPersist: persistence, workflowsPersist: persistence,
+  }),
   provenance: { ...evidence(root, [
     "cloud-controller/shared/native-emulator-worker.ts",
     "cloud-controller/shared/native-emulator-probe.mjs",
