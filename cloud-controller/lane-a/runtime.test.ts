@@ -6,10 +6,29 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type Server } from "node:http";
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+import { dirname, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+import { evidence } from "../shared/evidence.ts";
 import type { Decision, Ledger, RunSpec } from "../shared/contracts.ts";
 import type { Controls } from "./schema.ts";
 
 const characterize = process.env.COPPERTOP_CHARACTERIZE_RUNTIME_GAPS === "1";
+const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
+const require = createRequire(import.meta.url);
+const miniflareRoot = dirname(require.resolve("miniflare/package.json"));
+console.log(JSON.stringify({ runtimeProvenance: evidence(repoRoot, [
+  "cloud-controller/lane-a/worker.ts", "cloud-controller/lane-a/schema.ts",
+  "cloud-controller/lane-a/runtime.test.ts", "cloud-controller/lane-a/package.json",
+  "cloud-controller/lane-a/package-lock.json", "cloud-controller/shared/contracts.ts",
+  "cloud-controller/shared/domain.ts", "cloud-controller/shared/provider-worker.ts",
+  "cloud-controller/shared/evidence.ts",
+  relative(repoRoot, join(miniflareRoot, "package.json")),
+  relative(repoRoot, join(miniflareRoot, "dist/src/workers/workflows/binding.worker.js")),
+  relative(repoRoot, require.resolve("workerd/package.json")),
+], process.env.COPPERTOP_TEST_COMMAND ?? `npm run test:${characterize ? "characterize" : "acceptance"}`),
+  mode: characterize ? "negative characterization" : "strict acceptance" }));
 const gapLabel = characterize
   ? "KNOWN GAP CHARACTERIZATION (not acceptance): "
   : "";
@@ -1081,6 +1100,7 @@ test("bundle metrics", async () => {
   console.log(
     JSON.stringify({
       laneBundleBytes: lane.outputFiles[0]!.contents.byteLength,
+      laneBundleSha256: createHash("sha256").update(lane.outputFiles[0]!.contents).digest("hex"),
       node: process.version,
       testRunner: "node:test",
       timestamp: new Date().toISOString(),

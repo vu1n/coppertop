@@ -2,6 +2,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { initialLedger, transition } from "./domain.ts";
 import type { ArtifactReceipt, Command, Ledger, RunSpec } from "./contracts.ts";
+import { fileURLToPath } from "node:url";
+import { evidence } from "./evidence.ts";
+
+console.log(JSON.stringify({ sharedProvenance: evidence(fileURLToPath(new URL("../../", import.meta.url)), [
+  "cloud-controller/shared/contracts.ts", "cloud-controller/shared/domain.ts",
+  "cloud-controller/shared/domain.test.ts", "cloud-controller/shared/provider-worker.ts",
+  "cloud-controller/shared/provider.test.ts", "cloud-controller/shared/evidence.ts",
+  "cloud-controller/shared/package.json", "cloud-controller/shared/package-lock.json",
+], process.env.COPPERTOP_TEST_COMMAND ?? "npm test (cloud-controller/shared)") }));
 
 const now = 1_000_000;
 const digest = "a".repeat(64);

@@ -7,9 +7,31 @@ import * as zlib from "node:zlib"
 import { createHash } from "node:crypto"
 import * as esbuild from "esbuild"
 import { Miniflare } from "miniflare"
+import { createRequire } from "node:module"
+import { pathToFileURL } from "node:url"
+import { execFileSync } from "node:child_process"
 
 const shared = process.env.COPPERTOP_SHARED
 assert.ok(shared, "COPPERTOP_SHARED must point at the consumer-local shared sources")
+const repoRoot = path.dirname(path.dirname(shared))
+const { evidence } = await import(pathToFileURL(path.join(shared, "evidence.ts")).href)
+const require = createRequire(import.meta.url)
+const miniflareRoot = path.dirname(require.resolve("miniflare/package.json"))
+const miniflareRequire = createRequire(path.join(miniflareRoot, "package.json"))
+console.log(JSON.stringify({ runtimeProvenance: evidence(repoRoot, [
+  "cloud-controller/lane-b/worker.ts", "cloud-controller/lane-b/runtime.mjs",
+  "cloud-controller/lane-b/run.sh", "cloud-controller/lane-b/setup.sh",
+  "cloud-controller/shared/contracts.ts", "cloud-controller/shared/domain.ts",
+  "cloud-controller/shared/provider-worker.ts", "cloud-controller/shared/evidence.ts",
+  ".local/upstream/effect/pnpm-lock.yaml",
+  ".local/upstream/effect/patches/@changesets__get-github-info@1.0.1.patch",
+  ".local/upstream/effect/packages/platform/cloudflare/package.json",
+  path.relative(repoRoot, path.join(miniflareRoot, "package.json")),
+  path.relative(repoRoot, path.join(miniflareRoot, "dist/src/workers/workflows/binding.worker.js")),
+  path.relative(repoRoot, miniflareRequire.resolve("workerd/package.json")),
+], process.env.COPPERTOP_TEST_COMMAND ?? "bash cloud-controller/lane-b/run.sh"),
+  upstreamCommit: execFileSync("git", ["-C", path.join(repoRoot, ".local/upstream/effect"), "rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+  mode: process.env.COPPERTOP_STRICT_GATES === "1" ? "strict acceptance" : "negative characterization" }))
 const bundleFor = version => esbuild.build({
   entryPoints: [path.join(import.meta.dirname, "worker.ts")], bundle: true, format: "esm", write: false,
   external: ["cloudflare:workers"], define: { COPPERTOP_BUILD_VERSION: JSON.stringify(version) }, alias: {
@@ -25,6 +47,7 @@ const providerScript = (await esbuild.build({
   external: ["cloudflare:workers"]
 })).outputFiles[0].text
 console.log(JSON.stringify({ workerBytes: Buffer.byteLength(scripts.v1), workerGzipBytes: zlib.gzipSync(scripts.v1).byteLength,
+  workerSha256: createHash("sha256").update(scripts.v1).digest("hex"),
   upgradeChangesModuleBytes: scripts.v1 !== scripts.v2 }))
 const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 const make = async () => {

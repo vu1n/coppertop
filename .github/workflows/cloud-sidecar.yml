@@ -9,6 +9,8 @@ permissions:
   contents: read
 jobs:
   shared-and-native:
+    env:
+      COPPERTOP_INSTALL_COMMAND: npm ci --ignore-scripts
     name: '${{ matrix.package }} controls and regression characterization'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -35,12 +37,18 @@ jobs:
       - name: Shared domain and independent-provider tests
         if: matrix.package == 'shared'
         working-directory: cloud-controller/shared
+        env:
+          COPPERTOP_TEST_COMMAND: npm test (cloud-controller/shared)
         run: npm test
       - name: Native controls and expected local recovery gaps
         if: matrix.package == 'lane-a'
         working-directory: cloud-controller/lane-a
+        env:
+          COPPERTOP_TEST_COMMAND: npm run test:characterize
         run: npm run test:characterize
   upstream:
+    env:
+      COPPERTOP_INSTALL_COMMAND: bash cloud-controller/lane-b/setup.sh (filtered frozen pnpm 11.20.0)
     name: Upstream controls and known recovery regressions
     runs-on: ubuntu-latest
     timeout-minutes: 20
