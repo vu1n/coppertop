@@ -25,12 +25,14 @@ RUNTIME_FILES = ('coppertop/performance_eval.py', 'coppertop/performance_runtime
                  'coppertop/performance_cloud.py', 'coppertop/reload_launch.py',
                  'coppertop/dependency_gate.py', 'coppertop/image_check.py',
                  'requirements-simulator.lock')
+RECORDING_FILES=('coppertop/official_recording.py','coppertop/diagnostics.py',
+                 'coppertop/chords.py','coppertop/streams.py')
 
 
-def runtime_sources():
+def runtime_sources(*, recording=False):
     root = Path(__file__).resolve().parents[1]
     return {name: hashlib.sha256((root/name).read_bytes()).hexdigest()
-            for name in RUNTIME_FILES}
+            for name in RUNTIME_FILES+(RECORDING_FILES if recording else ())}
 
 
 def plan():
@@ -62,18 +64,58 @@ def plan():
     }
 
 
+def recording_acceptance_plan(*, full=False):
+    p = plan()
+    result = {'kind':'official_rollout_recording_acceptance', 'cloud_actions':False,
+        'cached_image':p['cached_image'], 'source_pins':dict(SOURCE_PINS),
+        'source_blobs':dict(SOURCE_BLOBS), 'model':p['model'], 'task':p['task'],
+        'split':'development', 'source_split':'pretrain', 'seed':1150,
+        'constructor_seed':1000, 'task_index':3, 'schedule_trials':50, 'episode_index':0,
+        'recipe':{'obs_history':4,'obs_interval':2,'replan_steps':16,'crop_ratio':.95,
+                  'robot_type':'robocasa365','video_stride':1,'video_fps':20},
+        'limits':{'horizon':4,'query_calls':1,'record_bytes':24*1024**2,
+                  'record_objects':64,'automatic_retries':0},
+        'paid_authorized':False,
+        'compute_proposal':{'gpu':'L40S','cpu':4,'memory_mib':65536,'phase_seconds':270,
+            'session_seconds':240,'owned_server_cleanup_seconds':10,'startup_seconds':300,'retries':0},
+        'publication_proposal':{'cpu_only':True,'objects':64,'requests':256,'bytes':24*1024**2,
+            'temporary_session_seconds':3600,'approval_required':'fresh owned prefix, retention, current pricing and preserved spend ledger'},
+        'acceptance':['one official model query, at most4 controls,5 source observations',
+            'native action/state/query-history byte checks and frame/video alignment',
+            'local immutable release closure; later approved CPU/R2 readback and owned cleanup'],
+        'runtime_sha256':runtime_sources(recording=True),
+        'claim':'Official evaluator recording acceptance, not replay parity, utility or20Hz throughput',
+        'later_comparison':'Separate matched-seed fixed16vs8 cadence experiment; no approval implied'}
+
+    if full:
+        result.update(kind='official_full_rollout_recording',
+            limits={'horizon':600,'query_calls':38,'record_bytes':1024**3,
+                    'record_objects':6000,'automatic_retries':0},
+            compute_proposal={'gpu':'L40S','cpu':4,'memory_mib':65536,'phase_seconds':600,
+                'session_seconds':550,'owned_server_cleanup_seconds':10,'startup_seconds':300,'retries':0},
+            publication_proposal={'cpu_only':True,'objects':2,'requests':256,'bytes':1024**3+32*1024**2,
+                'format':'coppertop-episode-tar','max_archive_bytes':1024**3+16*1024**2,
+                'single_put_threshold_bytes':256*1024**2,'multipart_part_bytes':16*1024**2,
+                'temporary_session_seconds':7200,
+                'approval_required':'fresh owned prefix, retention, current pricing and spend ledger'},
+            acceptance=['one frozen official DEV1150 rollout; success, environment end or horizon600',
+                'all query histories, native state/actions and camera timing verified',
+                'immutable release and complete CPU/R2 byte readback; owned compute/storage cleanup'])
+    return result
+
+
 def validate_plan(value):
     if value != plan():
         raise ValueError('Exact pinned paired evaluation plan required')
     return hashlib.sha256(canonical(value)).hexdigest()
 
 
-def runtime_image(sdk, image, root):
+def runtime_image(sdk, image, root, *, recording=False):
     """Mount reviewed source onto the existing image; no build/install/lookup."""
     if sdk.__version__ != '1.6.1' or image.object_id != CACHED_IMAGE:
         raise ValueError('Exact previously verified warm image and SDK required')
     root = Path(root)
-    for name, expected in runtime_sources().items():
+    for name, expected in runtime_sources(recording=recording).items():
         path = root/name
         if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError('Runtime upload source differs')

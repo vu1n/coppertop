@@ -154,7 +154,7 @@ def experiment(factory, query, *, seed=1150, policy_seed=20261006, log_sink=lamb
             frames.append(baseline.step(action))
             if index == 3:
                 snapshot = baseline.env.inputs()
-            if frames[-1].stopped:
+            if frames[-1].stopped and index < len(old)-1:
                 raise ValueError('Baseline ended before required 16-control tape')
         root_group = f'CoffeeSetupMug/pretrain/constructor1000/episode{seed}'
         identity = digest(canonical({'policy_seed': policy_seed, 'actions': old, 'pins': SOURCE_PINS}))
@@ -239,8 +239,9 @@ def execute(output):
             if sum(f.stat().st_size for f in output.rglob('*') if f.is_file()) > p['limits']['output_bytes']:
                 raise ValueError('Bounded output size exceeded; no publication')
     except BaseException as error:
+        from .diagnostics import failure
         (output/'failure.json').write_bytes(canonical({'status': 'failed', 'error_type': type(error).__name__,
-            'comparison_valid': False, 'automatic_retries': 0}))
+            'comparison_valid': False, 'automatic_retries': 0, 'failure':failure(error,'mechanism.execute')}))
         raise
     finally:
         if query is not None: query.cancel()

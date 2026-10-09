@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -229,8 +229,8 @@ def reconcile(ledger, rows, *, app_id=None, reservation_key=None, additional_cap
             raise ValueError('Current full reservation missing')
     additional=0 if reservation_key is not None else additional_cap
     cap = Decimal(str(result.get('cumulative_cap', '30')))
-    approved_caps = {Decimal(8): (30, 38), Decimal(10): (48, Decimal('58.82')),
-        Decimal(6): (Decimal('64.82'),),
+    approved_caps = {Decimal(8): (30, 38, Decimal('70.82')), Decimal(10): (48, Decimal('58.82')),
+        Decimal(6): (Decimal('64.82'), Decimal('70.82')),
         Decimal('0.10'): (48, Decimal('48.07')),
         Decimal('0.25'): (Decimal('48.32'), Decimal('48.57'), Decimal('48.82'))}[additional_cap]
     if cap not in approved_caps or historical_total(result)+additional>cap or totals.get(app_id,Decimal(0))>additional_cap:
@@ -242,8 +242,20 @@ def refresh_billing(ledger, output, *, app_id=None, reservation_key=None, runner
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         raise ValueError('UTC billing clock required')
-    rows = cli_json([sys.executable,'-m','modal','billing','report','--start',ledger['billing_start_utc'],
-        '--end',(now+timedelta(days=1)).date().isoformat(),'--resolution','h','--tz','UTC','--json'],runner)
+    start = date.fromisoformat(ledger['billing_start_utc'])
+    end = now.astimezone(timezone.utc).date()+timedelta(days=1)
+    if start >= end: raise ValueError('Billing start must precede report end')
+    rows = []
+    # Modal caps hourly reports at seven days; adjacent exclusive ends retain
+    # all historical spend without counting an interval twice.
+    while start < end:
+        stop = min(start+timedelta(days=7),end)
+        chunk = cli_json([sys.executable,'-m','modal','billing','report','--start',start.isoformat(),
+            '--end',stop.isoformat(),'--resolution','h','--tz','UTC','--json'],runner)
+        if not isinstance(chunk,list) or len(rows)+len(chunk)>4096:
+            raise ValueError('Bounded billing rows required')
+        rows.extend(chunk)
+        start = stop
     updated, cost = reconcile(ledger, rows, app_id=app_id,reservation_key=reservation_key,additional_cap=additional_cap)
     save(Path(output)/'billing.json', {'fetched_at_utc':now.isoformat(),'rows':rows,'current_app_reported_usd':cost})
     save(Path(output)/'ledger.json',updated)

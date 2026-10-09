@@ -2,6 +2,8 @@
 import copy
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -23,6 +25,215 @@ def ledger():
 
 
 class CloudTests(unittest.TestCase):
+    def test_cpu_mount_preflight_reads_committed_view_and_rejects_corruption(self):
+        for corrupt in (False,True):
+            with self.subTest(corrupt=corrupt),tempfile.TemporaryDirectory() as root:
+                physical=Path(root)/'physical';physical.mkdir()
+                alias=Path(root)/'alias';alias.symlink_to(physical,target_is_directory=True)
+                events=[]
+                def reload():
+                    events.append('reload')
+                    if corrupt and (physical/'mount-preflight').exists():
+                        (physical/'mount-preflight'/'episode.tar').write_bytes(b'corrupt')
+                action=lambda:module.archive_mount_preflight(alias.resolve(strict=True),ATTEMPT,
+                    commit=lambda:events.append('commit'),reload=reload)
+                if corrupt:
+                    with self.assertRaisesRegex(ValueError,'Archive checksum'):action()
+                else:
+                    receipt=action();self.assertTrue(receipt['verified'])
+                    self.assertEqual(receipt['source_bytes'],4096);self.assertLessEqual(receipt['archive_bytes'],32768)
+                self.assertEqual(events,['commit','reload','commit','reload'])
+                self.assertFalse((physical/'mount-preflight').exists())
+
+    def test_preflight_only_stage_is_deleted_after_gpu_and_publication_fail(self):
+        from test_record_archive import POLICY
+        value=ledger();value['cumulative_cap']='70.82'
+        prepared=module.prepare(value,ATTEMPT,'official_recording_full','A100-80GB',POLICY)
+        functions=SimpleNamespace(gate='gate',evaluate='evaluate',publish='publish')
+        audit={'app_stopped':True,'active_containers':0,'active_sandboxes':0}
+        with tempfile.TemporaryDirectory() as root,patch.object(module,'delete_owned_volume') as delete:
+            mount=Path(root)/'mount';mount.mkdir()
+            volume=SimpleNamespace(iterdir=lambda *args,**kwargs:[
+                SimpleNamespace(type=1,size=p.stat().st_size) for p in mount.rglob('*') if p.is_file()])
+            def invoke(function,args,bound):
+                if function=='gate':
+                    probe=module.archive_mount_preflight(mount,ATTEMPT,commit=lambda:None,reload=lambda:None)
+                    return {'status':'passed','container_id':'ta-gate',
+                        'plan_sha256':prepared['cloud_plan_sha256'],'archive_preflight':probe}
+                raise OSError('GPU never mounted; publication unavailable')
+            def cleanup():
+                outcome=json.loads((Path(root)/'outcome.json').read_bytes())
+                self.assertTrue(outcome['gpu_started'])
+                return module.cleanup_owned_stage(object(),volume,name='owned',identity='vo-owned',audit=audit,
+                    gpu_started=outcome['gpu_started'],publication_verified=False,policy=POLICY,rate='0.09')
+            with self.assertRaises(OSError):
+                module.execute_phases(functions,prepared,root,admission=lambda:None,invoke=invoke,
+                    stopped=lambda identity:True,cleanup=cleanup)
+            delete.assert_called_once()
+            outcome=json.loads((Path(root)/'outcome.json').read_bytes())
+            self.assertTrue(outcome['cleanup']['volume_deleted'])
+            self.assertFalse(outcome['cleanup'].get('volume_retained_for_recovery',False))
+
+    def test_full_baseline_refuses_gpu_without_verified_mount_preflight(self):
+        from test_record_archive import POLICY
+        value=ledger();value['cumulative_cap']='70.82'
+        prepared=module.prepare(value,ATTEMPT,'official_recording_full','A100-80GB',POLICY)
+        functions=SimpleNamespace(gate='gate',evaluate='evaluate',publish='publish')
+        specifications=module.create_functions(SimpleNamespace(__version__='1.6.1',App=App),
+            prepared,object(),Volume([]),Mock(),[]).app.definitions
+        self.assertIsNone(specifications['gate']['gpu'])
+        self.assertEqual(specifications['gate']['volumes'],specifications['evaluate']['volumes'])
+        for probe in ({},{'verified':False},{'verified':True,'source_bytes':4096,
+                'archive_bytes':10240,'provider_commit_and_reload':False}):
+            with self.subTest(probe=probe),tempfile.TemporaryDirectory() as root:
+                invoked=[]
+                def invoke(function,args,bound):
+                    invoked.append(function)
+                    return {'status':'passed','container_id':'ta-gate',
+                        'plan_sha256':prepared['cloud_plan_sha256'],'archive_preflight':probe}
+                with self.assertRaisesRegex(ValueError,'real-mount archive preflight'):
+                    module.execute_phases(functions,prepared,root,admission=lambda:None,invoke=invoke,
+                        stopped=lambda identity:True,cleanup=lambda:{'app_stopped':True,'volume_deleted':True,
+                            'active_containers':0,'active_sandboxes':0})
+                self.assertEqual(invoked,['gate'])
+                self.assertFalse(json.loads((Path(root)/'outcome.json').read_bytes()).get('gpu_started',False))
+
+    def test_owned_stage_release_requires_compute_audit_and_verified_data_or_empty_stage(self):
+        from test_record_archive import POLICY
+        audit={'app_stopped':True,'active_containers':0,'active_sandboxes':0}
+        cases=[('complete',100,False,False),('unknown',None,False,False),
+            ('over_limit',2*1024**3+1,False,False),('empty',0,False,True),('published',100,True,True)]
+        for label,size,published,deleted in cases:
+            with self.subTest(label=label),patch.object(module,'delete_owned_volume') as delete:
+                volume=SimpleNamespace(iterdir=Mock(return_value=iter([SimpleNamespace(type=1,size=size)])))
+                if size is None:volume.iterdir.side_effect=OSError('unknown size')
+                result=module.cleanup_owned_stage(object(),volume,name='owned',identity='vo-owned',audit=audit,
+                    gpu_started=True,publication_verified=published,policy=POLICY,rate='0.09')
+                self.assertEqual(result['volume_deleted'],deleted)
+                if deleted:delete.assert_called_once()
+                else:
+                    delete.assert_not_called();self.assertTrue(result['volume_retained_for_recovery'])
+                    self.assertEqual(result['retention']['size_bytes'],size)
+        with patch.object(module,'delete_owned_volume') as delete:
+            for invalid in (None,dict(POLICY,accept_ongoing_storage_charges=False)):
+                with self.assertRaises(ValueError):module.cleanup_owned_stage(object(),Mock(),name='owned',identity='vo-owned',audit=audit,
+                    gpu_started=True,publication_verified=False,policy=invalid,rate='0.09')
+            with self.assertRaises(ValueError):module.cleanup_owned_stage(object(),Mock(),name='owned',identity='vo-owned',
+                audit=dict(audit,active_containers=1),gpu_started=True,publication_verified=True,policy=POLICY,rate='0.09')
+            delete.assert_not_called()
+
+    def test_retained_stage_metadata_measurement_and_unknown_or_over_limit_reporting(self):
+        from test_record_archive import POLICY
+        resource={'provider':'modal','id':'vo-owned','name':'owned'}
+        volume=SimpleNamespace(iterdir=Mock(return_value=iter([
+            SimpleNamespace(type=2,size=4096),SimpleNamespace(type=1,size=1024**3)])))
+        report=module.retained_stage_report(volume,resource,POLICY,'0.09')
+        self.assertEqual(report['size_bytes'],1024**3);self.assertEqual(report['estimated_monthly_usd'],'0.09')
+        self.assertEqual(report['resource'],resource)
+        volume.iterdir.side_effect=OSError('provider metadata unavailable')
+        report=module.retained_stage_report(volume,resource,POLICY,'0.09')
+        self.assertIsNone(report['size_bytes']);self.assertEqual(report['size_error_type'],'OSError')
+        volume.iterdir.side_effect=None;volume.iterdir.return_value=iter([SimpleNamespace(type=1,size=2*1024**3+1)])
+        report=module.retained_stage_report(volume,resource,POLICY,'0.09')
+        self.assertFalse(report['within_size_authorization'])
+
+    def test_full_launch_requires_explicit_storage_authorization_before_keys(self):
+        from test_record_archive import POLICY
+        value=ledger();value['cumulative_cap']='70.82'
+        reviewed_at=module.datetime.fromisoformat(module.prepare(value,ATTEMPT,'official_recording_full')['cloud_plan']['pricing']['checked_utc'])
+        with patch.object(module,'datetime',wraps=module.datetime) as clock,patch.object(module,'selected_env',side_effect=AssertionError('keys forbidden')):
+            clock.now.return_value=reviewed_at
+            for retention,reason in ((None,'retention policy'),(dict(POLICY,accept_ongoing_storage_charges=False),'explicitly accepted')):
+                with self.assertRaisesRegex(ValueError,reason):
+                    prepared=module.prepare(value,ATTEMPT,'official_recording_full',retention=retention)
+                    module.execute(prepared,value,Path.cwd(),Path('unused'),prepared['cloud_plan_sha256'],
+                        sdk=SimpleNamespace(__version__='1.6.1'))
+            prepared=module.prepare(value,ATTEMPT,'official_recording_full',retention=POLICY)
+            self.assertEqual(prepared['cloud_plan']['archive_retention'],POLICY)
+            self.assertEqual(prepared['cloud_plan']['pricing']['volume_storage_usd_per_gib_month'],'0.09')
+            self.assertNotIn('retention_backstop',prepared['cloud_plan'])
+
+    def test_archive_checkpoint_and_verified_completion_gate_cleanup(self):
+        from test_record_archive import POLICY
+        value=ledger();value['cumulative_cap']='70.82'
+        prepared=module.prepare(value,ATTEMPT,'official_recording_full',retention=POLICY)
+        functions=SimpleNamespace(gate='gate',evaluate='evaluate',publish='publish')
+        archive={'sha256':'a'*64,'size':10240}
+        for fail in (None,'publish','staging'):
+            with self.subTest(fail=fail),tempfile.TemporaryDirectory() as root:
+                events=[]
+                evaluation={'container_id':'ta-gpu','status':'passed','plan_sha256':prepared['cloud_plan_sha256'],
+                    'archive':archive,'durable_archive_verified':fail!='staging','record_sha256':'b'*64}
+                def invoke(function,args,bound):
+                    events.append(function)
+                    if function=='gate':return {'container_id':'ta-gate','status':'passed','plan_sha256':prepared['cloud_plan_sha256'],
+                        'archive_preflight':{'verified':True,'source_bytes':4096,'archive_bytes':10240,'provider_commit_and_reload':True}}
+                    if function=='evaluate':return evaluation
+                    if fail=='publish':raise OSError('publication interrupted')
+                    return {'container_id':'ta-pub','plan_sha256':prepared['cloud_plan_sha256'],
+                        'archive':archive,'archive_verified':True,'report_key':'c'*64,
+                        'source_record_sha256':digest(canonical(evaluation)),'published_status':'passed'}
+                def cleanup():
+                    events.append('cleanup')
+                    outcome=json.loads((Path(root)/'outcome.json').read_bytes())
+                    if fail:
+                        self.assertFalse(outcome.get('durable_report_verified',False))
+                        return {'app_stopped':True,'active_containers':0,'active_sandboxes':0,'volume_deleted':False,
+                            'volume_retained_for_recovery':True,'retention':{'ongoing_charges_accepted':True}}
+                    self.assertTrue(outcome['durable_report_verified'])
+                    return {'app_stopped':True,'active_containers':0,'active_sandboxes':0,'volume_deleted':True}
+                action=lambda:module.execute_phases(functions,prepared,root,admission=lambda:None,
+                    invoke=invoke,stopped=lambda task:events.append('stopped-'+task) or True,cleanup=cleanup)
+                if fail:
+                    with self.assertRaises(Exception):action()
+                else:self.assertTrue(action()['durable_report_verified'])
+                self.assertEqual(events[-1],'cleanup')
+                if fail=='staging':self.assertNotIn('publish',events)
+                else:self.assertLess(events.index('stopped-ta-gpu'),events.index('publish'))
+
+    def test_explicit_a100_is_bound_to_plan_and_provider_without_fallback(self):
+        value=ledger();value['cumulative_cap']='70.82'
+        original=module.prepare(value,ATTEMPT,'official_recording_full')
+        selected=module.prepare(value,ATTEMPT,'official_recording_full','A100-80GB')
+        self.assertNotEqual(original['cloud_plan_sha256'],selected['cloud_plan_sha256'])
+        self.assertEqual(original['cloud_plan']['worker'],selected['cloud_plan']['worker'])
+        self.assertEqual(selected['cloud_plan']['pricing']['a100_80gb_per_second'],'.000694')
+        functions=module.create_functions(SimpleNamespace(__version__='1.6.1',App=App),
+            selected,object(),Volume([]),Mock(),[])
+        self.assertEqual(functions.app.definitions['evaluate']['gpu'],'A100-80GB')
+        self.assertEqual(functions.app.definitions['evaluate']['retries'],0)
+        self.assertEqual(functions.app.definitions['publish']['timeout'],2100)
+        self.assertEqual(selected['cloud_plan']['auth']['ttl_seconds'],7200)
+        self.assertGreater(selected['cloud_plan']['auth']['ttl_seconds'],selected['cloud_plan']['resources']['controller_seconds'])
+        reviewed_at=module.datetime.fromisoformat(selected['cloud_plan']['pricing']['checked_utc'])
+        with patch.object(module,'datetime',wraps=module.datetime) as clock:
+            clock.now.return_value=reviewed_at
+            with self.assertRaisesRegex(ValueError,'Modal1.6.1'):
+                module.execute(selected,value,Path.cwd(),Path('unused'),selected['cloud_plan_sha256'],
+                    sdk=SimpleNamespace(__version__='unsupported'))
+        changed=copy.deepcopy(selected);changed['cloud_plan']['resources']['gpu']='L40S'
+        with self.assertRaisesRegex(ValueError,'Exact proposed plan'):
+            module.execute(changed,value,Path.cwd(),Path('unused'),selected['cloud_plan_sha256'])
+        with self.assertRaises(ValueError):module.prepare(value,ATTEMPT,'official_recording_full','any')
+
+    def test_cli_exit_reflects_terminal_status_after_publication_cleanup(self):
+        # Exercise process exit as well as main's returned code; no provider path runs.
+        script = """
+import sys
+from unittest.mock import patch
+from coppertop import mechanism_cloud as module
+status=sys.argv[1]
+sys.argv=['mechanism_cloud','--ledger','unused','--attempt','unused','--execute']
+result={'status':status,'durable_report_verified':True,
+        'cleanup':{'app_stopped':True,'volume_deleted':True}}
+with patch.object(module,'read_json',return_value={}), patch.object(module,'prepare',return_value={}), patch.object(module,'execute',return_value=result):
+    raise SystemExit(module.main())
+"""
+        for status, expected in (('passed',0),('failed',1),('started',1)):
+            with self.subTest(status=status):
+                process=subprocess.run([sys.executable,'-c',script,status],capture_output=True,timeout=30)
+                self.assertEqual(process.returncode,expected,process.stderr.decode())
+
     def test_preparation_never_reads_keys_or_allocates(self):
         with patch.object(module,'selected_env',side_effect=AssertionError), patch.object(module,'mint',side_effect=AssertionError):
             prepared=module.prepare(ledger(),ATTEMPT)
@@ -70,7 +281,7 @@ class CloudTests(unittest.TestCase):
 
     def test_recovery_publishes_metadata_when_artifact_inventory_is_corrupt(self):
         with tempfile.TemporaryDirectory() as root:
-            mount=Path(root)/'mount'; local=LocalStore(mount/'outputs'/'store')
+            mount=Path(root)/'mount'; local=LocalStore(mount/ATTEMPT/'outputs'/'store')
             key=local.put(b'original'); local.path(key).write_bytes(b'corrupted')
             destination=LocalStore(Path(root)/'r2')
             prepared=module.prepare(ledger(),ATTEMPT)
@@ -86,6 +297,29 @@ class CloudTests(unittest.TestCase):
             self.assertEqual(durable['objects'],{})
             self.assertFalse(destination.path(key).exists())
             self.assertEqual(receipt['source_record_sha256'],digest(canonical(record)))
+
+    def test_recovery_before_gpu_mount_needs_no_volume_writes(self):
+        for workload in ('mechanism','official_recording_full'):
+            with self.subTest(workload=workload),tempfile.TemporaryDirectory() as root:
+                mount=Path(root)/'mount';mount.mkdir()
+                value=ledger()
+                if workload=='official_recording_full':value['cumulative_cap']='70.82'
+                prepared=module.prepare(value,ATTEMPT,workload)
+                destination=LocalStore(Path(root)/'r2')
+                functions=module.create_functions(SimpleNamespace(__version__='1.6.1',App=App),
+                    prepared,object(),Volume([]),lambda role:destination,[])
+                options=functions.app.definitions['publish']['volumes'][module.MOUNT].options
+                self.assertEqual(options['read_only'],workload!='official_recording_full');self.assertNotIn('sub_path',options)
+                record={'recovery':True,'status':'failed','objects':{},'plan_sha256':prepared['cloud_plan_sha256']}
+                native=LocalStore.__init__
+                def reject_volume_writes(store,path):
+                    if Path(path).is_relative_to(mount):raise PermissionError('readonly Volume')
+                    native(store,path)
+                with patch.object(module,'MOUNT',str(mount)),patch.object(module,'_container',return_value='ta-publisher'),patch.object(LocalStore,'__init__',reject_volume_writes):
+                    receipt=functions.publish(record)
+                result=json.loads(destination.get(receipt['report_key']))
+                self.assertEqual(result['status'],'failed');self.assertEqual(list(mount.iterdir()),[])
+                if workload=='official_recording_full':self.assertEqual(result['object_count'],1)
 
     def test_publication_failure_and_cpu_gate_failure_always_cleanup(self):
         prepared=module.prepare(ledger(),ATTEMPT)
@@ -111,6 +345,33 @@ class CloudTests(unittest.TestCase):
                 else: self.assertTrue(call()['durable_report_verified'])
                 self.assertEqual(events[-1],'cleanup')
                 if failure=='gate': self.assertNotIn('evaluate',events)
+
+    def test_compact_receipt_binds_publication_to_committed_record_hash(self):
+        prepared=module.prepare(ledger(),ATTEMPT)
+        functions=SimpleNamespace(gate='gate',evaluate='evaluate',publish='publish')
+        committed={'status':'passed','objects':{},'result':{'status':'recording_acceptance'}}
+        receipt={'container_id':'ta-gpu','plan_sha256':prepared['cloud_plan_sha256'],
+            'attempt_id':ATTEMPT,'status':'passed','record_sha256':digest(canonical(committed))}
+        for corrupt in (False,True):
+            with self.subTest(corrupt=corrupt),tempfile.TemporaryDirectory() as root:
+                events=[]
+                def invoke(function,args,bound):
+                    events.append(function)
+                    if function=='gate':return {'container_id':'ta-cpu','status':'passed','plan_sha256':prepared['cloud_plan_sha256']}
+                    if function=='evaluate':return receipt
+                    self.assertEqual(args,(receipt,))
+                    return {'container_id':'ta-pub','plan_sha256':prepared['cloud_plan_sha256'],
+                        'published_status':'passed','source_record_sha256':digest(canonical(receipt)),
+                        'report_key':'0'*64 if corrupt else receipt['record_sha256']}
+                def cleanup():
+                    events.append('cleanup')
+                    return {'app_stopped':True,'volume_deleted':True,'active_containers':0,'active_sandboxes':0}
+                def execute():return module.execute_phases(functions,prepared,Path(root),admission=lambda:None,
+                    invoke=invoke,stopped=lambda _:True,cleanup=cleanup)
+                if corrupt:
+                    with self.assertRaisesRegex(ValueError,'Publication receipt'):execute()
+                else:self.assertEqual(execute()['status'],'passed')
+                self.assertEqual(events,['gate','evaluate','publish','cleanup'])
 
     def test_cleanup_failure_cannot_be_reported_as_pass(self):
         prepared=module.prepare(ledger(),ATTEMPT)

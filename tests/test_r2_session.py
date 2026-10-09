@@ -3,6 +3,9 @@ import hashlib
 import hmac
 import io
 import json
+from pathlib import Path
+import tempfile
+import tracemalloc
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -41,6 +44,66 @@ class FakeClient:
 
 
 class SessionsTest(unittest.TestCase):
+    def test_real_sdk_multipart_serialization_matches_guard_offline(self):
+        try:
+            import boto3
+            from botocore.config import Config
+        except ImportError:
+            self.skipTest('Existing optional R2 SDK unavailable; run in controller environment')
+        prefix='chords/mechanism/mechanism-abcdef0123456789'
+        scope=SessionScope('mechanism_archive','coppertop',prefix)
+        # Explicit fixture credentials prevent SDK credential discovery; only
+        # request serialization runs, never client API dispatch/network.
+        sdk=boto3.client('s3',endpoint_url=ENDPOINT,region_name='auto',
+            aws_access_key_id='fixture',aws_secret_access_key='fixture',
+            config=Config(s3={'addressing_style':'path'}))
+        client=BoundedClient(sdk,scope,ENDPOINT,1000,lambda:1)
+        base={'Bucket':scope.bucket,'Key':prefix+'/objects/aa/'+'a'*64}
+        operations={'CreateMultipartUpload':{},'UploadPart':{'UploadId':'opaque+/=','PartNumber':1,'Body':b'x'},
+            'ListParts':{'UploadId':'opaque+/=','PartNumberMarker':0},
+            'CompleteMultipartUpload':{'UploadId':'opaque+/=','MultipartUpload':{'Parts':[{'PartNumber':1,'ETag':'opaque'}]}},
+            'AbortMultipartUpload':{'UploadId':'opaque+/='}}
+        for operation,parameters in operations.items():
+            model=sdk.meta.service_model.operation_model(operation)
+            request=sdk._convert_to_request_dict(dict(base,**parameters),model,ENDPOINT)
+            client.destination_guard(SimpleNamespace(url=request['url'],method=request['method']))
+        from botocore.awsrequest import AWSResponse
+        class Raw:
+            def stream(self,**unused):return iter(())
+        dispatched=[]
+        def send(request):
+            total=0
+            while chunk:=request.body.read(64*1024):total+=len(chunk)
+            dispatched.append(total)
+            return AWSResponse(request.url,200,{'content-length':'0'},Raw())
+        with tempfile.TemporaryDirectory() as root:
+            path=Path(root)/'seekable-archive'
+            with path.open('wb') as stream:stream.truncate(156098560)
+            with path.open('rb') as body,patch.object(sdk._endpoint.http_session,'send',side_effect=send):
+                tracemalloc.start()
+                try:
+                    result=client.put_object(**base,Body=body,ContentLength=path.stat().st_size,IfNoneMatch='*')
+                    peak=tracemalloc.get_traced_memory()[1]
+                finally:tracemalloc.stop()
+            self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'],200)
+            self.assertEqual(len(dispatched),1);self.assertGreaterEqual(dispatched[0],156098560)
+            self.assertLess(peak,16*1024**2)
+            print({'offline_native_sdk_streamed_put':{'file_bytes':156098560,'python_peak_bytes':peak,
+                                                       'mock_transport_calls':len(dispatched)}})
+
+    def test_full_recording_scope_keeps_exact_prefix_and_existing_actions(self):
+        from coppertop.r2_session import LIMITS
+        scope=SessionScope('mechanism_full','coppertop','chords/mechanism/mechanism-'+'a'*16)
+        self.assertEqual(scope.actions,('GetObject','HeadObject','PutObject'))
+        self.assertEqual(LIMITS[scope.role],(30000,1024**3))
+        with self.assertRaises(ValueError):SessionScope('mechanism_full','coppertop','chords')
+        client=FakeClient();bounded=BoundedClient(client,scope,ENDPOINT,expires_at=1000,clock=lambda:100)
+        key=scope.prefix+'/objects/ab/'+SHA
+        bounded.put_object(Bucket='coppertop',Key=key,Body=b'abc',IfNoneMatch='*')
+        self.assertEqual(client.calls[-1]['StorageClass'],'STANDARD')
+        with self.assertRaises(ValueError):
+            bounded.put_object(Bucket='coppertop',Key='chords/objects/ab/'+SHA,Body=b'abc',IfNoneMatch='*')
+
     def test_official_jwt_derivation_and_redaction(self):
         creds = mint('parent-id', 'dummy-secret', endpoint=ENDPOINT, scope=SOURCE, now=100)
         jwt = base64.b64decode(creds.session_token).decode()[4:]
@@ -151,7 +214,8 @@ class SessionsTest(unittest.TestCase):
             client.get_object(Bucket='other', Key=PATH)
         with self.assertRaises(ValueError):
             client.put_object(Bucket='coppertop', Key=PATH, Body=b'x', IfNoneMatch='*')
-        self.assertFalse(hasattr(client, 'create_multipart_upload'))
+        with self.assertRaisesRegex(ValueError,'outside approved role'):
+            client.create_multipart_upload(Bucket=SOURCE.bucket,Key=SOURCE.object_paths[0])
 
     def test_read_byte_reservation_and_bounded_body(self):
         fake = FakeClient()

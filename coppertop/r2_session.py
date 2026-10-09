@@ -8,17 +8,24 @@ import base64
 import hashlib
 import hmac
 import json
+import io
 import os
 import re
+import stat
 import time
+from threading import RLock
 from dataclasses import dataclass, field
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlsplit, parse_qs
 
-from .s3 import S3Store
+from .s3 import S3Store,STREAMED_PUT_BYTES
 
 LIMITS = {'source': (128, 3 * 1024**3), 'checkpoint': (512, 3 * 1024**3),
-          'report': (8, 65536), 'mechanism': (256, 24*1024**2)}
+          'report': (8, 65536), 'mechanism': (256, 24*1024**2), 'mechanism_full': (30000, 1024**3),
+          'mechanism_archive': (256, 1024**3+32*1024**2)}
 READ_ACTIONS = ('GetObject', 'HeadObject')
+WRITE_ROLES = ('report', 'mechanism', 'mechanism_full', 'mechanism_archive')
+MULTIPART_ACTIONS = ('CreateMultipartUpload', 'UploadPart', 'ListParts',
+                     'CompleteMultipartUpload', 'AbortMultipartUpload')
 ENV_NAMES = ('COPPERTOP_R2_ACCESS_KEY_ID', 'COPPERTOP_R2_SECRET_ACCESS_KEY',
              'COPPERTOP_R2_SESSION_TOKEN')
 
@@ -51,8 +58,8 @@ class SessionScope:
             raise ValueError('Explicit role and bucket required')
         _path(self.prefix)
         object.__setattr__(self, 'object_paths', tuple(self.object_paths))
-        if self.role in ('report', 'mechanism'):
-            pattern = (r'chords/mechanism/mechanism-[0-9a-f]{16}' if self.role == 'mechanism' else
+        if self.role in WRITE_ROLES:
+            pattern = (r'chords/mechanism/mechanism-[0-9a-f]{16}' if self.role != 'report' else
                 r'chords/gpu-reload/(?:reload-[0-9a-f]{16}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})')
             if self.object_paths or not re.fullmatch(pattern, self.prefix):
                 raise ValueError('Report requires one dedicated reload prefix')
@@ -70,16 +77,16 @@ class SessionScope:
 
     @property
     def actions(self):
-        return READ_ACTIONS + (('PutObject',) if self.role in ('report', 'mechanism') else ())
+        return READ_ACTIONS + (('PutObject',) if self.role in WRITE_ROLES else ()) + (MULTIPART_ACTIONS if self.role == 'mechanism_archive' else ())
 
     @property
     def paths(self):
         return {'objectPaths': list(self.object_paths),
-                'prefixPaths': [self.prefix + '/objects/'] if self.role in ('report', 'mechanism') else []}
+                'prefixPaths': [self.prefix + '/objects/'] if self.role in WRITE_ROLES else []}
 
     def allows(self, key):
         _path(key)
-        if self.role not in ('report', 'mechanism'):
+        if self.role not in WRITE_ROLES:
             return key in self.object_paths
         suffix = key.removeprefix(self.prefix + '/objects/')
         return (key == self.prefix + '/objects/' + suffix
@@ -181,6 +188,7 @@ class BoundedClient:
         self.client, self.scope, self.endpoint = client, scope, endpoint
         self.expires_at, self.clock = expires_at, clock
         self.requests = self.read_bytes = self.write_bytes = 0
+        self._budget_lock = RLock()
         client.meta.events.register('before-send.s3', self.destination_guard)
 
     def live(self):
@@ -191,9 +199,21 @@ class BoundedClient:
         host, _ = _endpoint(self.endpoint)
         url = urlsplit(request.url)
         key = unquote(url.path).removeprefix('/' + self.scope.bucket + '/')
-        if (url.scheme != 'https' or url.netloc != host or url.query or url.fragment
+        multipart = False
+        if self.scope.role == 'mechanism_archive' and url.query:
+            pairs = parse_qs(url.query, keep_blank_values=True)
+            if all(len(values)==1 for values in pairs.values()):
+                fields = set(pairs)
+                multipart = (request.method == 'POST' and pairs == {'uploads':['']}) or (
+                    'uploadId' in fields and 0 < len(pairs['uploadId'][0]) <= 2048 and (
+                    (request.method in ('POST','DELETE') and fields == {'uploadId'}) or
+                    (request.method == 'PUT' and fields == {'uploadId','partNumber'} and
+                        pairs['partNumber'][0].isdigit() and 1<=int(pairs['partNumber'][0])<=10000) or
+                    (request.method == 'GET' and fields <= {'uploadId','part-number-marker','max-parts'} and
+                        all(pairs[field][0].isdigit() and 0<=int(pairs[field][0])<=10000 for field in fields-{'uploadId'}))))
+        if (url.scheme != 'https' or url.netloc != host or (url.query and not multipart) or url.fragment
                 or url.path == '/' + self.scope.bucket + '/' or not self.scope.allows(key)
-                or request.method not in (('GET', 'HEAD', 'PUT') if self.scope.role in ('report', 'mechanism') else ('GET', 'HEAD'))):
+                or (not multipart and request.method not in (('GET', 'HEAD', 'PUT') if self.scope.role in WRITE_ROLES else ('GET', 'HEAD')))):
             raise ValueError('Unexpected R2 destination or operation')
         self.live()
 
@@ -202,10 +222,14 @@ class BoundedClient:
         if (action not in self.scope.actions or kwargs.get('Bucket') != self.scope.bucket
                 or not self.scope.allows(kwargs.get('Key'))):
             raise ValueError('R2 operation outside approved role')
-        if self.requests >= LIMITS[self.scope.role][0]:
-            raise ValueError('R2 request cap exhausted')
-        self.requests += 1
-        return getattr(self.client, {'GetObject': 'get_object', 'HeadObject': 'head_object', 'PutObject': 'put_object'}[action])(**kwargs)
+        with self._budget_lock:
+            if self.requests >= LIMITS[self.scope.role][0]:
+                raise ValueError('R2 request cap exhausted')
+            self.requests += 1
+        methods = {'GetObject':'get_object','HeadObject':'head_object','PutObject':'put_object',
+            'CreateMultipartUpload':'create_multipart_upload','UploadPart':'upload_part','ListParts':'list_parts',
+            'CompleteMultipartUpload':'complete_multipart_upload','AbortMultipartUpload':'abort_multipart_upload'}
+        return getattr(self.client, methods[action])(**kwargs)
 
     def head_object(self, **kwargs):
         return self._call('HeadObject', kwargs)
@@ -213,21 +237,63 @@ class BoundedClient:
     def get_object(self, **kwargs):
         response = self._call('GetObject', kwargs)
         size = response.get('ContentLength')
-        if type(size) is not int or size < 0 or self.read_bytes + size > LIMITS[self.scope.role][1]:
-            response['Body'].close()
-            raise ValueError('R2 response byte cap exhausted')
-        self.read_bytes += size  # Reserve entire body, including interrupted reads.
+        with self._budget_lock:
+            if type(size) is not int or size < 0 or self.read_bytes + size > LIMITS[self.scope.role][1]:
+                response['Body'].close()
+                raise ValueError('R2 response byte cap exhausted')
+            self.read_bytes += size  # Reserve entire body, including interrupted reads.
         response['Body'] = _Body(response['Body'], self, size)
         return response
 
     def put_object(self, **kwargs):
         body = kwargs.get('Body')
-        if type(body) is not bytes or self.write_bytes + len(body) > LIMITS[self.scope.role][1] or kwargs.get('IfNoneMatch') != '*':
+        if kwargs.get('IfNoneMatch') != '*':
             raise ValueError('Only bounded immutable report bytes can be written')
-        self.write_bytes += len(body)  # Reserve before attempt, including failed PUT.
-        if self.scope.role == 'mechanism':
+        if self.scope.role=='mechanism_archive' and isinstance(body,io.BufferedReader):
+            size=kwargs.get('ContentLength')
+            if (type(size) is not int or not 0<size<=STREAMED_PUT_BYTES or not body.seekable()
+                or body.tell()!=0 or not stat.S_ISREG(os.fstat(body.fileno()).st_mode)
+                or os.fstat(body.fileno()).st_size!=size):
+                raise ValueError('Exact bounded ordinary archive file required')
+            self._reserve_write(size)
+            return self._call('PutObject',dict(kwargs,StorageClass='STANDARD'))
+        if type(body) is not bytes:raise ValueError('Only bounded immutable report bytes can be written')
+        if self.scope.role=='mechanism_full' and len(body)>64*1024**2:
+            raise ValueError('Full recording single PUT exceeds buffer bound')
+        if self.scope.role=='mechanism_archive' and len(body)>65536:
+            raise ValueError('Archive single PUT is reserved for a bounded completion receipt')
+        self._reserve_write(len(body))
+        if self.scope.role in ('mechanism','mechanism_full','mechanism_archive'):
             kwargs = dict(kwargs, StorageClass='STANDARD')
         return self._call('PutObject', kwargs)
+
+    def _reserve_write(self, size):
+        with self._budget_lock:
+            if self.write_bytes+size > LIMITS[self.scope.role][1]:
+                raise ValueError('R2 write byte cap exhausted')
+            self.write_bytes += size
+
+    def create_multipart_upload(self, **kwargs):
+        return self._call('CreateMultipartUpload', dict(kwargs, StorageClass='STANDARD'))
+
+    def upload_part(self, **kwargs):
+        body, number = kwargs.get('Body'), kwargs.get('PartNumber')
+        if type(body) is not bytes or not 0<len(body)<=16*1024**2 or type(number) is not int or not 1<=number<=10000:
+            raise ValueError('Archive multipart part exceeds bound')
+        self._reserve_write(len(body))
+        return self._call('UploadPart', kwargs)
+
+    def list_parts(self, **kwargs):
+        return self._call('ListParts', kwargs)
+
+    def complete_multipart_upload(self, **kwargs):
+        parts = kwargs.get('MultipartUpload',{}).get('Parts',[])
+        if not 1<=len(parts)<=66 or [p.get('PartNumber') for p in parts] != list(range(1,len(parts)+1)):
+            raise ValueError('Archive completion part list outside bound')
+        return self._call('CompleteMultipartUpload', kwargs)
+
+    def abort_multipart_upload(self, **kwargs):
+        return self._call('AbortMultipartUpload', kwargs)
 
 
 @dataclass(frozen=True)

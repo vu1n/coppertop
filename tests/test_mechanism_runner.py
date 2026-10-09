@@ -1,6 +1,7 @@
 """Deterministic fake integration; official simulator and CUDA are not executed."""
 import json
 from collections import deque
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import threading
@@ -23,7 +24,7 @@ class FakeEnv(LatentEnv):
     def __init__(self, on_step=lambda index: None):
         super().__init__()
         self.on_step = on_step
-        self.control_ns = 5_000_000
+        self.control_ns = 20_000_000
         self.coverage = {'complete_state_certified': False, 'fixture': True}
         self.entry = SimpleNamespace(CAMERA_KEYS=('camera',),
             observation_to_state=lambda obs: obs['state'])
@@ -67,6 +68,35 @@ class FakePolicy:
 
 
 class RunnerTests(unittest.TestCase):
+    def test_collector_accepts_final_stop_but_rejects_premature_stop(self):
+        for flag in ('terminated','truncated'):
+            for end_step in (15,16):
+                with self.subTest(flag=flag,end_step=end_step):
+                    release, instances = threading.Event(), []
+                    class EndingEnv(FakeEnv):
+                        def step(self, action):
+                            frame=super().step(action)
+                            return replace(frame,**{flag:self.index==end_step})
+                    def factory():
+                        release.clear()
+                        env=EndingEnv(lambda index: release.set() if index>=6 else None)
+                        env.control_ns=20_000_000
+                        instances.append(env)
+                        return env
+                    policy=FakePolicy(release)
+                    if end_step==15:
+                        with self.assertRaisesRegex(ValueError,'Baseline ended before required'):
+                            experiment(factory,policy)
+                        self.assertEqual(len(policy.calls),1)
+                    else:
+                        result,_,tape,_,branch_tape=experiment(factory,policy)
+                        self.assertEqual(result['query_calls'],5)
+                        self.assertEqual(result['parity']['status'],'bounded_parity')
+                        self.assertEqual(len(tape.actions),16)
+                        self.assertTrue(getattr(tape.frames[-1],flag))
+                        self.assertTrue(getattr(branch_tape.frames[-1],flag))
+                    self.assertTrue(all(env.closed for env in instances))
+
     def test_adapter_forwards_native_order_updates_history_and_detaches_inputs(self):
         seen = []
         def convert(action):
