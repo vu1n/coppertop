@@ -310,7 +310,7 @@
       "skipped": 0,
       "seconds": 54.3,
       "status": "passed",
-      "command": "Same full local command recorded in local_validation, with installed controller SDKs and acquired official source; unrestricted only for loopback listener",
+      "command": "Same full local command recorded in full_suite, with installed controller SDKs and acquired official source; unrestricted only for loopback listener",
       "source_spool_tests": 7,
       "scope": "Tiny real tar/file/native subprocess adapter controls plus injected Modal creation; checksum/lost-ack/part-command limits/timeout/disk/restore checks; no provider allocation"
     }
