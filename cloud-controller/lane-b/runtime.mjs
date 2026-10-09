@@ -55,7 +55,7 @@ const make = async () => {
     return JSON.parse(body)
   }
   const observe = async () => (await provider.dispatchFetch("http://provider/observe")).json()
-  const count = async (id, event) => (await observe()).find(row => row.kind === "observer" && row.id === `${id}-${event}`)?.value ?? 0
+  const count = async (id, event) => (await observe()).find(row => row.kind === "observer" && row.subjectId === id && row.event === event)?.value ?? 0
   const waitObserver = async (id, event, expected = 1, timeout = 5000) => {
     const stop = Date.now() + timeout
     while (Date.now() < stop) {
