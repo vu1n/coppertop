@@ -29,6 +29,10 @@ if [[ ${1:-} == --strict ]]; then export COPPERTOP_STRICT_GATES=1; shift; fi
 if [[ ${1:-} == --raw-native ]]; then
   shift
   node --test --test-concurrency=1 "$@" "$destination/raw-native.test.mjs"
+elif [[ ${COPPERTOP_STRICT_GATES:-0} == 1 ]]; then
+  # Raw emulator probes are negative characterizations. Exclude their empty
+  # filtered module from the strict engine regression count.
+  node --test --test-concurrency=1 "$@" "$destination/runtime.mjs"
 else
   node --test --test-concurrency=1 "$@" "$destination/runtime.mjs" "$destination/raw-native.test.mjs"
 fi
