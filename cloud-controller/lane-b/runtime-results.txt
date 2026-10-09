@@ -1,0 +1,53 @@
+{"runtimeProvenance":{"testedCommit":"1791e8667ebcc639533b3cb9d6c3b20a9f2cbd21","inputTree":"1af7d92e454a2a29bc951cc7fc1870865a0dc04c","dirtyInputs":"","inputSha256":{"cloud-controller/lane-b/worker.ts":"9ec1b3623ef7597b1f0191f4e34db22ed5c54d0b606b5f621f45683f4f81db03","cloud-controller/lane-b/runtime.mjs":"b165996a5291f383050181df31d57bea228f90d753f8550d1a3542bdc1f292ec","cloud-controller/lane-b/run.sh":"e425784354efd2a56dcc00d0ea4c3b7c1147be2b7948c08fc3c43698af67f71e","cloud-controller/lane-b/setup.sh":"9f9563433983ebb8762674ed9c357187d1bd32edd8b68cc8061b12665f706a0d","cloud-controller/shared/contracts.ts":"cfb3110c588d2b5f49b87166e28100ca21c3c7472293526a847c1ec0af8f4196","cloud-controller/shared/domain.ts":"d50c717670305c2af03d00908eb81e9b822613eae3182206ec3cc469a91b1c7f","cloud-controller/shared/provider-worker.ts":"a45adaf2904e5a4283b947de933273d9de03eb0cce0ebe2871bf790ec26293a5","cloud-controller/shared/evidence.ts":"1691b08688d11cfbab1ab17b78e5d5618fb09cb713e6c46cde1599350453e78a",".local/upstream/effect/pnpm-lock.yaml":"ed4ea016659d410523c543cd2fd90f9ccb78e4745204c92788c3fe2291f9e445",".local/upstream/effect/patches/@changesets__get-github-info@1.0.1.patch":"4b2756eb490a2ad802075423f6b08a5f50f12307ec25e117b20a79e12236b625",".local/upstream/effect/packages/platform/cloudflare/package.json":"05445128b6792abe5d66a6624bd6bd0ebea63264d8441fe06b315cbe4975af52",".local/upstream/effect/node_modules/.pnpm/miniflare@4.20260730.0/node_modules/miniflare/package.json":"f0025bdc4b9b70199ea393572c23ca35ea58efa3d81b270f19f5e8c8d27771f4",".local/upstream/effect/node_modules/.pnpm/miniflare@4.20260730.0/node_modules/miniflare/dist/src/workers/workflows/binding.worker.js":"cade2571408410ecec7d528284c73a5b2de1a1b48f8d229a87c16732ee5697aa",".local/upstream/effect/node_modules/.pnpm/workerd@1.20260730.1/node_modules/workerd/package.json":"5edae90469333c86e194a75358e80dbe5b1d3c259860794850e53ce8f240f762"},"command":"bash cloud-controller/lane-b/run.sh --strict --test-name-pattern=REGRESSION","installCommand":"local retained pinned modules after earlier failed frozen pnpm install; no successful local cold install","node":"v24.19.0","platform":"linux","architecture":"x64"},"upstreamCommit":"aa48e3fac02d43bf7825d7005968586d26a79ae3","mode":"strict acceptance"}
+{"workerBytes":1633472,"workerGzipBytes":341463,"workerSha256":"c7d73dc275d98f2079f0874f2f23b28c9b44f9c7bf87d5644f1bfd86d1981aae","upgradeChangesModuleBytes":true}
+{"regression":"initial","observationMillis":2500,"observerEntries":1,"initialActivityRows":0,"initialDeferredRows":0,"initialClockRows":0,"initialAlarm":null}
+{"engineGate":"initial-activity-autonomous-recovery","passed":false}
+✖ REGRESSION: initial Activity autonomous recovery without target contact (6019.945962ms)
+[13:03:53.226] ERROR (#35): Workflow parent resume failed Error: Cause([Die(Error: synthetic child-to-parent wake lost)])
+{"regression":"child-parent","observationMillis":2500,"observerParentCompletions":0,"droppedWakeAttempts":6,"parentAlarm":null,"parentResumePending":0,"childResult":"Complete","parentResult":"Suspended"}
+{"engineGate":"child-parent-wake-autonomous-recovery","passed":false}
+✖ REGRESSION: exhausted child-to-parent wake retries survive isolate loss (12455.705837ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19350.486085
+
+✖ failing tests:
+
+test at packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:133:1
+✖ REGRESSION: initial Activity autonomous recovery without target contact (6019.945962ms)
+  AssertionError [ERR_ASSERTION]: initial-activity-autonomous-recovery
+      at gate (file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:119:58)
+      at file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:146:3
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:115:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:182:1
+✖ REGRESSION: exhausted child-to-parent wake retries survive isolate loss (12455.705837ms)
+  AssertionError [ERR_ASSERTION]: child-parent-wake-autonomous-recovery
+      at gate (file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:119:58)
+      at file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:201:3
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///workspace/coppertop/.local/upstream/effect/packages/platform/cloudflare/test/integration/coppertop/runtime.mjs:115:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

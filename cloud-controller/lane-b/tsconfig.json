@@ -1,0 +1,23 @@
+{
+  "extends": "../../../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declarationMap": false,
+    "rootDir": "../../../../../../",
+    "lib": ["ESNext", "ESNext.Disposable"],
+    "noEmit": true,
+    "rewriteRelativeImportExtensions": true,
+    "types": ["@cloudflare/workers-types", "node"],
+    "paths": {
+      "@effect/platform-cloudflare/*": ["../../../src/*"],
+      "@coppertop/domain": ["./shared/domain.ts"],
+      "@coppertop/contracts": ["./shared/contracts.ts"]
+    },
+    "ignoreDeprecations": "6.0"
+  },
+  "references": [
+    { "path": "../../../tsconfig.json" },
+    { "path": "../../../../../effect/tsconfig.json" }
+  ],
+  "include": ["worker.ts", "shared/*.ts"]
+}

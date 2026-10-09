@@ -1,0 +1,34 @@
+
+> test
+> node --test domain.test.ts provider.test.ts
+
+{"sharedProvenance":{"testedCommit":"1791e8667ebcc639533b3cb9d6c3b20a9f2cbd21","inputTree":"1af7d92e454a2a29bc951cc7fc1870865a0dc04c","dirtyInputs":"","inputSha256":{"cloud-controller/shared/contracts.ts":"cfb3110c588d2b5f49b87166e28100ca21c3c7472293526a847c1ec0af8f4196","cloud-controller/shared/domain.ts":"d50c717670305c2af03d00908eb81e9b822613eae3182206ec3cc469a91b1c7f","cloud-controller/shared/domain.test.ts":"85afced7bf80ec1794f9609099420bf6f2b07932f02941db24b7d4fbb8f3ab16","cloud-controller/shared/provider-worker.ts":"a45adaf2904e5a4283b947de933273d9de03eb0cce0ebe2871bf790ec26293a5","cloud-controller/shared/provider.test.ts":"5315f9be15065943902e3ed308c339609728442f81b91d6feea430bd8a59912a","cloud-controller/shared/evidence.ts":"1691b08688d11cfbab1ab17b78e5d5618fb09cb713e6c46cde1599350453e78a","cloud-controller/shared/package.json":"144a04e2957cf3d518fb9766bdd072e2e4144eafcb0ae2dd5fc1b0452bf242d3","cloud-controller/shared/package-lock.json":"e95bd3b79217e1d8f9eed22b50d8c6fba6e934ddd9111e6a59e96daa24e446ff"},"command":"npm test (cloud-controller/shared)","installCommand":"npm ci --ignore-scripts --cache ../../.local/npm-cache","node":"v24.19.0","platform":"linux","architecture":"x64"}}
+✔ idempotency consumes grant and reservation once and rejects changed spec (2.460786ms)
+✔ budget and concurrency preserve last-slot admission (4.546788ms)
+✔ dispatch and body grants are never returned twice after ambiguous reply (0.685466ms)
+✔ cancellation fences dispatch, body and stale artifact publication (3.517329ms)
+✔ unknown calls retain liability; closure requires generation and every call stopped (1.201767ms)
+✔ callback identity conflicts and restored epochs fail closed (0.761043ms)
+✔ invalid specs, safe-integer money and expired/revoked grants cannot admit (0.710489ms)
+✔ opaque IDs survive JSON persistence even when matching object property names (1.467254ms)
+✔ compound outbox identity cannot collide across valid hyphenated IDs (0.918477ms)
+✔ cleanup retires launch and execution permissions even without a terminal report (0.35701ms)
+✔ quarantine denies new work while permitting recorded containment and accounting (0.390387ms)
+✔ artifact publication binds claimant/spec and preserves scientific gate separately (0.570461ms)
+✔ operational histories preserve money, immutable specs, and one-shot permissions (108.227369ms)
+✔ deadline expiry requests cleanup, retains liability, and preserves prior cancellation (0.45985ms)
+✔ contradictory cleanup after settlement cannot admit spending around a late call (0.368504ms)
+✔ independent provider persists an ambiguous spawn through a workerd restart (6384.409123ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8832.506639
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
