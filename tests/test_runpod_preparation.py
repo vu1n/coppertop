@@ -85,7 +85,25 @@ class RP(DiskS3):
     def delete_object(self,**kwargs):self.object(kwargs['Key']).unlink(missing_ok=True)
 
 
-class BundleTest(unittest.TestCase):
+class CapacityFixture(unittest.TestCase):
+    def setUp(self):
+        # Tiny real tar fixtures need no production-size disk reservation. Test
+        # the capacity admission separately; never relax the runtime guard for CI.
+        capacity=patch('coppertop.runpod_bundle.shutil.disk_usage',
+            return_value=SimpleNamespace(free=64*b.GIB))
+        capacity.start();self.addCleanup(capacity.stop)
+
+
+class BundleTest(CapacityFixture):
+    def test_insufficient_source_scratch_blocks_without_complete_export(self):
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root);src=source(root/'source');original=(src/'work/model/model.bin').read_bytes()
+            with patch('coppertop.runpod_bundle.shutil.disk_usage',return_value=SimpleNamespace(free=52*b.GIB-1)):
+                with self.assertRaisesRegex(ValueError,'needs52GiB'):
+                    b.export(src,root/'bundle')
+            self.assertEqual((src/'work/model/model.bin').read_bytes(),original)
+            self.assertFalse((root/'bundle/bundle.json').exists());self.assertFalse(list((root/'bundle').iterdir()))
+
     def test_real_split_roundtrip_modes_absolute_links_and_no_volume_extraction(self):
         with tempfile.TemporaryDirectory() as root:
             root=Path(root);src=source(root/'source');(src/'work/model/model.bin').chmod(0o640)
@@ -156,7 +174,7 @@ class BundleTest(unittest.TestCase):
                 self.assertFalse((root/'escaped').exists());self.assertFalse((root/'restore/.restore-complete.json').exists())
 
 
-class RelayTest(unittest.TestCase):
+class RelayTest(CapacityFixture):
     def fixture(self,root,large=False):
         src=source(root/'source')
         if large:
@@ -265,7 +283,7 @@ class RelayTest(unittest.TestCase):
             with self.subTest(mutation=mutation),self.assertRaises(ValueError):feasibility(value,bytes_each=50*b.GIB,seconds_left=7200)
 
 
-class PackageAndBootstrapTest(unittest.TestCase):
+class PackageAndBootstrapTest(CapacityFixture):
     def packages(self,directory):
         directory.mkdir();data=b'fake deb bytes';(directory/'opengl.deb').write_bytes(data)
         seed=read_json(Path(boot.__file__).resolve().parents[1]/'containers/runpod-seed-inventory.json',65536)
