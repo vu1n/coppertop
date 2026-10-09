@@ -1,5 +1,8 @@
 # Coppertop
 
+RunPod's local full-rollout controller, portable runtime export recipe, evidence
+handoff and remaining approval/validation gates are in [RunPod execution](docs/runpod-execution.md).
+
 `from coppertop import chords`
 
 Chords is the composable robotics data layer: one native record, many reproducible model views. This first milestone imports one already acquired NVIDIA human demonstration into a local immutable object store and exports LeRobot v2.1 for the official `lerobot==0.3.3` loader. No cloud infrastructure is provisioned.

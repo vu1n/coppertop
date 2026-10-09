@@ -1,4 +1,4 @@
-"""Runpod network-volume staging from an external CPU worker, never a Mac relay.
+"""Runpod network-volume staging from an approved external CPU worker or Mac relay.
 
 Injected S3 clients require separately approved authentication. No Pod allocation or
 credential discovery occurs here; the account integration remains unverified.

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "provider": "R2",
+  "status": "passed",
+  "source_thread": "01a118bb-2901-70c2-ba85-455718f0902e",
+  "shared_commit": "55b324807dc3c86428ed44c34eb892c686b79acc",
+  "confirmation": "Direct human-provided main-task evidence on2026-10-08; no validation repeated here",
+  "archive_bytes": 156098560,
+  "upload_seconds": 37.1,
+  "readback_seconds": 202.0,
+  "total_seconds": 255.4,
+  "full_SHA256_readback": true,
+  "receipt_verified": true,
+  "test_objects_and_prior_exact_upload_absent": true,
+  "local_source_preserved": true,
+  "Modal_runtime_verified": false,
+  "RunPod_runtime_verified": false,
+  "file_sha256": {
+    "coppertop/record_archive.py": "4cae9e39a7b8ee6e610f1ac13058b07b2d27cd845f6a14c4e8bb459c47b9de71",
+    "coppertop/s3.py": "7524200358a58c6e69e75442ed5f68b81df11553e5581775d4136f6870021268",
+    "coppertop/r2_session.py": "7d5fbe467931d29527a8f5af9e41f41391de8661dfa2daf6e7c0eac24474b12a",
+    "coppertop/publication_trace.py": "e9a3ea237a617f96f4da490fddf032aecae243ee5569854c426fe55081a9710b"
+  }
+}
