@@ -74,7 +74,7 @@ const builds = Promise.all([
   }),
   laneBuild(2),
 ]);
-async function fixture(firstCancelUnavailable = false) {
+async function fixture(firstCancelUnavailable = false, spawnAtFence = false) {
   const dir = await mkdtemp(join(tmpdir(), "coppertop-native-"));
   const [laneBundle, providerBundle, upgradedBundle] = await builds;
   const providerOptions = {
@@ -97,9 +97,14 @@ async function fixture(firstCancelUnavailable = false) {
   let address = (await provider.ready).host;
   let proxy: Server | undefined;
   let injectedCancels = 0;
-  if (firstCancelUnavailable) {
+  let injectedSpawns = 0;
+  if (firstCancelUnavailable || spawnAtFence) {
     proxy = createServer(async (request, response) => {
-      if (request.url === "/cancel" && injectedCancels++ === 0) {
+      if (
+        firstCancelUnavailable &&
+        request.url === "/cancel" &&
+        injectedCancels++ === 0
+      ) {
         await provider.dispatchFetch("http://provider/record", {
           method: "POST",
           body: JSON.stringify({ id: "cleanup-retry", event: "cancel-outage" }),
@@ -113,6 +118,25 @@ async function fixture(firstCancelUnavailable = false) {
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
       const body = Buffer.concat(chunks);
+      if (
+        spawnAtFence &&
+        request.url === "/disable" &&
+        injectedSpawns++ === 0
+      ) {
+        const fence = JSON.parse(body.toString()) as { generation: string };
+        const late = await provider.dispatchFetch("http://provider/spawn", {
+          method: "POST",
+          body: JSON.stringify({
+            runId: "fence-race",
+            generation: fence.generation,
+          }),
+        });
+        assert.equal(late.status, 200);
+        await provider.dispatchFetch("http://provider/record", {
+          method: "POST",
+          body: JSON.stringify({ id: "fence-race", event: "late-at-fence" }),
+        });
+      }
       const upstream = await provider.dispatchFetch(
         `http://provider${request.url}`,
         { method: request.method, body: body.length ? body : undefined },
@@ -236,6 +260,21 @@ async function closed(
     await pause(100);
   }
   assert.fail(`run ${id} not closed`);
+}
+
+async function cleanupAcknowledged(
+  f: Awaited<ReturnType<typeof fixture>>,
+  runId: string,
+): Promise<Ledger> {
+  for (let i = 0; i < 50; i++) {
+    const ledger = await f.ledger();
+    const intents = Object.values(ledger.outbox).filter(
+      (c) => c.runId === runId && c.kind === "cleanup",
+    );
+    if (intents.length && intents.every((c) => c.delivered)) return ledger;
+    await pause(100);
+  }
+  assert.fail(`cleanup intent for ${runId} remains unacknowledged`);
 }
 
 test(
@@ -585,6 +624,30 @@ test(
       const call = records.find((r) => r.kind === "call")!.value as {
         id: string;
       };
+      const waitResponse = await f.post("/native-wait-start", {
+        epoch: 1,
+        runId: "suspended",
+      });
+      const wait = (await waitResponse.json()) as {
+        event: { type: string; stepName: string };
+        status: unknown;
+      };
+      assert.equal(waitResponse.status, 200, JSON.stringify(wait));
+      assert.equal(wait.event.type, "wait_started");
+      assert.equal(wait.event.stepName, "provider-terminal-0-1");
+      assert.equal(
+        (wait.status as { __LOCAL_DEV_STEP_OUTPUTS: unknown[] })
+          .__LOCAL_DEV_STEP_OUTPUTS.length,
+        4,
+      );
+      console.log(
+        JSON.stringify({
+          preRestartNativeWait: {
+            event: wait.event,
+            status: summarizeStatus(wait.status),
+          },
+        }),
+      );
       await f.stop();
       await f.providerPost("/finish", { callId: call.id });
       await f.start();
@@ -712,6 +775,7 @@ test(
         await pause(100);
       }
       assert.equal(nativeState, "terminated");
+      await cleanupAcknowledged(f, "interrupt");
       await f.post("/reconcile", { epoch: 1, runId: "interrupt" });
       assert.equal((await f.ledger()).runs.interrupt!.accounting, "settled");
       await f.restart();
@@ -878,7 +942,8 @@ test(
           (c) => c.kind === "cleanup" && !c.delivered,
         ),
       );
-      const final = await closed(f, "cleanup-retry");
+      await closed(f, "cleanup-retry");
+      const final = await cleanupAcknowledged(f, "cleanup-retry");
       assert.equal(
         (await f.observe()).find(
           (r) => r.subjectId === "cleanup-retry" && r.event === "cancel-outage",
@@ -896,6 +961,114 @@ test(
             (r.value as { state: string }).state === "cancelled",
         ).length,
         1,
+      );
+    } finally {
+      await f.cleanup();
+    }
+  },
+);
+
+test(
+  "native alarm priority: second deferred admission cannot postpone first run deadline",
+  { timeout: 30_000 },
+  async () => {
+    const f = await fixture();
+    try {
+      const first = { ...spec("early-deadline"), deadline: Date.now() + 1000 };
+      assert.equal(
+        (
+          await f.post("/submit", {
+            epoch: 1,
+            spec: first,
+            controls: { deferWorkflowMs: 60_000 },
+          })
+        ).status,
+        200,
+      );
+      assert.equal(
+        (await f.submit("deferred-second", { deferWorkflowMs: 60_000 })).status,
+        200,
+      );
+      await closed(f, "early-deadline");
+      const final = await cleanupAcknowledged(f, "early-deadline");
+      assert(
+        Object.values(final.outbox).some(
+          (c) =>
+            c.runId === "early-deadline" &&
+            c.kind === "ensure_workflow" &&
+            c.delivered,
+        ),
+      );
+      assert.equal(final.runs["early-deadline"]!.outcome, "timed_out");
+      assert.equal(final.runs["early-deadline"]!.cleanup, "confirmed");
+      assert.equal(final.runs["deferred-second"]!.phase, "accepted");
+      assert.equal(
+        (await f.observe()).filter((r) => r.kind === "call").length,
+        0,
+      );
+    } finally {
+      await f.cleanup();
+    }
+  },
+);
+
+test(
+  "native opaque ID: accepted leading hyphen survives native creation and completed history",
+  { timeout: 30_000 },
+  async () => {
+    const f = await fixture();
+    try {
+      assert.equal((await f.submit("-opaque")).status, 200);
+      await observed(f, "-opaque", "parent-complete");
+      const status = (await (
+        await f.post("/native-status", { epoch: 1, runId: "-opaque" })
+      ).json()) as { status: string; output: unknown };
+      assert.equal(status.status, "complete");
+      assert.deepEqual(status.output, { runId: "-opaque" });
+      assert.equal(
+        (await closed(f, "-opaque")).runs["-opaque"]!.accounting,
+        "settled",
+      );
+    } finally {
+      await f.cleanup();
+    }
+  },
+);
+
+test(
+  "native fenced cleanup: late launch between lookup and disable is owned and cancelled before acknowledgement",
+  { timeout: 30_000 },
+  async () => {
+    const f = await fixture(false, true);
+    try {
+      await f.submit("fence-race", { deferWorkflowMs: 60_000 });
+      await f.post("/launch", { epoch: 1, runId: "fence-race" });
+      await f.post("/cancel", {
+        epoch: 1,
+        runId: "fence-race",
+        commandId: "cancel-fence-race",
+      });
+      await f.post("/reconcile", { epoch: 1, runId: "fence-race" });
+      const ledger = await cleanupAcknowledged(f, "fence-race");
+      const run = ledger.runs["fence-race"]!;
+      assert.equal(run.callIds.length, 2);
+      assert.equal(run.cleanup, "confirmed");
+      assert.equal(run.accounting, "settled");
+      assert.equal(run.cost, 2);
+      assert.equal(run.held, 0);
+      const records = await f.observe();
+      assert.equal(
+        records.find(
+          (r) => r.subjectId === "fence-race" && r.event === "late-at-fence",
+        )?.value,
+        1,
+      );
+      const calls = records.filter((r) => r.kind === "call");
+      assert.equal(calls.length, 2);
+      assert(
+        calls.every(
+          (r) => (r.value as { state: string }).state === "cancelled",
+        ),
       );
     } finally {
       await f.cleanup();

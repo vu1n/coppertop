@@ -1,6 +1,8 @@
-Lane A known-gap characterization evidence (2026-10-09 UTC)
+Lane A final reviewed negative characterization evidence (2026-10-09 UTC)
 Command: npm run check:characterize
-Exit code: 0; 13 characterization/control scenarios passed. This does not imply either recovery acceptance gate passed.
+Process exit code: 0; KNOWN GAP CHARACTERIZATION is not acceptance.
+16 checks including one build-only bundle metric; 15 behavioral checks use actual workerd.
+Final strict and characterization suites ran concurrently with independent fixture persistence roots.
 
 
 > coppertop-native-cloud-spike@0.0.0 check:characterize
@@ -14,35 +16,40 @@ Exit code: 0; 13 characterization/control scenarios passed. This does not imply 
 > coppertop-native-cloud-spike@0.0.0 test:characterize
 > COPPERTOP_CHARACTERIZE_RUNTIME_GAPS=1 node --test --test-concurrency=1 runtime.test.ts
 
-✔ native ledger: concurrent last-slot admission, strict schemas, atomic official SQL adapter (4503.746215ms)
-{"observer":"ambiguous-parent-complete","observerWaitMs":523}
-✔ native workflow: ambiguous dispatch, lost provider wake, immutable receipt and completed replay (7535.309775ms)
-✔ native claims: duplicates cannot launch or execute twice; cancellation fences late launch (3423.364259ms)
-✔ native upgrade: unknown schema and epoch fail closed after real workerd restart (9854.759524ms)
-{"observer":"first-restart-first-start","observerWaitMs":214}
+✔ native ledger: concurrent last-slot admission, strict schemas, atomic official SQL adapter (7171.075605ms)
+{"observer":"ambiguous-parent-complete","observerWaitMs":633}
+✔ native workflow: ambiguous dispatch, lost provider wake, immutable receipt and completed replay (10688.112418ms)
+✔ native claims: duplicates cannot launch or execute twice; cancellation fences late launch (3391.387174ms)
+✔ native upgrade: unknown schema and epoch fail closed after real workerd restart (12708.271916ms)
+{"observer":"first-restart-first-start","observerWaitMs":212}
 {"diagnostic":"AFTER failed autonomous first-activity gate: native status intervention","before":[{"kind":"observer","id":"first-restart-first-start","subjectId":"first-restart","event":"first-start","value":1}],"intervention":{"status":"running","output":null,"persistedStepCount":0},"recovered":false}
-✔ KNOWN GAP CHARACTERIZATION (not acceptance): native first-activity autonomous recovery: restart without waking or polling target (40955.382022ms)
-{"observer":"suspended-body","observerWaitMs":180}
-{"diagnostic":"AFTER failed suspended gate: native status intervention","before":[{"kind":"call","id":"call-be75a0d8-af0e-4f3f-8e42-aad0ce276606","value":{"id":"call-be75a0d8-af0e-4f3f-8e42-aad0ce276606","runId":"suspended","generation":"suspended-e1-v1","state":"completed","cost":1}},{"kind":"observer","id":"suspended-body","subjectId":"suspended","event":"body","value":1},{"kind":"observer","id":"suspended-first","subjectId":"suspended","event":"first","value":1},{"kind":"observer","id":"suspended-first-start","subjectId":"suspended","event":"first-start","value":1}],"intervention":{"status":"running","output":null,"persistedStepCount":4},"recovered":false}
-✔ KNOWN GAP CHARACTERIZATION (not acceptance): native suspended control: lost provider callback repaired by bounded native reconciliation after workerd restart (40762.923258ms)
-{"observer":"first-control-parent-complete","observerWaitMs":1365}
-{"observer":"wait-control-body","observerWaitMs":210}
-{"observer":"wait-control-parent-complete","observerWaitMs":1951}
-✔ native controls: incomplete first activity and lost provider callback complete without restart (6910.115499ms)
+✔ KNOWN GAP CHARACTERIZATION (not acceptance): native first-activity autonomous recovery: restart without waking or polling target (45333.239722ms)
+{"observer":"suspended-body","observerWaitMs":219}
+{"preRestartNativeWait":{"event":{"instanceId":"run-suspended-e1-v1","eventId":20,"timestamp":1791546919433,"type":"wait_started","stepName":"provider-terminal-0-1","eventType":"provider-done"},"status":{"status":"running","output":null,"persistedStepCount":4}}}
+{"diagnostic":"AFTER failed suspended gate: native status intervention","before":[{"kind":"call","id":"call-5e238b41-8137-4566-933e-62c6159ce56a","value":{"id":"call-5e238b41-8137-4566-933e-62c6159ce56a","runId":"suspended","generation":"suspended-e1-v1","state":"completed","cost":1}},{"kind":"observer","id":"suspended-body","subjectId":"suspended","event":"body","value":1},{"kind":"observer","id":"suspended-first","subjectId":"suspended","event":"first","value":1},{"kind":"observer","id":"suspended-first-start","subjectId":"suspended","event":"first-start","value":1}],"intervention":{"status":"running","output":null,"persistedStepCount":4},"recovered":false}
+✔ KNOWN GAP CHARACTERIZATION (not acceptance): native suspended control: lost provider callback repaired by bounded native reconciliation after workerd restart (43762.485262ms)
+{"observer":"first-control-parent-complete","observerWaitMs":1342}
+{"observer":"wait-control-body","observerWaitMs":208}
+{"observer":"wait-control-parent-complete","observerWaitMs":1948}
+✔ native controls: incomplete first activity and lost provider callback complete without restart (6870.652944ms)
 {"observer":"interrupt-body","observerWaitMs":210}
-✔ native interruption: cancelling a suspended workflow stops owned calls and preserves settled accounting (4558.138346ms)
-✔ native uncertainty: ambiguous launch and terminal provider status retain liabilities until confirmed cleanup (3429.970671ms)
-✔ native deadline: expiry contains resources and keeps timeout separate from cancellation (4682.29707ms)
-{"observer":"code-upgrade-first-start","observerWaitMs":212}
-✔ native code upgrade: incompatible module bytes fence an incomplete v1 workflow (8598.121328ms)
-{"laneBundleBytes":405928,"node":"v24.19.0","testRunner":"node:test","timestamp":"2026-10-09T11:32:39.133Z"}
-✔ native cleanup retry: first unavailable cancel retains durable containment intent and liability (3636.472522ms)
-✔ bundle metrics (0.296269ms)
-ℹ tests 13
+✔ native interruption: cancelling a suspended workflow stops owned calls and preserves settled accounting (10366.92746ms)
+✔ native uncertainty: ambiguous launch and terminal provider status retain liabilities until confirmed cleanup (6306.056742ms)
+✔ native deadline: expiry contains resources and keeps timeout separate from cancellation (7311.792264ms)
+{"observer":"code-upgrade-first-start","observerWaitMs":208}
+✔ native code upgrade: incompatible module bytes fence an incomplete v1 workflow (9670.256077ms)
+✔ native cleanup retry: first unavailable cancel retains durable containment intent and liability (6509.945492ms)
+✔ native alarm priority: second deferred admission cannot postpone first run deadline (7309.589019ms)
+{"observer":"-opaque-parent-complete","observerWaitMs":312}
+✔ native opaque ID: accepted leading hyphen survives native creation and completed history (6581.885648ms)
+{"laneBundleBytes":409200,"node":"v24.19.0","testRunner":"node:test","timestamp":"2026-10-09T11:57:01.277Z"}
+✔ native fenced cleanup: late launch between lookup and disable is owned and cancelled before acknowledgement (3517.511521ms)
+✔ bundle metrics (0.302485ms)
+ℹ tests 16
 ℹ suites 0
-ℹ pass 13
+ℹ pass 16
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 140845.405067
+ℹ duration_ms 189580.509422

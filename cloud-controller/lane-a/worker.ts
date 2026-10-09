@@ -50,7 +50,8 @@ class StorageRejected extends Error {
     super(failure);
   }
 }
-const instanceId = (runId: string, epoch: number) => `${runId}-e${epoch}-v1`;
+const instanceId = (runId: string, epoch: number) =>
+  `run-${runId}-e${epoch}-v1`;
 const post = (binding: Fetcher, path: string, body: unknown) =>
   binding.fetch(`http://synthetic${path}`, {
     method: "POST",
@@ -86,6 +87,12 @@ export class Coordinator extends DurableObject<Env> {
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS diagnostic (id TEXT PRIMARY KEY, value INTEGER)",
     );
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS workflow_due (run_id TEXT PRIMARY KEY, not_before INTEGER NOT NULL)",
+    );
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS workflow_instances (run_id TEXT PRIMARY KEY, instance_id TEXT NOT NULL)",
+    );
   }
   private read(): Ledger {
     const row = this.ctx.storage.sql
@@ -120,6 +127,50 @@ export class Coordinator extends DurableObject<Env> {
       .toArray()[0];
     return row ? Codec.decode(Codec.Controls, JSON.parse(row.value)) : {};
   }
+  private workflowNotBefore(runId: string): number {
+    return (
+      this.ctx.storage.sql
+        .exec<{
+          not_before: number;
+        }>("SELECT not_before FROM workflow_due WHERE run_id=?", runId)
+        .toArray()[0]?.not_before ?? 0
+    );
+  }
+  private knownInstance(runId: string): string | undefined {
+    return this.ctx.storage.sql
+      .exec<{
+        instance_id: string;
+      }>("SELECT instance_id FROM workflow_instances WHERE run_id=?", runId)
+      .toArray()[0]?.instance_id;
+  }
+  private rememberInstance(runId: string, id: string): void {
+    this.ctx.storage.sql.exec(
+      "INSERT OR IGNORE INTO workflow_instances(run_id,instance_id) VALUES(?,?)",
+      runId,
+      id,
+    );
+  }
+  private nextDue(
+    ledger: Ledger,
+    now: number,
+    retryMs: number,
+  ): number | undefined {
+    const deadlines = Object.values(ledger.runs)
+      .filter((r) => r.phase !== "closed" && !r.cancelRequested)
+      .map((r) => r.spec.deadline);
+    const outbox = Object.values(ledger.outbox)
+      .filter((c) => !c.delivered)
+      .map((c) => {
+        const run = ledger.runs[c.runId]!;
+        return c.kind === "ensure_workflow" &&
+          !run.cancelRequested &&
+          !ledger.quarantined
+          ? Math.max(now + retryMs, this.workflowNotBefore(c.runId))
+          : now + retryMs;
+      });
+    const due = [...deadlines, ...outbox];
+    return due.length ? Math.min(...due) : undefined;
+  }
   private async mutate(
     command: Command,
     epoch: number,
@@ -151,14 +202,21 @@ export class Coordinator extends DurableObject<Env> {
               yield* sql`INSERT OR REPLACE INTO ledger(id,value) VALUES(1,${JSON.stringify(result.ledger)})`;
               if (command.type === "submit" && controls)
                 yield* sql`INSERT OR IGNORE INTO controls(id,value) VALUES(${command.spec.runId},${JSON.stringify(controls)})`;
-              // SQLite ledger/outbox and Cloudflare alarm are one storage transaction.
-              const delay =
-                command.type === "submit"
-                  ? (controls?.deferWorkflowMs ?? 100)
-                  : 100;
-              yield* Effect.promise(() =>
-                self.ctx.storage.setAlarm(Date.now() + delay),
+              if (command.type === "submit")
+                yield* sql`INSERT OR IGNORE INTO workflow_due(run_id,not_before) VALUES(${command.spec.runId},${Date.now() + (controls?.deferWorkflowMs ?? 100)})`;
+              // Per-run synthetic launch delay never delays another run's safety deadline or cleanup.
+              // Persist SQL/outbox/due intent and preserve the already-armed alarm atomically.
+              const now = Date.now();
+              const due = self.nextDue(result.ledger, now, 100);
+              const armed = yield* Effect.promise(() =>
+                self.ctx.storage.getAlarm(),
               );
+              if (due !== undefined)
+                yield* Effect.promise(() =>
+                  self.ctx.storage.setAlarm(
+                    Math.max(now, Math.min(due, armed ?? Infinity)),
+                  ),
+                );
             }
             return result;
           }),
@@ -218,11 +276,18 @@ export class Coordinator extends DurableObject<Env> {
       });
       if (!disabled.ok) throw new Error(`provider disable ${disabled.status}`);
       Codec.decode(Codec.FenceAck, await disabled.json());
-      for (const call of calls.filter(
+      // Once fenced, enumerate again: a late launch can commit after the initial lookup but before disable.
+      const fenced = await this.providerCalls(runId);
+      for (const call of fenced)
+        await this.mutate({ type: "register", runId, callId: call.id }, epoch);
+      for (const call of fenced.filter(
         (c) => !["completed", "cancelled"].includes(c.state),
       ))
         await post(this.env.PROVIDER, "/cancel", { callId: call.id });
       const stopped = await this.providerCalls(runId);
+      // Every final observed call enters ownership before cleanup proves all owned calls terminal.
+      for (const call of stopped)
+        await this.mutate({ type: "register", runId, callId: call.id }, epoch);
       const result = await this.mutate(
         {
           type: "cleanup",
@@ -281,6 +346,7 @@ export class Coordinator extends DurableObject<Env> {
         !run.cancelRequested &&
         !ledger.quarantined
       ) {
+        if (Date.now() < this.workflowNotBefore(item.runId)) continue;
         try {
           await this.env.RUNS.create({
             id: instanceId(item.runId, ledger.epoch),
@@ -298,7 +364,10 @@ export class Coordinator extends DurableObject<Env> {
           const status = await existing.status();
           if (status.status === "unknown") throw cause;
         }
-      } else if (item.kind === "wake") {
+        // Retiring an outbox item does not prove native creation. Record only a successful create/existing-instance observation.
+        this.rememberInstance(item.runId, instanceId(item.runId, ledger.epoch));
+      } else if (item.kind === "wake" && !run.cancelRequested) {
+        if (!this.knownInstance(item.runId)) continue;
         // Fault injection drops one notification while retaining its durable outbox record.
         const controls = this.controls(item.runId);
         if (controls.dropWake) {
@@ -321,16 +390,9 @@ export class Coordinator extends DurableObject<Env> {
         const contained = this.read().runs[item.runId]!;
         // Retain durable cleanup authority until independently observed containment succeeds.
         if (contained.cleanup !== "confirmed") continue;
-        const ensured = Object.values(this.read().outbox).some(
-          (c) =>
-            c.runId === item.runId &&
-            c.kind === "ensure_workflow" &&
-            c.delivered,
-        );
-        if (run.cancelRequested && ensured) {
-          const instance = await this.env.RUNS.get(
-            instanceId(item.runId, ledger.epoch),
-          );
+        const createdId = this.knownInstance(item.runId);
+        if (run.cancelRequested && createdId) {
+          const instance = await this.env.RUNS.get(createdId);
           const status = await instance.status();
           if (!["complete", "terminated", "errored"].includes(status.status))
             await instance.terminate();
@@ -340,14 +402,12 @@ export class Coordinator extends DurableObject<Env> {
       await this.mutate({ type: "delivered", outboxId: item.id }, ledger.epoch);
     }
     ledger = this.read();
-    const pending = Object.values(ledger.outbox).some((c) => !c.delivered);
-    const deadlines = Object.values(ledger.runs)
-      .filter((r) => r.phase !== "closed")
-      .map((r) => r.spec.deadline);
-    if (pending) await this.ctx.storage.setAlarm(Date.now() + 250);
-    else if (deadlines.length)
+    const now = Date.now();
+    const due = this.nextDue(ledger, now, 250);
+    const armed = await this.ctx.storage.getAlarm();
+    if (due !== undefined)
       await this.ctx.storage.setAlarm(
-        Math.max(Date.now() + 100, Math.min(...deadlines)),
+        Math.max(now, Math.min(due, armed ?? Infinity)),
       );
   }
   private async diagnostic(): Promise<unknown> {
@@ -422,7 +482,11 @@ export class Coordinator extends DurableObject<Env> {
     const path = new URL(request.url).pathname;
     try {
       if (path === "/ledger") return jsonResponse(this.read());
-      if (path === "/native-status" || path === "/native-ensure") {
+      if (
+        path === "/native-status" ||
+        path === "/native-ensure" ||
+        path === "/native-wait-start"
+      ) {
         const b = Codec.decode(Codec.RunId, await request.json());
         const ledger = this.read();
         if (
@@ -433,18 +497,51 @@ export class Coordinator extends DurableObject<Env> {
           return jsonResponse({ failure: "EpochMismatch" }, 409);
         if (!ledger.runs[b.runId])
           return jsonResponse({ failure: "UnknownRun" }, 409);
+        let createFailure: unknown;
         if (path === "/native-ensure") {
           try {
             await this.env.RUNS.create({
               id: instanceId(b.runId, b.epoch),
               params: { ...b, definitionVersion: 1, schemaVersion: 1 },
             });
-          } catch {
-            /* deterministic duplicate create is inspected through status below */
+          } catch (cause) {
+            createFailure = cause;
           }
         }
         const instance = await this.env.RUNS.get(instanceId(b.runId, b.epoch));
-        return jsonResponse(await instance.status());
+        const status = await instance.status();
+        if (createFailure && status.status === "unknown") throw createFailure;
+        if (path === "/native-ensure" && status.status !== "unknown")
+          this.rememberInstance(b.runId, instance.id);
+        if (path === "/native-wait-start") {
+          const subscription = await instance.subscribe({
+            cursor: 0,
+            filter: ["wait_started"],
+          });
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            const event = await Promise.race([
+              subscription.next(),
+              new Promise<never>((_, reject) => {
+                timer = setTimeout(
+                  () =>
+                    reject(new Error("native WAIT_START diagnostic timed out")),
+                  1500,
+                );
+              }),
+            ]);
+            if (event.done || event.value.type !== "wait_started")
+              throw new Error("native WAIT_START absent");
+            return jsonResponse({
+              event: event.value,
+              status: await instance.status(),
+            });
+          } finally {
+            if (timer) clearTimeout(timer);
+            subscription[Symbol.dispose]();
+          }
+        }
+        return jsonResponse(status);
       }
       if (path === "/diagnostic") return jsonResponse(await this.diagnostic());
       // Test-only corruption simulates an incompatible persisted deployment; no migration permission inferred.

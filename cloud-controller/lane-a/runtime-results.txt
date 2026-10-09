@@ -1,6 +1,8 @@
-Lane A locked install and strict acceptance evidence (2026-10-09 UTC)
+Lane A locked install and final reviewed strict acceptance evidence (2026-10-09 UTC)
 Commands: npm ci --cache /workspace/coppertop/.local/npm-cache; npm run check
-Strict acceptance process exit code: 1 (two declared runtime recovery failures)
+Strict acceptance process exit code: 1 (two declared autonomous runtime recovery failures)
+16 checks including one build-only bundle metric; 15 behavioral checks use actual workerd.
+Final strict and characterization suites ran concurrently with independent fixture persistence roots.
 
 
 added 42 packages in 4s
@@ -17,46 +19,51 @@ added 42 packages in 4s
 > coppertop-native-cloud-spike@0.0.0 test
 > node --test --test-concurrency=1 runtime.test.ts
 
-✔ native ledger: concurrent last-slot admission, strict schemas, atomic official SQL adapter (3849.015943ms)
-{"observer":"ambiguous-parent-complete","observerWaitMs":524}
-✔ native workflow: ambiguous dispatch, lost provider wake, immutable receipt and completed replay (7469.586626ms)
-✔ native claims: duplicates cannot launch or execute twice; cancellation fences late launch (3353.551081ms)
-✔ native upgrade: unknown schema and epoch fail closed after real workerd restart (9627.819927ms)
-{"observer":"first-restart-first-start","observerWaitMs":233}
+✔ native ledger: concurrent last-slot admission, strict schemas, atomic official SQL adapter (7228.144107ms)
+{"observer":"ambiguous-parent-complete","observerWaitMs":624}
+✔ native workflow: ambiguous dispatch, lost provider wake, immutable receipt and completed replay (10661.163774ms)
+✔ native claims: duplicates cannot launch or execute twice; cancellation fences late launch (3399.405005ms)
+✔ native upgrade: unknown schema and epoch fail closed after real workerd restart (12713.490087ms)
+{"observer":"first-restart-first-start","observerWaitMs":213}
 {"diagnostic":"AFTER failed autonomous first-activity gate: native status intervention","before":[{"kind":"observer","id":"first-restart-first-start","subjectId":"first-restart","event":"first-start","value":1}],"intervention":{"status":"running","output":null,"persistedStepCount":0},"recovered":false}
-✖ native first-activity autonomous recovery: restart without waking or polling target (43904.671026ms)
-{"observer":"suspended-body","observerWaitMs":223}
-{"diagnostic":"AFTER failed suspended gate: native status intervention","before":[{"kind":"call","id":"call-8350b009-7564-449d-b4fb-e501bfda08c4","value":{"id":"call-8350b009-7564-449d-b4fb-e501bfda08c4","runId":"suspended","generation":"suspended-e1-v1","state":"completed","cost":1}},{"kind":"observer","id":"suspended-body","subjectId":"suspended","event":"body","value":1},{"kind":"observer","id":"suspended-first","subjectId":"suspended","event":"first","value":1},{"kind":"observer","id":"suspended-first-start","subjectId":"suspended","event":"first-start","value":1}],"intervention":{"status":"running","output":null,"persistedStepCount":4},"recovered":false}
-✖ native suspended control: lost provider callback repaired by bounded native reconciliation after workerd restart (40927.964866ms)
-{"observer":"first-control-parent-complete","observerWaitMs":1345}
-{"observer":"wait-control-body","observerWaitMs":224}
-{"observer":"wait-control-parent-complete","observerWaitMs":1979}
-✔ native controls: incomplete first activity and lost provider callback complete without restart (6951.210941ms)
-{"observer":"interrupt-body","observerWaitMs":220}
-✔ native interruption: cancelling a suspended workflow stops owned calls and preserves settled accounting (4635.837474ms)
-✔ native uncertainty: ambiguous launch and terminal provider status retain liabilities until confirmed cleanup (3491.029061ms)
-✔ native deadline: expiry contains resources and keeps timeout separate from cancellation (4355.645559ms)
-{"observer":"code-upgrade-first-start","observerWaitMs":235}
-✔ native code upgrade: incompatible module bytes fence an incomplete v1 workflow (6753.152958ms)
-{"laneBundleBytes":405928,"node":"v24.19.0","testRunner":"node:test","timestamp":"2026-10-09T11:29:01.010Z"}
-✔ native cleanup retry: first unavailable cancel retains durable containment intent and liability (3543.277714ms)
-✔ bundle metrics (2.501922ms)
-ℹ tests 13
+✖ native first-activity autonomous recovery: restart without waking or polling target (43691.590056ms)
+{"observer":"suspended-body","observerWaitMs":209}
+{"preRestartNativeWait":{"event":{"instanceId":"run-suspended-e1-v1","eventId":20,"timestamp":1791546914807,"type":"wait_started","stepName":"provider-terminal-0-1","eventType":"provider-done"},"status":{"status":"running","output":null,"persistedStepCount":4}}}
+{"diagnostic":"AFTER failed suspended gate: native status intervention","before":[{"kind":"call","id":"call-b64cfef8-4ba5-4ad6-b7fa-cac78cd5ec5b","value":{"id":"call-b64cfef8-4ba5-4ad6-b7fa-cac78cd5ec5b","runId":"suspended","generation":"suspended-e1-v1","state":"completed","cost":1}},{"kind":"observer","id":"suspended-body","subjectId":"suspended","event":"body","value":1},{"kind":"observer","id":"suspended-first","subjectId":"suspended","event":"first","value":1},{"kind":"observer","id":"suspended-first-start","subjectId":"suspended","event":"first-start","value":1}],"intervention":{"status":"running","output":null,"persistedStepCount":4},"recovered":false}
+✖ native suspended control: lost provider callback repaired by bounded native reconciliation after workerd restart (43800.973901ms)
+{"observer":"first-control-parent-complete","observerWaitMs":1337}
+{"observer":"wait-control-body","observerWaitMs":208}
+{"observer":"wait-control-parent-complete","observerWaitMs":1946}
+✔ native controls: incomplete first activity and lost provider callback complete without restart (6778.514483ms)
+{"observer":"interrupt-body","observerWaitMs":209}
+✔ native interruption: cancelling a suspended workflow stops owned calls and preserves settled accounting (10362.512889ms)
+✔ native uncertainty: ambiguous launch and terminal provider status retain liabilities until confirmed cleanup (6312.418015ms)
+✔ native deadline: expiry contains resources and keeps timeout separate from cancellation (7299.827185ms)
+{"observer":"code-upgrade-first-start","observerWaitMs":214}
+✔ native code upgrade: incompatible module bytes fence an incomplete v1 workflow (9661.398029ms)
+✔ native cleanup retry: first unavailable cancel retains durable containment intent and liability (6415.09433ms)
+✔ native alarm priority: second deferred admission cannot postpone first run deadline (7312.23111ms)
+{"observer":"-opaque-parent-complete","observerWaitMs":313}
+✔ native opaque ID: accepted leading hyphen survives native creation and completed history (3594.442208ms)
+{"laneBundleBytes":409200,"node":"v24.19.0","testRunner":"node:test","timestamp":"2026-10-09T11:56:59.382Z"}
+✔ native fenced cleanup: late launch between lookup and disable is owned and cancelled before acknowledgement (6423.140151ms)
+✔ bundle metrics (0.375661ms)
+ℹ tests 16
 ℹ suites 0
-ℹ pass 11
+ℹ pass 14
 ℹ fail 2
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 140819.60021
+ℹ duration_ms 189714.30077
 
 ✖ failing tests:
 
-test at runtime.test.ts:496:1
-✖ native first-activity autonomous recovery: restart without waking or polling target (43904.671026ms)
+test at runtime.test.ts:535:1
+✖ native first-activity autonomous recovery: restart without waking or polling target (43691.590056ms)
   AssertionError [ERR_ASSERTION]: independent observer missing first-restart-parent-complete; [{"kind":"observer","id":"first-restart-first-start","subjectId":"first-restart","event":"first-start","value":1}]
-      at observed (file:///workspace/coppertop-lane-a/cloud-controller/lane-a/runtime.test.ts:225:10)
-      at async TestContext.<anonymous> (file:///workspace/coppertop-lane-a/cloud-controller/lane-a/runtime.test.ts:514:19)
+      at observed (file:///workspace/coppertop-lane-a/cloud-controller/lane-a/runtime.test.ts:249:10)
+      at async TestContext.<anonymous> (file:///workspace/coppertop-lane-a/cloud-controller/lane-a/runtime.test.ts:553:19)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
     generatedMessage: false,
@@ -67,11 +74,11 @@ test at runtime.test.ts:496:1
     diff: 'simple'
   }
 
-test at runtime.test.ts:576:1
-✖ native suspended control: lost provider callback repaired by bounded native reconciliation after workerd restart (40927.964866ms)
-  AssertionError [ERR_ASSERTION]: independent observer missing suspended-parent-complete; [{"kind":"call","id":"call-8350b009-7564-449d-b4fb-e501bfda08c4","value":{"id":"call-8350b009-7564-449d-b4fb-e501bfda08c4","runId":"suspended","generation":"suspended-e1-v1","state":"completed","cost":1}},{"kind":"observer","id":"suspended-body","subjectId":"suspended","event":"body","value":1},{"kind":"observer","id":"suspended-first","subjectId":"suspended","event":"first","value":1},{"kind":"observer","id":"suspended-first-start","subjectId":"suspended","event":"first-start","value":1}]
-      at observed (file:///workspace/coppertop-lane-a/cloud-controller/lane-a/runtime.test.ts:225:10)
-      at async TestContext.<anonymous> (file:///workspace/coppertop-lane-a/cloud-controller/lane-a/runtime.test.ts:593:19)
+test at runtime.test.ts:615:1
+✖ native suspended control: lost provider callback repaired by bounded native reconciliation after workerd restart (43800.973901ms)
+  AssertionError [ERR_ASSERTION]: independent observer missing suspended-parent-complete; [{"kind":"call","id":"call-b64cfef8-4ba5-4ad6-b7fa-cac78cd5ec5b","value":{"id":"call-b64cfef8-4ba5-4ad6-b7fa-cac78cd5ec5b","runId":"suspended","generation":"suspended-e1-v1","state":"completed","cost":1}},{"kind":"observer","id":"suspended-body","subjectId":"suspended","event":"body","value":1},{"kind":"observer","id":"suspended-first","subjectId":"suspended","event":"first","value":1},{"kind":"observer","id":"suspended-first-start","subjectId":"suspended","event":"first-start","value":1}]
+      at observed (file:///workspace/coppertop-lane-a/cloud-controller/lane-a/runtime.test.ts:249:10)
+      at async TestContext.<anonymous> (file:///workspace/coppertop-lane-a/cloud-controller/lane-a/runtime.test.ts:656:19)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
     generatedMessage: false,
