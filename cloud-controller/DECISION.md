@@ -1,6 +1,6 @@
 # Durability-engine decision
 
-Prefer Lane A (`effect-cf` with native Cloudflare Workflows) provisionally, because its application safety boundaries work and a local native restart limitation is reproduced without effect-cf. **Managed unattended recovery remains unproven. Lane B fails two required recovery gates in its own implementation at the tested commit.** Neither lane is approved for real-provider integration. This branch produces evidence; it cannot enable real-provider launches.
+Prefer Lane A (`effect-cf` with native Cloudflare Workflows) provisionally. Lane B has two confirmed defects in its own recovery paths at the tested commit. Lane A delegates in-flight recovery to Cloudflare's managed scheduler; its local restart stalls do not establish a managed defect. **Managed unattended recovery remains unproven.** Neither lane is approved for real-provider integration.
 
 Lane A's atomic official-adapter ledger, one-shot dispatch/body claims, ambiguous launch handling, immutable artifact receipts and completed native history work. Its incomplete first step and suspended event wait stall after a real workerd restart in Miniflare. The matching no-restart controls complete; a subsequent status intervention does not restore progress. The plain native control below reproduces a timer-only stall without Effect or effect-cf under both lanes' emulator pins. This establishes a local harness limitation, not evidence that managed Cloudflare recovery fails or that the original two fixtures have no additional cause. Completed-history replay is a positive restart control, but does not prove autonomous recovery of in-flight work.
 
@@ -55,14 +55,14 @@ Review-revision runtime inputs were tested at `1791e8667ebcc639533b3cb9d6c3b20a9
 | Check | Passed | Failed | Scope |
 | --- | ---: | ---: | --- |
 | Shared | 16 | 0 | 15 pure checks plus independent provider workerd restart |
-| Lane A strict | 18 | 2 | Full 20-check suite; 18 runtime behaviors, one source assertion, one bundle metric |
-| Lane A characterization | 20 | 0 | Includes two missing-recovery and two raw-emulator stall characterizations |
-| Lane B characterization | 15 | 0 | 11 engine/provider checks plus four raw native controls |
+| Lane A strict | 18 | 2 | 16 application checks (14 pass, two recovery gates fail) + four raw emulator checks (source/no-restart pass; two restart stalls pass as negative characterizations) |
+| Lane A characterization | 20 | 0 | Same application/raw checks; both application recovery failures and both raw restart stalls pass as negative characterizations |
+| Lane B characterization | 15 | 0 | 11 engine/provider checks (including two missing-recovery characterizations) + four raw emulator checks (source/no-restart pass; two restart stalls pass as negative characterizations) |
 | Lane B strict | 0 | 2 | Only the two selected REGRESSION checks |
 | Existing upstream Workflow tests | 10 | 0 | Pinned workspace Vitest |
 | Required Python suite | 422 | 0 | 425 total, three skipped; no Python runtime changes |
 
-Counts and commands for the review revision are recorded in each lane's evidence file and captured outputs. Counts are not a relative reliability score: Lane A runs its complete strict suite, while Lane B's strict command selects only the two named recovery regressions. Green CI characterizes known failures; it never turns either lane's strict gate into a pass. Shared tests also exercise independently persisted provider/observer/artifact restart. Python runtime code is unchanged; the bounded official-loader integration remains disabled because no `COPPERTOP_SOURCE` was supplied.
+Pass counts mean successful assertions, including expected stalls. Lane A's application count includes one build-only bundle metric. Counts do not rank reliability: A strict runs the full suite, while B strict selects only two recovery regressions. Green characterization never establishes acceptance. Commands and output are linked in each lane's evidence file. Python code is unchanged; official-loader integration remains disabled because no `COPPERTOP_SOURCE` was supplied.
 
 | Recovery observation | Lane A | Lane B |
 | --- | --- | --- |
@@ -81,14 +81,23 @@ Original executor attempts at full and filtered pnpm installation failed during 
 
 Each revised runtime log records the tested Coppertop commit/tree, dirty input status, source/lock/installed binding SHA-256 values, command and explicitly supplied installation provenance. Derived worker bundles also have hashes. Logs are committed after execution; the recorded source commit identifies their executable inputs, not the later evidence-only commit. Unrecorded historical installation flags must not be inferred from a reproduction command.
 
-Performance observations are fixture measurements. Lane A's unminified bundle is 409,200 bytes. Lane B's unminified bundle is 1,633,472 bytes, gzip 341,463 after strengthening its timer controls. Each lane records its own bundle/timing measurements, including observation/intervention windows. These workloads differ in application coverage, so source-line or bundle size alone does not establish a maintenance or cost win. Production CPU, storage retention, request/step bills and real wake counts remain unmeasured. No cloud price or savings claim is made.
+Lane A's unminified bundle is 409,200 bytes. Lane B's is 1,633,472 bytes, gzip 341,463. Timings include fixture and observation costs; differing application coverage prevents a direct maintenance or cost comparison. Production CPU, storage retention, billing and wake counts remain unmeasured. No cloud savings claim is made.
 
 ## Next step and integration prerequisites
 
 The plain native control answers the bounded question: the selected timer stall does not require effect-cf at either pin. Keep strict regressions as tripwires; do not repeatedly tune the same harness or add a permanent wake poller. A change to either installed native binding triggers rerunning the raw no-restart/restart controls and Lane A's strict gates. If the local runtime gains supported autonomous recovery, require both strict gates plus the existing safety/replay controls to pass before revisiting acceptance.
 
-The next decision is whether to authorize a separate bounded managed-runtime test or explicitly accept reliance on Cloudflare's documented durability contract. A future test needs an approved account/deployment, a supported fault-injection mechanism whose semantics match the intended crash, an independent observer, a fixed spend/time bound and defined cleanup. The exposed Workflow lifecycle APIs do not establish a host-process-kill mechanism. `restart`, `terminate`, throwing or redeployment must not silently substitute for process loss. For a future managed test, both interrupted-first-activity and suspended-wait scenarios must complete within a predeclared retry/timeout bound without target contact, while matching no-restart controls and receipt/accounting invariants pass. Success provides bounded evidence for the tested fault; a stall keeps acceptance blocked and triggers reevaluation. A documentation-based decision is an explicit assumption, not an observed pass. No zero-cost guarantee or deployment is made in this spike.
+Before any real-provider integration work starts, resolve the managed recovery decision:
 
-At the next engine decision point, recheck PR 7322's head. A changed upstream source or a relevant recovery fix triggers rerunning the two strict regressions and completed/clock/deferred/defect controls on a coherent new workspace. Select B only after durable initial-execution and exhausted-parent-wake recovery pass without target contact. Until then retain the narrow regressions as a potential contribution; no public issue, message, fork or PR is authorized, and no new durability engine is proposed.
+- **Decision:** authorize a bounded managed test, or record reliance on Cloudflare's documented durability contract as an unverified assumption.
+- **Test prerequisites:** approved account/deployment, a supported fault mechanism matching process loss, independent observer, fixed spend/time bound and cleanup.
+- **Pass:** interrupted-first-activity and suspended-wait scenarios complete within a declared retry/timeout bound without target contact; matching no-restart controls and receipt/accounting invariants pass.
+- **Stall:** acceptance remains blocked; reevaluate the engine choice, including Lane B.
+
+The documented `WorkflowInstance` methods offer lifecycle controls, with no host-process-kill method listed. `restart` changes replay state, so it does not establish process-loss recovery. A matching fault mechanism still needs to be established. [Cloudflare Workers API](https://developers.cloudflare.com/workflows/build/workers-api/)
+
+A test pass provides bounded evidence for its tested fault; a documentation-based decision remains an assumption. No deployment or zero-cost guarantee is made here.
+
+Recheck PR 7322's head before real-provider integration or whenever reconsidering the engine choice. A changed source or relevant recovery fix triggers rerunning both strict regressions and completed/clock/deferred/defect controls on a coherent workspace. Select B only after initial-execution and exhausted-parent-wake recovery pass without target contact. Retain the regressions as a potential contribution; no public submission or new durability engine is authorized.
 
 Real integration still needs reviewed unpublished Mac controller code and nonsecret migration state; a small authenticated Python Modal launch/status/cancel gateway; immutable provider deployment identity; independent stop/containment authority; supported client invocation; scoped access; native spend limits; reviewed grants, pricing and resource ownership; R2 archive/receipt preservation; and separately approved staging/deployment/canary tests. Manual epoch recovery and reconciling additional late costs after settlement remain explicit unsupported operations. The sidecar does not enter the robot action loop.

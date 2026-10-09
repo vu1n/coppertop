@@ -64,3 +64,17 @@ The initial three-second raw sleep control caught an invalid fault window in a l
 A final source audit verified that identical-options `setOptions()` unconditionally updates configuration and restarts workerd at both pins. `Runtime.updateConfig()` awaits disposal, then spawns a new process; disposal sends SIGKILL and awaits its exit. Installed Miniflare 4 `dist/src/index.js` coordinates: setOptions 104551, updateConfig 83650, dispose 83744. Miniflare 5: setOptions 124733, updateConfig 107169, dispose 107253. This is controlled process-loss evidence, not a no-op or merely an in-process reload. Arbitrary external crashes, power loss and managed host eviction remain untested. No new PID instrumentation or fault mechanism was added.
 
 Final local verification on executable inputs at `1791e8667ebcc639533b3cb9d6c3b20a9f2cbd21`: shared 16/16; native strict 18 passed/2 failed, characterization 20/20; upstream characterization 15/15 and selected strict regressions 0 passed/2 failed. All runtime provenance records were clean and their eight source/hash records match the committed executable inputs. Shared/native typecheck and compiler hygiene, upstream fixture typecheck/oxlint, relevant upstream TypeScript and Babel builds (500/3/29 files), and existing upstream Vitest 10/10 passed. The unchanged Python suite completed 425 tests with three skipped in 48.128 seconds. No unrelated files or Python runtime changes were made. Evidence-only changes after that source commit do not alter runtime inputs; hosted CI verifies the final published head.
+
+## Follow-up review at b3b27e7
+
+Cursor independently reproduced all recorded counts, bundle/binding hashes and clean provenance, and confirmed the substantive findings were addressed. The remaining documentation findings were applied without changing runtime sources:
+
+| Comment | Disposition |
+| --- | --- |
+| 4230665134: non-discriminating preference | The opening now states the distinction: B has confirmed engine recovery defects; A delegates to an unverified managed scheduler. The raw timer control does not claim to reproduce the incomplete first activity. |
+| 4230665137: negative stalls included in pass counts | Each count row separates application/engine checks from raw controls and explicitly says that restart stalls pass as negative characterizations, including in A strict. |
+| 4230665124: dense next-step paragraph | Decision, prerequisites and pass/stall criteria are separate bullets, due before any real-provider integration. The bundle metric no longer recounts implementation history. |
+
+The managed API caveat was checked against the pinned `WorkflowInstance` declaration (`workers-types/index.d.ts:18312`) and the [official Workers API](https://developers.cloudflare.com/workflows/build/workers-api/): its listed lifecycle methods do not expose host-process termination, and restart changes replay state. This establishes the inspected API surface, not the absence of every possible managed fault-injection mechanism. No deployment or account action was performed.
+
+Runtime sources, locks and captured results remain identical to b3b27e7. The documentation diff was checked for whitespace and local-link targets; all recorded executable-input hashes were reverified. Automatic hosted checks run on each new published head; their verified results are reported in the PR. No additional local runtime rerun is claimed for this wording-only change.
