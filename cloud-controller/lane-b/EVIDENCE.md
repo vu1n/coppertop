@@ -62,16 +62,16 @@ The 2.5-second observation windows are bounded runtime evidence, not a proof ove
 
 ## Cross-pin plain native control and provenance
 
-`run.sh --raw-native` runs the same shared do/sleep/do control as Lane A, using only this workspace's Miniflare 4/workerd dependencies. Miniflare 4 needs **both** `workflowsPersist` and `durableObjectsPersist`; the initial probe caught this fixture omission before restart, it was corrected, and that setup failure is not a recovery result. The final probe proves completed first-step and active persisted sleep state before restart, then uses only an independently persisted observer for at least eight seconds. It checks both setOptions and dispose/recreate plus a positive no-restart control. Installed-source assertions characterize the same missing native timer scheduling at this pin, outside the upstream Effect engine. A successful negative characterization is not managed acceptance.
+`run.sh --raw-native` runs the same shared do/sleep/do control as Lane A, using only this workspace's Miniflare 4/workerd dependencies. Miniflare 4 needs **both** `workflowsPersist` and `durableObjectsPersist`; the initial probe caught this fixture omission before restart, it was corrected, and that setup failure is not a recovery result. The final probe proves completed first-step and active persisted sleep state before restart, requires the original ten-second sleep due time to remain in the future after restart, then uses only an independently persisted observer for at least eight seconds and through that due time plus three seconds. It checks both setOptions and dispose/recreate plus a positive no-restart control. Installed-source assertions characterize the same missing native timer scheduling at this pin, outside the upstream Effect engine. A successful negative characterization is not managed acceptance.
 
-Runtime logs identify the tested Coppertop commit/tree, clean or dirty selected inputs, source and lock/patch hashes, installed native binding hashes, actual command/mode and explicit installation provenance. Upstream commit is recorded separately; run.sh rejects a changed tracked upstream tree. Derived application bundles have hashes. Local retained modules after the original partial install are distinguished from hosted clean filtered installation. Logs are committed after the executable source commit; their recorded source hashes can be compared with the published tree and hosted rerun.
+Final runtime inputs were tested at `1791e8667ebcc639533b3cb9d6c3b20a9f2cbd21`. Runtime logs identify the tested Coppertop commit/tree, clean or dirty selected inputs, source and lock/patch hashes, installed native binding hashes, actual command/mode and explicit installation provenance. Upstream commit is recorded separately; run.sh rejects a changed tracked upstream tree. Derived application bundles have hashes. Local retained modules after the original partial install are distinguished from hosted clean filtered installation. Logs are committed after the executable source commit; their recorded source hashes can be compared with the published tree and hosted rerun.
 
 ## Checks and limits
 
 | Check | Outcome |
 | --- | --- |
-| Characterization/controls command | Captured output records the revised aggregate including raw native controls; **two engine acceptance gates remain failed** |
-| Strict regression command | Failed as expected: 0 passed, 2 failed |
+| Final characterization/controls command | 15 passed, 0 failed, 0 skipped; 157.07 seconds; **two engine acceptance gates remain failed** |
+| Strict regression command | Only two selected REGRESSION tests: 0 passed, 2 failed, 0 skipped; 19.35 seconds |
 | Upstream existing Workflow integration + CloudflareWorkflowEngine tests | 10/10 passed using workspace Vitest 5.0.3 |
 | Relevant upstream Effect/SQLite-DO/Cloudflare TypeScript build | Passed, including forced rebuild after upstream tsgo compiler patch |
 | Relevant upstream Babel build phases | Passed: Effect 500 files, SQLite DO 3 files, Cloudflare 29 files |

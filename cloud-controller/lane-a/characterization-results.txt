@@ -1,55 +1,57 @@
-Lane A final reviewed negative characterization evidence (2026-10-09 UTC)
-Command: npm run check:characterize
-Process exit code: 0; KNOWN GAP CHARACTERIZATION is not acceptance.
-16 checks including one build-only bundle metric; 15 behavioral checks use actual workerd.
-Final strict and characterization suites ran concurrently with independent fixture persistence roots.
-
-
-> coppertop-native-cloud-spike@0.0.0 check:characterize
-> npm run typecheck && npm run test:characterize
-
-
-> coppertop-native-cloud-spike@0.0.0 typecheck
-> tsc --noEmit
-
 
 > coppertop-native-cloud-spike@0.0.0 test:characterize
-> COPPERTOP_CHARACTERIZE_RUNTIME_GAPS=1 node --test --test-concurrency=1 runtime.test.ts
+> COPPERTOP_CHARACTERIZE_RUNTIME_GAPS=1 node --test --test-concurrency=1 runtime.test.ts raw-native.test.mjs
 
-✔ native ledger: concurrent last-slot admission, strict schemas, atomic official SQL adapter (7171.075605ms)
-{"observer":"ambiguous-parent-complete","observerWaitMs":633}
-✔ native workflow: ambiguous dispatch, lost provider wake, immutable receipt and completed replay (10688.112418ms)
-✔ native claims: duplicates cannot launch or execute twice; cancellation fences late launch (3391.387174ms)
-✔ native upgrade: unknown schema and epoch fail closed after real workerd restart (12708.271916ms)
+{"rawNativeProvenance":{"testedCommit":"1791e8667ebcc639533b3cb9d6c3b20a9f2cbd21","inputTree":"1af7d92e454a2a29bc951cc7fc1870865a0dc04c","dirtyInputs":"","inputSha256":{"cloud-controller/shared/native-emulator-worker.ts":"63a1050b1906e3e54481a5384879a392e5e4c2681e9aedf107e004a80e77d550","cloud-controller/shared/native-emulator-probe.mjs":"210afd826fe67797d5185a55f9bee8cb857107414aab9cbf918eb7740076c3e1","cloud-controller/shared/provider-worker.ts":"a45adaf2904e5a4283b947de933273d9de03eb0cce0ebe2871bf790ec26293a5","cloud-controller/shared/contracts.ts":"cfb3110c588d2b5f49b87166e28100ca21c3c7472293526a847c1ec0af8f4196","cloud-controller/shared/evidence.ts":"1691b08688d11cfbab1ab17b78e5d5618fb09cb713e6c46cde1599350453e78a","cloud-controller/lane-a/raw-native.test.mjs":"f49bd746b7d4705165e97e9e583520b8b3eab34fe9e0c91f905c6f6dafcf61d3","cloud-controller/lane-a/package-lock.json":"51e800fbbe18d280b65a8db5108c3d6492da420fe1196d5454c97fc28e3f5bd1","cloud-controller/lane-a/node_modules/miniflare/package.json":"436c3255fe4542c6567580f048af6ba6d19fb4c06ae74fbaf281776c6a1cb469","cloud-controller/lane-a/node_modules/miniflare/dist/src/workers/workflows/binding.worker.js":"faf3a76790911ba1723035e08fc0fcdd73e54235f84aef611479eede237d072c","cloud-controller/lane-a/node_modules/workerd/package.json":"726bbe70e3b62e136dbfac7c36e61b912f111f5a271eb44ea72b88d17199eb18"},"command":"npm run test:characterize","installCommand":"npm ci --ignore-scripts --cache ../../.local/npm-cache","node":"v24.19.0","platform":"linux","architecture":"x64","emulatorPins":{"miniflare":"5.20260926.1-alpha","workerd":"1.20260926.1","compatibilityDate":"2026-09-26"}},"sourceCharacterization":{"handleNextAlarm":"only heap.peek(); no scheduling in this method","alarmMethodPresent":false,"statusMethod":"reads getStatus and readLogs; no run/resume call in inspected method","inference":"local emulator implementation evidence, not managed Cloudflare evidence"}}
+✔ lane-a plain native: pinned emulator source characterization (12.14105ms)
+{"rawNative":"lane-a","method":"no-restart","observerWaitMs":10029,"records":[{"kind":"observer","id":"raw-control-before","subjectId":"raw-control","event":"before","value":1},{"kind":"observer","id":"raw-control-complete","subjectId":"raw-control","event":"complete","value":1}]}
+✔ lane-a plain native: no-restart do/sleep/do control completes (13359.057756ms)
+{"rawNativeRestartWindow":"lane-a","method":"dispose-recreate","originalDueMs":1791551109408,"remainingAtRestartMs":9951,"restartDurationMs":112,"remainingAfterRestartMs":9839,"remainingAtFirstObservationMs":9837,"immediateCompletion":0,"observationDeadlineMs":1791551112408}
+{"rawNative":"lane-a","method":"dispose-recreate","checkpoint":{"database":"workflows/miniflare-workflows-plain-native-control/f60e211e5316f0ed9e402785eebae18ec96790d0d7b32168cdd72a56a044b631.sqlite","before":{"id":7,"event":6,"target":"raw-before-1"},"sleep":{"id":8,"event":8,"target":"raw-sleep-1","durationMs":10000},"queuedSleep":{"targetTimestamp":1791551109408,"action":1}},"immediateCompletion":0,"remainingAtRestartMs":9951,"remainingAfterRestartMs":9839,"observationDeadlineMs":1791551112408,"observerOnlyWindowMs":12889,"records":[{"kind":"observer","id":"raw-dispose-recreate-before","subjectId":"raw-dispose-recreate","event":"before","value":1}],"inference":"this pinned local do/sleep/do program stalled; no universal or managed-runtime conclusion"}
+✔ lane-a plain native: EMULATOR CHARACTERIZATION (not acceptance) dispose-recreate during durable sleep (16292.225941ms)
+{"rawNativeRestartWindow":"lane-a","method":"setOptions","originalDueMs":1791551125741,"remainingAtRestartMs":9945,"restartDurationMs":270,"remainingAfterRestartMs":9675,"remainingAtFirstObservationMs":9661,"immediateCompletion":0,"observationDeadlineMs":1791551128741}
+{"rawNative":"lane-a","method":"setOptions","checkpoint":{"database":"workflows/miniflare-workflows-plain-native-control/57f951870585f64f8c1ba8a313e1cacc80618afc6c6f7f3b42d3cd8cf094fe54.sqlite","before":{"id":7,"event":6,"target":"raw-before-1"},"sleep":{"id":8,"event":8,"target":"raw-sleep-1","durationMs":10000},"queuedSleep":{"targetTimestamp":1791551125741,"action":1}},"immediateCompletion":0,"remainingAtRestartMs":9945,"remainingAfterRestartMs":9675,"observationDeadlineMs":1791551128741,"observerOnlyWindowMs":12709,"records":[{"kind":"observer","id":"raw-set-options-before","subjectId":"raw-set-options","event":"before","value":1}],"inference":"this pinned local do/sleep/do program stalled; no universal or managed-runtime conclusion"}
+✔ lane-a plain native: EMULATOR CHARACTERIZATION (not acceptance) setOptions during durable sleep (16318.843462ms)
+{"runtimeProvenance":{"testedCommit":"1791e8667ebcc639533b3cb9d6c3b20a9f2cbd21","inputTree":"1af7d92e454a2a29bc951cc7fc1870865a0dc04c","dirtyInputs":"","inputSha256":{"cloud-controller/lane-a/worker.ts":"bb1279d0b0837f060a7f4ae3a787f92b111eae91c997850218cd5d378137209d","cloud-controller/lane-a/schema.ts":"8b29ad0ffde37f387e9a25290407be22bf05b6ee14c1010f3ca2c4cd9b3451e5","cloud-controller/lane-a/runtime.test.ts":"f9c2816fe8e122d2b7b1903810079f83d7e4f9633f6b21f4df1fc9e121225eda","cloud-controller/lane-a/package.json":"2b639b0f60d06cd7bff3a128672c877447eca75aad04c29b2582dceedc66433a","cloud-controller/lane-a/package-lock.json":"51e800fbbe18d280b65a8db5108c3d6492da420fe1196d5454c97fc28e3f5bd1","cloud-controller/shared/contracts.ts":"cfb3110c588d2b5f49b87166e28100ca21c3c7472293526a847c1ec0af8f4196","cloud-controller/shared/domain.ts":"d50c717670305c2af03d00908eb81e9b822613eae3182206ec3cc469a91b1c7f","cloud-controller/shared/provider-worker.ts":"a45adaf2904e5a4283b947de933273d9de03eb0cce0ebe2871bf790ec26293a5","cloud-controller/shared/evidence.ts":"1691b08688d11cfbab1ab17b78e5d5618fb09cb713e6c46cde1599350453e78a","cloud-controller/lane-a/node_modules/miniflare/package.json":"436c3255fe4542c6567580f048af6ba6d19fb4c06ae74fbaf281776c6a1cb469","cloud-controller/lane-a/node_modules/miniflare/dist/src/workers/workflows/binding.worker.js":"faf3a76790911ba1723035e08fc0fcdd73e54235f84aef611479eede237d072c","cloud-controller/lane-a/node_modules/workerd/package.json":"726bbe70e3b62e136dbfac7c36e61b912f111f5a271eb44ea72b88d17199eb18"},"command":"npm run test:characterize","installCommand":"npm ci --ignore-scripts --cache ../../.local/npm-cache","node":"v24.19.0","platform":"linux","architecture":"x64"},"mode":"negative characterization"}
+✔ native ledger: concurrent last-slot admission, strict schemas, atomic official SQL adapter (4830.765181ms)
+{"observer":"ambiguous-parent-complete","observerWaitMs":623}
+✔ native workflow: ambiguous dispatch, lost provider wake, immutable receipt and completed replay (7617.632352ms)
+✔ native claims: duplicates cannot launch or execute twice; cancellation fences late launch (3402.995483ms)
+✔ native upgrade: unknown schema and epoch fail closed after real workerd restart (9852.395558ms)
 {"observer":"first-restart-first-start","observerWaitMs":212}
 {"diagnostic":"AFTER failed autonomous first-activity gate: native status intervention","before":[{"kind":"observer","id":"first-restart-first-start","subjectId":"first-restart","event":"first-start","value":1}],"intervention":{"status":"running","output":null,"persistedStepCount":0},"recovered":false}
-✔ KNOWN GAP CHARACTERIZATION (not acceptance): native first-activity autonomous recovery: restart without waking or polling target (45333.239722ms)
-{"observer":"suspended-body","observerWaitMs":219}
-{"preRestartNativeWait":{"event":{"instanceId":"run-suspended-e1-v1","eventId":20,"timestamp":1791546919433,"type":"wait_started","stepName":"provider-terminal-0-1","eventType":"provider-done"},"status":{"status":"running","output":null,"persistedStepCount":4}}}
-{"diagnostic":"AFTER failed suspended gate: native status intervention","before":[{"kind":"call","id":"call-5e238b41-8137-4566-933e-62c6159ce56a","value":{"id":"call-5e238b41-8137-4566-933e-62c6159ce56a","runId":"suspended","generation":"suspended-e1-v1","state":"completed","cost":1}},{"kind":"observer","id":"suspended-body","subjectId":"suspended","event":"body","value":1},{"kind":"observer","id":"suspended-first","subjectId":"suspended","event":"first","value":1},{"kind":"observer","id":"suspended-first-start","subjectId":"suspended","event":"first-start","value":1}],"intervention":{"status":"running","output":null,"persistedStepCount":4},"recovered":false}
-✔ KNOWN GAP CHARACTERIZATION (not acceptance): native suspended control: lost provider callback repaired by bounded native reconciliation after workerd restart (43762.485262ms)
-{"observer":"first-control-parent-complete","observerWaitMs":1342}
-{"observer":"wait-control-body","observerWaitMs":208}
-{"observer":"wait-control-parent-complete","observerWaitMs":1948}
-✔ native controls: incomplete first activity and lost provider callback complete without restart (6870.652944ms)
-{"observer":"interrupt-body","observerWaitMs":210}
-✔ native interruption: cancelling a suspended workflow stops owned calls and preserves settled accounting (10366.92746ms)
-✔ native uncertainty: ambiguous launch and terminal provider status retain liabilities until confirmed cleanup (6306.056742ms)
-✔ native deadline: expiry contains resources and keeps timeout separate from cancellation (7311.792264ms)
-{"observer":"code-upgrade-first-start","observerWaitMs":208}
-✔ native code upgrade: incompatible module bytes fence an incomplete v1 workflow (9670.256077ms)
-✔ native cleanup retry: first unavailable cancel retains durable containment intent and liability (6509.945492ms)
-✔ native alarm priority: second deferred admission cannot postpone first run deadline (7309.589019ms)
-{"observer":"-opaque-parent-complete","observerWaitMs":312}
-✔ native opaque ID: accepted leading hyphen survives native creation and completed history (6581.885648ms)
-{"laneBundleBytes":409200,"node":"v24.19.0","testRunner":"node:test","timestamp":"2026-10-09T11:57:01.277Z"}
-✔ native fenced cleanup: late launch between lookup and disable is owned and cancelled before acknowledgement (3517.511521ms)
-✔ bundle metrics (0.302485ms)
-ℹ tests 16
+✔ KNOWN GAP CHARACTERIZATION (not acceptance): native first-activity autonomous recovery: restart without waking or polling target (40929.643604ms)
+{"observer":"suspended-body","observerWaitMs":210}
+{"preRestartNativeWait":{"event":{"instanceId":"run-suspended-e1-v1","eventId":20,"timestamp":1791551199398,"type":"wait_started","stepName":"provider-terminal-0-1","eventType":"provider-done"},"status":{"status":"running","output":null,"persistedStepCount":4}}}
+{"diagnostic":"AFTER failed suspended gate: native status intervention","before":[{"kind":"call","id":"call-77b0bd9c-9b1d-4020-8788-2ed7e9987079","value":{"id":"call-77b0bd9c-9b1d-4020-8788-2ed7e9987079","runId":"suspended","generation":"suspended-e1-v1","state":"completed","cost":1}},{"kind":"observer","id":"suspended-body","subjectId":"suspended","event":"body","value":1},{"kind":"observer","id":"suspended-first","subjectId":"suspended","event":"first","value":1},{"kind":"observer","id":"suspended-first-start","subjectId":"suspended","event":"first-start","value":1}],"intervention":{"status":"running","output":null,"persistedStepCount":4},"recovered":false}
+✔ KNOWN GAP CHARACTERIZATION (not acceptance): native suspended control: lost provider callback repaired by bounded native reconciliation after workerd restart (40770.65438ms)
+{"observer":"first-control-parent-complete","observerWaitMs":1336}
+{"observer":"wait-control-body","observerWaitMs":210}
+{"observer":"wait-control-parent-complete","observerWaitMs":1957}
+✔ native controls: incomplete first activity and lost provider callback complete without restart (6960.289124ms)
+{"observer":"interrupt-body","observerWaitMs":213}
+✔ native interruption: cancelling a suspended workflow stops owned calls and preserves settled accounting (4472.025491ms)
+✔ native uncertainty: ambiguous launch and terminal provider status retain liabilities until confirmed cleanup (3440.342999ms)
+✔ native deadline: expiry contains resources and keeps timeout separate from cancellation (4344.841704ms)
+{"observer":"code-upgrade-first-start","observerWaitMs":211}
+✔ native code upgrade: incompatible module bytes fence an incomplete v1 workflow (8880.383109ms)
+✔ native cleanup retry: first unavailable cancel retains durable containment intent and liability (3463.15341ms)
+✔ native alarm priority: second deferred admission cannot postpone first run deadline (4375.953496ms)
+{"observer":"-opaque-parent-complete","observerWaitMs":326}
+✔ native opaque ID: accepted leading hyphen survives native creation and completed history (3699.264667ms)
+{"laneBundleBytes":409200,"laneBundleSha256":"ad07378191818e76b4c0f614fb4eff9bbbe82b6c42d1db1566d265324591761d","node":"v24.19.0","testRunner":"node:test","timestamp":"2026-10-09T13:08:00.069Z"}
+✔ native fenced cleanup: late launch between lookup and disable is owned and cancelled before acknowledgement (3672.526575ms)
+✔ bundle metrics (1.109272ms)
+ℹ tests 20
 ℹ suites 0
-ℹ pass 16
+ℹ pass 20
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 189580.509422
+ℹ duration_ms 199096.917752
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

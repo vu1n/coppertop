@@ -24,7 +24,7 @@ Lane A uses a direct Miniflare harness and Node assertions. It does not install 
 
 ## Acceptance evidence
 
-“Unit” proves the shared pure decision only. “Runtime” means the actual Miniflare/workerd fixture executed against persisted SQLite. Characterization commands assert the two known missing-recovery observations per lane and may exit successfully; strict acceptance commands fail. See [Lane A evidence](lane-a/EVIDENCE.md) and [Lane B evidence](lane-b/EVIDENCE.md) for commands, observation intervals, native/engine diagnostics and actual counts.
+“Unit” proves the shared pure decision only. “Runtime” means the actual Miniflare/workerd fixture executed against persisted SQLite. Characterization commands assert known missing recovery and may exit successfully; strict acceptance commands fail. Raw native timer probes remain explicit negative characterizations in every suite. See [Lane A evidence](lane-a/EVIDENCE.md) and [Lane B evidence](lane-b/EVIDENCE.md) for commands, observation intervals, native/engine diagnostics and actual counts.
 
 | Gate | Shared / Lane A | Lane B |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ Lane A uses a direct Miniflare harness and Node assertions. It does not install 
 | Suspended callback/timeout restart | **Local native wait strict gate failed; managed behavior unproven** | Analogous autonomous clock/deadline and legitimate deferred controls passed; a native wait API is not used |
 | Exhausted child-to-parent wake after restart | Native child engine scenario not run | **Engine gate failed** |
 | Lost provider wake/status fallback without restart | Runtime passed; no restart in this control | Shared provider behavior passed; equivalent automatic supervisor fallback not run |
-| Plain native do/sleep/do, both pins and restart methods | Local emulator characterization; see controls below | Same plain control using this lane's own Miniflare/workerd universe |
+| Plain native do/sleep/do, both pins and restart methods | Characterization passed; managed acceptance not evaluated | Characterization passed using this lane's own Miniflare/workerd universe |
 | Actual changed-code replay / incompatible definition | Runtime passed; incompatible epoch fenced | Runtime passed; application version guard quarantines |
 | Cancellation/interruption and cleanup independence | Runtime containment controls passed | Interruption replay + manual synthetic cleanup controls passed |
 | Cleanup unavailable, persisted retry authority | Runtime fault injection passed | Equivalent autonomous supervisor fault gate not run |
@@ -50,16 +50,28 @@ Lane A uses a direct Miniflare harness and Node assertions. It does not install 
 | Alarm exhaustion/missing-alarm scheduled repair | Full exhaustion/cron gate not run | Engine gaps reproduced; application supervisor not implemented |
 | Production eviction, deployment, real R2/Modal, paid canary | Not run; outside authorization | Not run; outside authorization |
 
+Review-revision runtime inputs were tested at `1791e8667ebcc639533b3cb9d6c3b20a9f2cbd21`; eight provenance records were verified against that commit and the published executable inputs.
+
+| Check | Passed | Failed | Scope |
+| --- | ---: | ---: | --- |
+| Shared | 16 | 0 | 15 pure checks plus independent provider workerd restart |
+| Lane A strict | 18 | 2 | Full 20-check suite; 18 runtime behaviors, one source assertion, one bundle metric |
+| Lane A characterization | 20 | 0 | Includes two missing-recovery and two raw-emulator stall characterizations |
+| Lane B characterization | 15 | 0 | 11 engine/provider checks plus four raw native controls |
+| Lane B strict | 0 | 2 | Only the two selected REGRESSION checks |
+| Existing upstream Workflow tests | 10 | 0 | Pinned workspace Vitest |
+| Required Python suite | 422 | 0 | 425 total, three skipped; no Python runtime changes |
+
 Counts and commands for the review revision are recorded in each lane's evidence file and captured outputs. Counts are not a relative reliability score: Lane A runs its complete strict suite, while Lane B's strict command selects only the two named recovery regressions. Green CI characterizes known failures; it never turns either lane's strict gate into a pass. Shared tests also exercise independently persisted provider/observer/artifact restart. Python runtime code is unchanged; the bounded official-loader integration remains disabled because no `COPPERTOP_SOURCE` was supplied.
 
 | Recovery observation | Lane A | Lane B |
 | --- | --- | --- |
 | Target isolation | Only independent provider/observer contacted during gate | Only independent provider/observer contacted during gate |
-| Required gate window | 25 seconds after restart, then separate 12-second diagnostic status intervention | 2.5 seconds after restart, then separate explicit resume intervention |
+| Required gate window | 25 seconds after restart, then separate 12-second diagnostic status intervention | 2.5 seconds after restart; characterization then explicitly resumes, while strict assertions exit before intervention |
 | Supporting evidence | Plain native control and pinned emulator source isolate the local timer limitation | Persisted absent wake/alarm plus inspected initial-execution and parent-delivery paths |
 | Interpretation | Finite local stall; managed scheduler cannot be evaluated here | Finite observed stall backed by a concrete lack of durable recovery ownership |
 
-The shared plain native program executes `step.do` → `step.sleep(3 seconds)` → `step.do`. Each lane injects its own dependencies and persistence options. Before either restart, read-only inspection of only fixture-generated SQLite proves the first step succeeded, sleep started, an active sleep entry was persisted and sleep had not completed. Both `dispose/recreate` and `setOptions` require zero immediate completion and observe the independent observer for at least eight seconds without contacting the target. The no-restart control must complete. These controls characterize the pinned emulators; they are not managed acceptance tests.
+The shared plain native program executes `step.do` → `step.sleep(10 seconds)` → `step.do`. Each lane injects its own dependencies and persistence options. Before either restart, read-only inspection of only fixture-generated SQLite proves the first step succeeded, sleep started, an active sleep entry was persisted and sleep had not completed. Both `dispose/recreate` and `setOptions` require zero immediate completion and require the original sleep due time to remain in the future after restart, then observe only the independent observer for at least eight seconds and through the original due time plus three seconds. The no-restart control must complete. These controls characterize the pinned emulators; they are not managed acceptance tests.
 
 In both inspected native bindings, `TimePriorityQueue.handleNextAlarm()` only peeks at the heap and the engine has no Durable Object alarm handler. Native status reads metadata/logs rather than re-entering the program. Event delivery **can** cold-initialize execution; there is no claim that every native program stalls or that create/restart/resume are the only entry paths. The source hashes in the control output identify the exact inspected installed implementations.
 
@@ -73,9 +85,9 @@ Performance observations are fixture measurements. Lane A's unminified bundle is
 
 ## Next step and integration prerequisites
 
-The plain native control closes the local attribution investigation for these pins. Keep strict regressions as tripwires; do not repeatedly tune the same harness or add a permanent wake poller. A change to either installed native binding triggers rerunning the raw no-restart/restart controls and Lane A's strict gates. If the local runtime gains supported autonomous recovery, require both strict gates plus the existing safety/replay controls to pass before revisiting acceptance.
+The plain native control answers the bounded question: the selected timer stall does not require effect-cf at either pin. Keep strict regressions as tripwires; do not repeatedly tune the same harness or add a permanent wake poller. A change to either installed native binding triggers rerunning the raw no-restart/restart controls and Lane A's strict gates. If the local runtime gains supported autonomous recovery, require both strict gates plus the existing safety/replay controls to pass before revisiting acceptance.
 
-The next decision is whether to authorize a separate bounded managed-runtime test or explicitly accept reliance on Cloudflare's documented durability contract. A future test needs an approved account/deployment, a supported fault-injection mechanism whose semantics match the intended crash, an independent observer, a fixed spend/time bound and defined cleanup. The exposed Workflow lifecycle APIs do not establish a host-process-kill mechanism. `restart`, `terminate`, throwing or redeployment must not silently substitute for process loss. A documentation-based decision is an explicit assumption, not an observed pass. No zero-cost guarantee or deployment is made in this spike.
+The next decision is whether to authorize a separate bounded managed-runtime test or explicitly accept reliance on Cloudflare's documented durability contract. A future test needs an approved account/deployment, a supported fault-injection mechanism whose semantics match the intended crash, an independent observer, a fixed spend/time bound and defined cleanup. The exposed Workflow lifecycle APIs do not establish a host-process-kill mechanism. `restart`, `terminate`, throwing or redeployment must not silently substitute for process loss. For a future managed test, both interrupted-first-activity and suspended-wait scenarios must complete within a predeclared retry/timeout bound without target contact, while matching no-restart controls and receipt/accounting invariants pass. Success provides bounded evidence for the tested fault; a stall keeps acceptance blocked and triggers reevaluation. A documentation-based decision is an explicit assumption, not an observed pass. No zero-cost guarantee or deployment is made in this spike.
 
 At the next engine decision point, recheck PR 7322's head. A changed upstream source or a relevant recovery fix triggers rerunning the two strict regressions and completed/clock/deferred/defect controls on a coherent new workspace. Select B only after durable initial-execution and exhausted-parent-wake recovery pass without target contact. Until then retain the narrow regressions as a potential contribution; no public issue, message, fork or PR is authorized, and no new durability engine is proposed.
 
