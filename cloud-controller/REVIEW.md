@@ -121,3 +121,15 @@ approval file, and timing/cancellation/polling/pagination regressions pass. The
 observer shares the Workflow scheduler, and a managed pass would establish only
 no-restart controls, leaving the provisional choice and host-loss gate unchanged.
 The [updated evidence](managed-canary/EVIDENCE.md) records exact packaging hashes.
+
+
+## Cursor re-review: SDK connection classification
+
+Cursor confirmed twelve prior managed-canary findings and found the remaining
+connection retry check used Error.name rather than the pinned SDK class. The
+[follow-up disposition](managed-canary/REVIEW.md#cursor-re-review-at-36d4182)
+records the instance-based fix and real-SDK recovery/budget/abort regressions.
+All 34 canary checks and the full offline Python suite pass; all three dry-run
+Worker bundles are unchanged. The original transient-read thread and the new
+SDK classification thread are still open for reviewer confirmation; no thread
+resolution or new managed execution is claimed.

@@ -123,7 +123,7 @@ The actual managed Worker entrypoints, native steps, SQLite transactions and
 named service binding execute in the pinned Miniflare/workerd harness. No
 restart is injected into these supported-control tests.
 
-Tests include 24 controller safety regressions, five actual workerd runtime
+Tests include 28 controller safety regressions, five actual workerd runtime
 behaviors and one partial-source provenance record (not a runtime test). They
 cover denial/approval boundaries, exact ownership, existing-name conflicts,
 403/network failures, lost launch/deletion replies, partial deployment cleanup,
@@ -199,7 +199,9 @@ scope before invocation. Normal proxy routing is retained, and API transport
 automatic SDK retries are disabled. Status GETs alone tolerate up to three
 consecutive transient connection, 429 or 5xx failures inside the existing
 900-sample/deadline budget. A fourth failure, authentication denial or unsupported
-status schema stops the run. Mutations are never retried. The suite create is
+status schema stops the run. Connection errors use the pinned SDK's
+`APIConnectionError` class (including its timeout subclass), rather than
+`Error.name`; aborts and lookalike names fail immediately. Mutations are never retried. The suite create is
 attempted once; a lost reply is
 reconciled by its exact ID.
 

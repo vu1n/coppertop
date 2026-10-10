@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { APIConnectionError } from "cloudflare";
 import { acceptance } from "./report.ts";
 import { canonical } from "./contracts.ts";
 
@@ -459,9 +460,7 @@ export async function execute(
         const transient =
           error?.status === 429 ||
           (error?.status >= 500 && error?.status <= 599) ||
-          ["APIConnectionError", "APIConnectionTimeoutError"].includes(
-            error?.name,
-          );
+          error instanceof APIConnectionError;
         if (!transient || ++readFailures > 3) throw error;
         await sleep(2000);
         continue;

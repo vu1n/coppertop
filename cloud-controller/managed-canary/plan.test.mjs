@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  APIUserAbortError,
+} from "cloudflare";
+import {
   plan,
   requireApproval,
   absent,
@@ -548,8 +553,8 @@ test("a refused controller Worker deletion never force-deletes or skips namespac
   assert.ok(retire >= 0 && providerDelete > retire);
   assert.ok(f.trace.every((row) => !row[1].includes("force=")));
 });
-for (const status of [429, 503, "APIConnectionError"])
-  test(`bounded transient status reads recover: ${status}`, async () => {
+for (const failure of [429, 503, APIConnectionError, APIConnectionTimeoutError])
+  test(`bounded transient status reads recover: ${typeof failure === "number" ? failure : failure.name}`, async () => {
     const p = makePlan(),
       f = fake(p),
       get = f.api.get;
@@ -559,11 +564,14 @@ for (const status of [429, 503, "APIConnectionError"])
         f.creates() &&
         path.endsWith(`${p.params.suiteId}-controller`) &&
         failures++ < 3
-      )
-        throw Object.assign(
-          new Error("transient read"),
-          typeof status === "number" ? { status } : { name: status },
-        );
+      ) {
+        const error =
+          typeof failure === "number"
+            ? Object.assign(new Error("transient read"), { status: failure })
+            : new failure({});
+        if (typeof failure !== "number") assert.equal(error.name, "Error");
+        throw error;
+      }
       return get(path, ...args);
     };
     assert.equal(
@@ -571,7 +579,57 @@ for (const status of [429, 503, "APIConnectionError"])
       true,
     );
     assert.equal(f.creates(), 1);
+    assert.equal(f.journals.at(-1).cleanup.confirmed, true);
   });
+for (const Failure of [APIConnectionError, APIConnectionTimeoutError])
+  test(`fourth real SDK connection failure stops polling and still cleans up: ${Failure.name}`, async () => {
+    const p = makePlan(),
+      f = fake(p),
+      get = f.api.get;
+    let failures = 0;
+    f.api.get = async (path, ...args) => {
+      if (
+        f.creates() &&
+        path.endsWith(`${p.params.suiteId}-controller`) &&
+        failures < 4
+      ) {
+        failures++;
+        throw new Failure({});
+      }
+      return get(path, ...args);
+    };
+    await assert.rejects(execute(f.api, p, approved(p), f), /incomplete/);
+    assert.equal(failures, 4);
+    assert.equal(f.journals.at(-1).cleanup.confirmed, true);
+    assert.equal(f.creates(), 1);
+  });
+test("abort and lookalike error names never grant connection retries", async () => {
+  for (const error of [
+    new APIUserAbortError({}),
+    Object.assign(new Error("lookalike"), { name: "APIConnectionError" }),
+  ]) {
+    const p = makePlan(),
+      f = fake(p),
+      get = f.api.get;
+    let failures = 0;
+    f.api.get = async (path, ...args) => {
+      if (
+        f.creates() &&
+        path.endsWith(`${p.params.suiteId}-controller`) &&
+        failures < 1
+      ) {
+        failures++;
+        throw error;
+      }
+      return get(path, ...args);
+    };
+    await assert.rejects(execute(f.api, p, approved(p), f), /incomplete/);
+    assert.equal(failures, 1);
+    assert.ok(f.journals.at(-1).runFailure);
+    assert.equal(f.journals.at(-1).cleanup.confirmed, true);
+    assert.equal(f.creates(), 1);
+  }
+});
 for (const failure of ["fourth-transient", "denial", "malformed-result"])
   test(`status read failure remains bounded and fails closed: ${failure}`, async () => {
     const p = makePlan(),

@@ -10,7 +10,7 @@ inputs; this is not a clean-checkout run or managed-service evidence.
 | --- | --- | --- |
 | TypeScript strict typecheck | Passed | Native entrypoints, ledger/provider, tests and imported codecs |
 | Compiler hygiene | Passed | No unused locals/parameters |
-| Controller safety tests | 24 passed | One-use approval/atomic journal, raw evidence audit, pagination, bounded transient reads, ownership, transport ambiguity, deletion denial and bounds |
+| Controller safety tests | 28 passed | One-use approval/atomic journal, raw evidence audit, pagination, bounded transient reads, ownership, transport ambiguity, deletion denial and bounds |
 | Native runtime behaviors | 5 passed | Actual Miniflare/workerd, supported native probes, evidence audit, timing gates, delayed cancellation, SQLite and service binding |
 | Partial-source provenance record | 1 completed | Hashes six named files; starts no runtime and claims no binding identity |
 | Required Python suite | 425 total, 3 skipped | 422 passed; no official loader source enabled |
@@ -30,7 +30,7 @@ uses error-level logs. An initial default-cache attempt failed to create the
 executor's default home cache; it was rerun using the writable `.local/` cache.
 No network restriction or approval gate was bypassed.
 
-The source build digest for this preparation is `d942b0c0fa3f27edd4fb3584967e9454e1c5baf13ab6ac827fb82ff62bad7a5b`.
+The source build digest for this preparation is `927ba64511ee6f3fd89c12d67f8ae0aa382c6766566b04378d647c57b00589c1`.
 An expired plan must be regenerated after approval. Generated deployment
 configuration and bundles remain in ignored `.local/`, with no credentials.
 
@@ -59,7 +59,7 @@ variables or backups were inspected, no provider job was run, and no remote
 resources, account settings, credentials or subscriptions were changed.
 
 
-## PR 10 feedback verification
+## First PR 10 feedback verification (06ffd1c)
 
 All [thirteen review dispositions](REVIEW.md) are recorded. On the updated working
 tree, `npm run check` passed strict typecheck, compiler hygiene and **30 total
@@ -100,3 +100,33 @@ all three bundle hashes are unchanged.
 Final required offline Python result after the fixture correction: **425 total,
 422 passed, three skipped**, in **29.166 seconds**. No model/dataset download or
 external provider call occurred.
+
+
+## SDK connection-error follow-up after 36d4182
+
+Cursor identified a real pinned-SDK mismatch in the transient-read classifier.
+The prior name-based check missed SDK connection/timeout errors, whose name is
+Error. Constructor-based regressions reproduced the failure against the prior
+implementation. `instanceof APIConnectionError` now covers the actual timeout
+subclass without treating aborts or a lookalike name as transient.
+
+Final `npm run check`: strict typecheck and compiler hygiene passed, and **34
+checks passed: 28 controller regressions, five actual workerd runtime behaviors
+and one partial-source provenance record**, in 49.986 seconds. The full scenario
+again recorded **201,053 application bytes**. The required offline Python suite
+passed **425 total, 422 passed, three skipped**, in 28.925 seconds.
+
+The updated packages were prepared with:
+
+```sh
+npm run package -- ct-sdk-review-10 ../../.local/managed-canary-sdk-package
+```
+
+All three dry-run bundle hashes are identical to those listed above. The new
+source build digest is **927ba64511ee6f3fd89c12d67f8ae0aa382c6766566b04378d647c57b00589c1**,
+reflecting the local CLI classifier change. Source changes after verification
+are limited to documentation. The [re-review disposition](REVIEW.md#cursor-re-review-at-36d4182)
+records that twelve prior threads were resolved by the reviewer, while the
+original transient-read and new SDK-error threads remain open pending review.
+No network request or credential use was needed to construct the real SDK error
+instances; no managed API mutation or real provider call occurred.

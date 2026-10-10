@@ -1,7 +1,7 @@
 # PR 10 review dispositions
 
 Review: [Cursor review at c66172b](https://github.com/vu1n/coppertop/pull/10#issuecomment-6087271559).
-All thirteen inline findings were assessed against the actual implementation and
+All thirteen original inline findings were assessed against the actual implementation and
 pinned SDK. The following changes preserve the synthetic scope and the original
 provisional engine decision. They authorize no managed run.
 
@@ -37,3 +37,35 @@ The follow-up fixes test cleanup ordering only, reruns the seven affected tests
 and the full Python suite, and preserves the production adapter and canary graph.
 This is tracked in the [evidence](EVIDENCE.md#hosted-cpu-fixture-correction), rather
 than hiding the failed attempt with repeated CI retries.
+
+
+## Cursor re-review at 36d4182
+
+[Re-review](https://github.com/vu1n/coppertop/pull/10#issuecomment-6092744251)
+confirmed twelve earlier findings and resolved those twelve GitHub threads.
+The original transient-read thread (4233543522) remains open, as does the new
+[SDK classification finding](https://github.com/vu1n/coppertop/pull/10#discussion_r4236035724)
+(4236035724). This follow-up changes code and tests; it does not mark either
+GitHub thread resolved or represent another reviewer approval.
+
+The new finding is correct. The pinned cloudflare@5.2.0 implementation of
+APIConnectionError inherits Error.name, and APIConnectionTimeoutError extends
+APIConnectionError. The earlier test fabricated an APIConnectionError name and
+therefore missed real SDK behavior. Status-read classification now uses
+`error instanceof APIConnectionError`, covering the actual timeout subclass.
+Existing 429/5xx handling, the three-consecutive-failure ceiling, overall
+sample/deadline budgets and mutation retry policy are unchanged.
+
+Tests now construct both genuine SDK error classes, asserting their inherited
+name is Error. Recovery after three connection/timeout failures and failure plus
+cleanup on the fourth are covered. Actual SDK user-abort errors and a generic
+Error with a lookalike name fail immediately. The real-class regressions failed
+against the prior implementation, and pass with the class check. No network
+request, account authentication or credential inspection is needed for these
+constructor-based cases.
+
+The original table's transient-read disposition should be read together with
+this correction: connection recovery was only partially fixed at 36d4182 and
+is now implemented against the real pinned SDK. Final checks and packaging are
+recorded in [EVIDENCE](EVIDENCE.md). Managed execution, host-loss recovery and
+billing headroom remain unverified; the provisional engine decision is unchanged.
