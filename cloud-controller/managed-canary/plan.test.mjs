@@ -17,6 +17,7 @@ import {
   requireCleanupReceipt,
   auditOutput,
   ownedNamespaces,
+  saveExecution,
   main,
 } from "./controller.mjs";
 
@@ -83,7 +84,8 @@ function passingOutput(p) {
   };
 }
 
-const makePlan = () => plan("ct-test-canary", "a".repeat(64), 1_000_000);
+const makePlan = (mode) =>
+  plan("ct-test-canary", "a".repeat(64), 1_000_000, mode);
 const approved = (p) => ({
   approved: true,
   suiteId: p.params.suiteId,
@@ -93,6 +95,33 @@ const approved = (p) => ({
   incrementalDollarCap: 1,
   billingHeadroomVerified: true,
   subscriptionChangeAuthorized: false,
+});
+const creditApproved = (p) => ({
+  ...approved(p),
+  billingMode: "user-confirmed-credits",
+  incrementalDollarCap: null,
+  billingHeadroomVerified: false,
+  creditAuthorization: {
+    spendingScope: "this-bounded-synthetic-run-only",
+    userConfirmedCreditsForPurpose: true,
+    dollarOneCapUnverified: true,
+    possibleDoOverageIncrementDollars: 12.5,
+    overageRiskAccepted: true,
+    creditBalanceVerified: false,
+    creditApplicabilityVerified: false,
+    evidence: {
+      source: "user-message",
+      userMessage: {
+        messageId: "test-approval",
+        at: new Date(999_000).toISOString(),
+        text: "Run this bounded canary using credits.",
+      },
+      priorDisclosure: {
+        at: new Date(998_000).toISOString(),
+        text: "The $1 cap is unverified; DO overage can add $12.50.",
+      },
+    },
+  },
 });
 function fake(p) {
   const resources = new Map(),
@@ -246,6 +275,283 @@ test("implementation permission never substitutes for deployment/spend/headroom 
     ),
   );
   assert.equal(contacted, false);
+});
+test("credit authorization preserves verified-headroom mode and fixed resources", () => {
+  const original = makePlan(),
+    p = makePlan("user-confirmed-credits");
+  requireApproval(original, approved(original), 1_000_000);
+  requireApproval(p, creditApproved(p), 1_000_000);
+  assert.deepEqual(p.resources, original.resources);
+  for (const key of ["provider", "controller", "retire", "params", "names"])
+    assert.deepEqual(p[key], original[key]);
+  assert.equal(p.billingGate.dollarCap, null);
+  assert.equal(p.billingGate.creditBalanceVerified, false);
+  assert.equal(p.billingGate.creditApplicabilityVerified, false);
+  assert.throws(() => requireApproval(p, approved(p), 1_000_000));
+  assert.throws(() =>
+    requireApproval(original, creditApproved(original), 1_000_000),
+  );
+  assert.throws(() => makePlan("unknown-mode"));
+});
+test("missing or ambiguous credit authorization fails before claim and API contact", async () => {
+  const changes = [
+    (a) => {
+      delete a.billingMode;
+    },
+    (a) => {
+      a.billingMode = null;
+    },
+    (a) => {
+      delete a.creditAuthorization;
+    },
+    (a) => {
+      a.approved = false;
+    },
+    (a) => {
+      a.cleanupAuthorized = false;
+    },
+    (a) => {
+      a.subscriptionChangeAuthorized = true;
+    },
+    (a) => {
+      a.incrementalDollarCap = 1;
+    },
+    (a) => {
+      delete a.incrementalDollarCap;
+    },
+    (a) => {
+      a.billingHeadroomVerified = true;
+    },
+    (a) => {
+      a.deadline++;
+    },
+    (a) => {
+      a.buildDigest = "b".repeat(64);
+    },
+    (a) => {
+      a.suiteId = "ct-other";
+    },
+    (a) => {
+      a.creditAuthorization.spendingScope = "unlimited";
+    },
+    (a) => {
+      a.creditAuthorization.userConfirmedCreditsForPurpose = false;
+    },
+    (a) => {
+      a.creditAuthorization.dollarOneCapUnverified = false;
+    },
+    (a) => {
+      a.creditAuthorization.possibleDoOverageIncrementDollars = 1;
+    },
+    (a) => {
+      a.creditAuthorization.overageRiskAccepted = false;
+    },
+    (a) => {
+      a.creditAuthorization.creditBalanceVerified = true;
+    },
+    (a) => {
+      a.creditAuthorization.creditApplicabilityVerified = true;
+    },
+    (a) => {
+      delete a.creditAuthorization.evidence;
+    },
+    (a) => {
+      a.creditAuthorization.evidence.source = "operator-assumption";
+    },
+    (a) => {
+      a.creditAuthorization.evidence.userMessage.messageId = " ";
+    },
+    (a) => {
+      a.creditAuthorization.evidence.userMessage.text = "x".repeat(4097);
+    },
+    (a) => {
+      a.creditAuthorization.evidence.priorDisclosure.text = "";
+    },
+    (a) => {
+      a.creditAuthorization.evidence.priorDisclosure.at = new Date(
+        999_001,
+      ).toISOString();
+    },
+    (a) => {
+      a.creditAuthorization.evidence.userMessage.at = new Date(
+        1_000_001,
+      ).toISOString();
+    },
+    (a) => {
+      a.creditAuthorization.evidence.priorDisclosure.at =
+        "1969-02-30T00:00:00Z";
+    },
+  ];
+  const p = makePlan("user-confirmed-credits");
+  for (const change of [undefined, ...changes]) {
+    const a = change ? creditApproved(p) : undefined;
+    if (change) change(a);
+    const f = fake(p);
+    let claims = 0;
+    await assert.rejects(
+      execute(f.api, p, a, {
+        ...f,
+        claim: async () => {
+          claims++;
+        },
+      }),
+    );
+    assert.equal(claims, 0);
+    assert.equal(f.trace.length, 0);
+    assert.equal(f.journals.length, 0);
+  }
+});
+test("both approval modes reject expanded plans before API contact", async () => {
+  const changes = [
+    ...Object.keys(makePlan().resources).map((key) => (p) => {
+      p.resources[key]++;
+    }),
+    (p) => {
+      p.provider.routes.push("example.com/*");
+    },
+    (p) => {
+      p.provider.workers_dev = true;
+    },
+    (p) => {
+      p.controller.preview_urls = true;
+    },
+    (p) => {
+      p.controller.limits.cpu_ms++;
+    },
+    (p) => {
+      p.controller.services[0].service = "unrelated";
+    },
+    (p) => {
+      p.realProviders = true;
+    },
+    (p) => {
+      p.provider.durable_objects.bindings.push({
+        name: "OTHER",
+        class_name: "Other",
+      });
+    },
+  ];
+  for (const mode of ["verified-headroom", "user-confirmed-credits"])
+    for (const change of changes) {
+      const p = makePlan(mode),
+        a = mode === "verified-headroom" ? approved(p) : creditApproved(p);
+      change(p);
+      const f = fake(p);
+      await assert.rejects(execute(f.api, p, a, f), /fixed canary scope/);
+      assert.equal(f.trace.length, 0);
+    }
+});
+test("credit approval remains one-use, deadline-bound and independently cleanable", async () => {
+  const p = makePlan("user-confirmed-credits"),
+    f = fake(p),
+    a = creditApproved(p);
+  await execute(f.api, p, a, f);
+  assert.equal(f.creates(), 1);
+  assert.equal(f.resources.size, 0);
+  const before = f.trace.length;
+  await assert.rejects(execute(f.api, p, a, f), /already claimed/);
+  assert.equal(f.trace.length, before);
+  assert.throws(() => requireApproval(p, a, p.params.deadline));
+  assert.throws(() => requireApproval(p, a, 999_999));
+  assert.deepEqual(
+    requireCleanupReceipt(p, f.journals.at(-1)),
+    f.journals.at(-1).state,
+  );
+});
+function cleanupFixture() {
+  const p = makePlan(),
+    f = fake(p),
+    id = `${p.params.suiteId}-controller`;
+  const path = `/accounts/${ACCOUNT_ID}/workflows/${p.names.suite}/instances/${id}`;
+  f.resources.set(path, { result: { status: "complete" } });
+  return {
+    p,
+    f,
+    id,
+    path,
+    state: { providerAttempted: false, controllerAttempted: true },
+  };
+}
+test("cleanup distinguishes malformed, rejected and nonmatching deletion replies", async () => {
+  for (const [response, reason] of [
+    [{ result: { deleted: "unsupported", errors: [] } }, "malformed"],
+    [
+      {
+        result: {
+          deleted: [],
+          errors: [{ id: "other", message: "private response" }],
+        },
+      },
+      "rejected",
+    ],
+    [{ result: { deleted: [], errors: [] } }, "missingId"],
+  ]) {
+    const { p, f, state } = cleanupFixture();
+    f.api.post = async () => response;
+    const r = await cleanup(f.api, p, state, f.deploy);
+    assert.equal(r.confirmed, false);
+    assert.equal(r.failures[0].reason, reason);
+    assert.equal(r.failures[0].phase, "validate-delete-response");
+    assert.equal(r.failures[0].errorClass, "CleanupConfirmationError");
+    assert.equal(r.instanceChecks[0].finalAbsent, false);
+    assert.ok(!JSON.stringify(r).includes("private response"));
+  }
+});
+test("acknowledged deletion still requires absence; later absence is retained without a causal claim", async () => {
+  const { p, f, id, path, state } = cleanupFixture();
+  f.api.post = async () => ({ result: { deleted: [{ id }], errors: [] } });
+  const first = await cleanup(f.api, p, state, f.deploy);
+  assert.equal(first.confirmed, false);
+  assert.equal(first.failures[0].reason, "visible");
+  assert.equal(first.failures[0].phase, "confirm-instance-absence");
+  assert.equal(first.instanceChecks[0].reply.requestedIdReportedDeleted, true);
+  f.resources.delete(path);
+  const later = await cleanup(f.api, p, state, f.deploy);
+  assert.equal(later.confirmed, true);
+  assert.equal(later.instanceChecks[0].initialAbsent, true);
+  assert.equal(later.instanceChecks[0].deletionAttempted, false);
+  assert.equal(later.instanceChecks[0].finalAbsent, true);
+});
+test("cleanup retains safe transport diagnostics and lost-reply absence reconciliation", async () => {
+  for (const lostReply of [false, true]) {
+    const { p, f, path, state } = cleanupFixture();
+    f.api.post = async () => {
+      if (lostReply) f.resources.delete(path);
+      throw new APIConnectionTimeoutError({
+        message: "Bearer FAKE-PRIVATE-TOKEN",
+      });
+    };
+    const r = await cleanup(f.api, p, state, f.deploy);
+    assert.equal(r.confirmed, lostReply);
+    assert.equal(
+      r.instanceChecks[0].deleteError.errorClass,
+      "APIConnectionTimeoutError",
+    );
+    assert.equal(
+      r.instanceChecks[0].deleteError.message,
+      "Cloudflare API connection failed",
+    );
+    assert.ok(!JSON.stringify(r).includes("FAKE-PRIVATE-TOKEN"));
+    if (!lostReply) assert.equal(r.failures[0].phase, "batch-delete");
+  }
+});
+test("cleanup omits raw auth/messages/causes and does not treat a denial as absence", async () => {
+  const { p, f, state } = cleanupFixture();
+  f.api.post = async () => {
+    throw Object.assign(new Error("Authorization: Bearer FAKE_SECRET"), {
+      status: 403,
+      error: { errors: [{ code: 10000, message: "token=FAKE_SECRET" }] },
+      headers: { authorization: "FAKE_SECRET" },
+      cause: { url: "https://user:FAKE_SECRET@example.com" },
+    });
+  };
+  const r = await cleanup(f.api, p, state, f.deploy);
+  assert.equal(r.confirmed, false);
+  assert.equal(r.failures[0].status, 403);
+  assert.deepEqual(r.failures[0].codes, [10000]);
+  assert.equal(r.failures[0].message, "Cloudflare API request failed");
+  assert.ok(!JSON.stringify(r).includes("FAKE_SECRET"));
+  assert.equal(r.instanceChecks[0].finalAbsent, false);
 });
 test("403 and network failures do not imply missing resources or permission to overwrite", async () => {
   await assert.rejects(
@@ -434,6 +740,19 @@ test("exclusive durable claims survive re-planning, directory changes and concur
     await assert.rejects(
       claimExecution(
         plan(p.params.suiteId, p.params.buildDigest, 1_000_001),
+        second,
+        registry,
+      ),
+      { code: "EEXIST" },
+    );
+    await assert.rejects(
+      claimExecution(
+        plan(
+          p.params.suiteId,
+          p.params.buildDigest,
+          1_000_001,
+          "user-confirmed-credits",
+        ),
         second,
         registry,
       ),
@@ -676,6 +995,78 @@ test("local re-planning cannot overwrite a consumed execution's cleanup plan", a
     await assert.rejects(
       main(["package", p.params.suiteId, dir]),
       /preserve its original plan/,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+test("CLI preparation selects credit mode explicitly and rejects unknown modes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ct-credit-plan-"));
+  try {
+    await main(["plan", "ct-credit-plan", dir, "user-confirmed-credits"]);
+    const p = JSON.parse(await readFile(join(dir, "plan.json"), "utf8"));
+    assert.equal(p.billingGate.mode, "user-confirmed-credits");
+    assert.equal(p.billingGate.dollarCap, null);
+    await assert.rejects(
+      main(["plan", "ct-credit-plan", dir, "unknown"]),
+      /Invalid/,
+    );
+    assert.deepEqual(
+      JSON.parse(await readFile(join(dir, "plan.json"), "utf8")),
+      p,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+test("cleanup history preserves the first failure when a later attempt succeeds", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ct-cleanup-history-"));
+  try {
+    const p = makePlan(),
+      state = executionState(p);
+    const f = fake(p);
+    state.controllerAttempted = true;
+    f.resources.set(
+      `/accounts/${ACCOUNT_ID}/workflows/${p.names.suite}/instances/${p.params.suiteId}-controller`,
+      { result: { status: "complete" } },
+    );
+    f.api.post = async () => ({ result: { deleted: [], errors: [] } });
+    const first = await cleanup(f.api, p, state, f.deploy);
+    assert.equal(first.confirmed, false);
+    await saveExecution(
+      dir,
+      { state, output: { privateEvidence: "not-in-history" }, cleanup: first },
+      1,
+    );
+    f.api.get = async () => {
+      throw Object.assign(new Error("gone"), { status: 404 });
+    };
+    const second = await cleanup(f.api, p, state, f.deploy);
+    assert.equal(second.confirmed, true);
+    await saveExecution(dir, { state, cleanup: second }, 2);
+    const history = (await readFile(join(dir, "cleanup-history.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    assert.deepEqual(history, [
+      { at: 1, state, cleanup: first },
+      { at: 2, state, cleanup: second },
+    ]);
+    assert.equal(
+      JSON.parse(await readFile(join(dir, "execution.json"), "utf8")).cleanup
+        .confirmed,
+      true,
+    );
+    await rm(join(dir, "cleanup-history.jsonl"));
+    await mkdir(join(dir, "cleanup-history.jsonl"));
+    await assert.rejects(
+      saveExecution(dir, { state, cleanup: first }, 3),
+      /directory|EISDIR/,
+    );
+    assert.equal(
+      JSON.parse(await readFile(join(dir, "execution.json"), "utf8")).cleanup
+        .confirmed,
+      true,
     );
   } finally {
     await rm(dir, { recursive: true, force: true });

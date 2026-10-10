@@ -130,3 +130,79 @@ records that twelve prior threads were resolved by the reviewer, while the
 original transient-read and new SDK-error threads remain open pending review.
 No network request or credential use was needed to construct the real SDK error
 instances; no managed API mutation or real provider call occurred.
+
+## Credit approval and cleanup diagnostics
+
+Base is the merged PR #10 commit
+`69a9e9fbe44d5917ab4dc499dc496d919e4a800c`. The subsequent follow-up review at
+`3654725` was reported clean, with every thread resolved and hosted CI green.
+This change reconstructs the previously reviewed local credit mode in a fresh
+workspace and adds cleanup diagnostics; the old ignored patch and canary receipts
+were not restored. It is independently retested, rather than claimed to be the
+same old patch bytes.
+
+The default verified-headroom approval remains available. The explicit credit
+mode records unverified balance, applicability and $1 headroom, accepted disclosed
+DO-overage risk, and only the existing fixed synthetic scope. Both modes require
+the exact current plan and preserve account, resources, ingress, deadline and
+one-use claims. The CLI checks structured evidence; the trusted operator must
+review the actual user's intent. It does not certify credits or interpret prose.
+
+Fresh local validation on 2026-10-10:
+
+- `npm run check`: strict typecheck and compiler hygiene passed; **44 checks
+  passed**, comprising 38 controller regressions, five actual workerd runtime
+  behaviors and one partial-source provenance record, in **52.463 seconds**.
+- Credit-mode regressions exercise missing/mixed authorizations, changed scope,
+  exact deadline and cross-mode replay refusal. Cleanup regressions exercise
+  malformed/rejected/nonmatching responses, acknowledged-but-visible instances,
+  actual SDK timeout errors with and without deletion, safe HTTP/code diagnostics,
+  and retained failure history after a successful retry or a failed history write.
+- The required `.venv/bin/python -m unittest discover -s tests -v` passed **425
+  total, 422 passed, three skipped**, in **36.622 seconds**. No official loader
+  source was enabled. No models or full datasets were downloaded.
+- Wrangler 4.144.0 dry-run packages passed for both modes. The three bundle sizes
+  and hashes are byte-identical to the table above. Only the local CLI source
+  identity changes: build digest
+  **97ba665b79ed8719e7b0123d978697def00a6b08d66877f9e48e33d2f613d32b**.
+- `git diff --check` passed. No credentials were inspected, no Cloudflare or Modal
+  authentication was performed, and no managed mutation or paid provider call
+  occurred for this change.
+- A fresh-context independent reviewer found no actionable correctness or
+  security defects across all six changed files. Its separate controller run
+  passed **38/38** tests, and the source digest matched this record.
+
+Preparation commands (these create fresh local plans, not run approvals):
+
+```sh
+node controller.mjs package ct-approval-review ../../.local/managed-approval-review
+node controller.mjs package ct-credit-review ../../.local/managed-credit-review user-confirmed-credits
+```
+
+### Previously reported run; raw evidence unavailable here
+
+The prior execution record reported suite `ct-credit-20261010-1021-670f94` with
+deadline `2026-10-10T10:51:12.940Z` and local patched build digest
+`e314766081d2f75da48d8dc6c05db8bf971d7786d0765c7268631e862180a741`.
+Authorization quoted the user's confirmation of credits for this purpose after
+the prior disclosure that a $1 bound was unverified and a DO overage increment
+could be $12.50. Balance, applicability and final charges were unverified.
+
+The recorded result at `10:23:54.737Z` had all eleven supported gates passing,
+six synthetic calls, 26 observations and five artifact receipts. Five calls
+completed and one was cancelled. The overall command exited 1 because its first
+cleanup reported eight instance failures; their response shapes and error
+messages were not retained. A separate cleanup retry exited 0 at `10:25:15.110Z`.
+An independent absence check at `10:27:26.592Z` reported all eight instances,
+three definitions, two Workers and the owned namespace absent.
+
+These facts are a previously reported outcome, not newly reproduced managed
+evidence. The original raw output and first-failure/retry files cannot be audited
+from this fresh workspace. The first failure's cause is unknown; later absence
+does not prove eventual consistency, especially after definitions were deleted.
+The new diagnostics preserve those distinctions on future authorized runs.
+
+Host-process loss, managed scheduler loss and forced deadline expiry remain
+untested. `realProviderReady` remains false. No Modal, Runpod, GPU or real-provider
+work is established by this synthetic result. The provisional engine decision
+and separate integration/budget approvals remain unchanged.

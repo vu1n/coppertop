@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, appendFile } from "node:fs/promises";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -33,10 +33,16 @@ export async function buildDigest() {
   }
   return hash.digest("hex");
 }
-export function plan(suiteId, buildIdentity, now = Date.now()) {
+export function plan(
+  suiteId,
+  buildIdentity,
+  now = Date.now(),
+  billingMode = "verified-headroom",
+) {
   if (
     !/^ct-[a-z0-9-]{1,35}$/.test(suiteId) ||
-    !/^[a-f0-9]{64}$/.test(buildIdentity)
+    !/^[a-f0-9]{64}$/.test(buildIdentity) ||
+    !["verified-headroom", "user-confirmed-credits"].includes(billingMode)
   )
     throw new Error("Invalid fixed canary identity");
   const params = {
@@ -144,31 +150,114 @@ export function plan(suiteId, buildIdentity, now = Date.now()) {
       applicationPayloadBytes: 1_048_576,
       executionMilliseconds: 1_800_000,
     },
-    billingGate: {
-      verification: "operator-attestation-required",
-      dollarCap: 1,
-      subscriptionChangeAuthorized: false,
-      reason:
-        "Subscription/quota reads denied. Verify free plan or sufficient included allowance before execution; DO duration overage can add a $12.50 rounded unit.",
-    },
+    billingGate:
+      billingMode === "verified-headroom"
+        ? {
+            mode: billingMode,
+            verification: "operator-attestation-required",
+            dollarCap: 1,
+            subscriptionChangeAuthorized: false,
+            reason:
+              "Subscription/quota reads denied. Verify free plan or sufficient included allowance before execution; DO duration overage can add a $12.50 rounded unit.",
+          }
+        : {
+            mode: billingMode,
+            verification: "user-authorization-only",
+            dollarCap: null,
+            creditBalanceVerified: false,
+            creditApplicabilityVerified: false,
+            possibleDoOverageIncrementDollars: 12.5,
+            subscriptionChangeAuthorized: false,
+            reason:
+              "User-confirmed credits authorize only this fixed synthetic run after disclosure that a $1 bound is unverified and DO overage can add a $12.50 increment. Balance and credit applicability remain unverified; no monetary ceiling is asserted.",
+          },
     hostProcessLoss: "untested",
     realProviders: false,
   };
 }
 export function requireApproval(p, approval, now = Date.now()) {
+  const mode = p?.billingGate?.mode;
+  if (
+    !Number.isSafeInteger(p?.params?.deadline) ||
+    canonical(p) !==
+      canonical(
+        plan(
+          p.params.suiteId,
+          p.params.buildDigest,
+          p.params.deadline - 1_800_000,
+          mode,
+        ),
+      )
+  )
+    throw new Error("Plan differs from fixed canary scope");
   if (
     approval?.approved !== true ||
     approval?.suiteId !== p.params.suiteId ||
     approval?.buildDigest !== p.params.buildDigest ||
     approval?.deadline !== p.params.deadline ||
     approval?.cleanupAuthorized !== true ||
-    approval?.incrementalDollarCap !== 1 ||
-    approval?.billingHeadroomVerified !== true ||
-    approval?.subscriptionChangeAuthorized !== false
+    approval?.subscriptionChangeAuthorized !== false ||
+    (approval?.billingMode === undefined
+      ? "verified-headroom"
+      : approval.billingMode) !== mode
   )
     throw new Error(
-      "Separate deployment/$1 approval and verified billing headroom required",
+      "Separate deployment, cleanup and explicit billing approval required",
     );
+  if (mode === "verified-headroom") {
+    if (
+      approval.incrementalDollarCap !== 1 ||
+      approval.billingHeadroomVerified !== true ||
+      approval.creditAuthorization !== undefined
+    )
+      throw new Error(
+        "Separate deployment/$1 approval and verified billing headroom required",
+      );
+  } else {
+    const credit = approval.creditAuthorization,
+      evidence = credit?.evidence;
+    const user = evidence?.userMessage,
+      disclosure = evidence?.priorDisclosure;
+    const text = (value) =>
+      typeof value === "string" &&
+      value.trim().length > 0 &&
+      value.length <= 4096;
+    const utc = (value) => {
+      if (
+        typeof value !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
+      )
+        return false;
+      const time = Date.parse(value);
+      return (
+        Number.isFinite(time) &&
+        new Date(time).toISOString() ===
+          (value.includes(".") ? value : value.replace("Z", ".000Z"))
+      );
+    };
+    if (
+      approval.incrementalDollarCap !== null ||
+      approval.billingHeadroomVerified !== false ||
+      credit?.spendingScope !== "this-bounded-synthetic-run-only" ||
+      credit?.userConfirmedCreditsForPurpose !== true ||
+      credit?.dollarOneCapUnverified !== true ||
+      credit?.possibleDoOverageIncrementDollars !== 12.5 ||
+      credit?.overageRiskAccepted !== true ||
+      credit?.creditBalanceVerified !== false ||
+      credit?.creditApplicabilityVerified !== false ||
+      evidence?.source !== "user-message" ||
+      !text(user?.messageId) ||
+      !text(user?.text) ||
+      !text(disclosure?.text) ||
+      !utc(user?.at) ||
+      !utc(disclosure?.at) ||
+      Date.parse(disclosure.at) > Date.parse(user.at) ||
+      Date.parse(user.at) > now
+    )
+      throw new Error(
+        "Explicit bounded credit authorization and prior risk disclosure required",
+      );
+  }
   if (
     p.params.deadline <= now ||
     p.params.deadline > now + 1_800_000 ||
@@ -321,45 +410,159 @@ export async function ownedNamespaces(api, providerName) {
   }
   throw new Error("Namespace pagination safety limit exceeded");
 }
+const cleanupReasons = {
+  malformed: "Instance batch deletion response schema unsupported",
+  rejected: "Instance batch deletion reported errors",
+  missingId: "Requested instance not reported deleted",
+  visible: "Instance remains visible after deletion reply",
+};
+class CleanupConfirmationError extends Error {
+  constructor(reason) {
+    super(cleanupReasons[reason]);
+    this.reason = reason;
+  }
+}
+function cleanupDiagnostic(error) {
+  const status =
+    Number.isInteger(error?.status) &&
+    error.status >= 100 &&
+    error.status <= 599
+      ? error.status
+      : "local failure";
+  const known = [
+    "Error",
+    "TypeError",
+    "APIError",
+    "APIConnectionError",
+    "APIConnectionTimeoutError",
+    "APIUserAbortError",
+    "BadRequestError",
+    "AuthenticationError",
+    "PermissionDeniedError",
+    "NotFoundError",
+    "ConflictError",
+    "UnprocessableEntityError",
+    "RateLimitError",
+    "InternalServerError",
+  ];
+  const name = error?.constructor?.name;
+  const local = error instanceof CleanupConfirmationError;
+  // Never serialize arbitrary API messages, causes, bodies, URLs or auth headers.
+  return {
+    status,
+    errorClass: local
+      ? "CleanupConfirmationError"
+      : known.includes(name)
+        ? name
+        : "Error",
+    message: local
+      ? cleanupReasons[error.reason]
+      : error instanceof APIConnectionError
+        ? "Cloudflare API connection failed"
+        : typeof status === "number"
+          ? "Cloudflare API request failed"
+          : "Cleanup operation failed",
+    reason: local ? error.reason : null,
+    codes: Array.isArray(error?.error?.errors)
+      ? error.error.errors
+          .slice(0, 8)
+          .map((row) => row?.code)
+          .filter(
+            (code) =>
+              Number.isSafeInteger(code) && code >= 0 && code <= 1_000_000_000,
+          )
+      : [],
+  };
+}
+function deletionReply(response, id) {
+  const r = response?.result;
+  return {
+    deletedArray: Array.isArray(r?.deleted),
+    requestedIdReportedDeleted:
+      Array.isArray(r?.deleted) && r.deleted.some((row) => row?.id === id),
+    errorsPresent: r?.errors !== undefined,
+    errorsArray: Array.isArray(r?.errors),
+    errorCount: Array.isArray(r?.errors) ? r.errors.length : null,
+    requestedIdReportedError:
+      Array.isArray(r?.errors) && r.errors.some((row) => row?.id === id),
+  };
+}
 export async function cleanup(api, p, state, deploy) {
   const base = `/accounts/${ACCOUNT_ID}`;
-  const failures = [];
-  const attempt = async (label, action) => {
+  const failures = [],
+    instanceChecks = [];
+  const attempt = async (
+    label,
+    action,
+    diagnostic = { phase: "delete-and-confirm" },
+  ) => {
     try {
       await action();
     } catch (error) {
       failures.push({
         action: label,
-        status: error?.status ?? "local failure",
+        phase: diagnostic.phase,
+        ...cleanupDiagnostic(error),
       });
     }
   };
   // Delete only resources proven absent at preflight and attempted by this execution.
   if (state.controllerAttempted) {
-    for (const ref of refList(p))
-      await attempt(`instance:${ref.id}`, async () => {
-        const path = `${base}/workflows/${ref.workflow}/instances/${ref.id}`;
-        if (!(await absent(api, path))) {
-          let response;
-          try {
-            response = await api.post(
-              `${base}/workflows/${ref.workflow}/instances/batch/delete`,
-              { body: { instances: [ref.id] } },
-            );
-          } catch (error) {
-            if (!(await absent(api, path))) throw error;
+    for (const ref of refList(p)) {
+      const check = {
+        id: ref.id,
+        phase: "read-before-delete",
+        initialAbsent: null,
+        deletionAttempted: false,
+        reply: null,
+        deleteError: null,
+        finalAbsent: false,
+      };
+      instanceChecks.push(check);
+      await attempt(
+        `instance:${ref.id}`,
+        async () => {
+          const path = `${base}/workflows/${ref.workflow}/instances/${ref.id}`;
+          check.initialAbsent = await absent(api, path);
+          if (!check.initialAbsent) {
+            let response;
+            try {
+              check.phase = "batch-delete";
+              check.deletionAttempted = true;
+              response = await api.post(
+                `${base}/workflows/${ref.workflow}/instances/batch/delete`,
+                { body: { instances: [ref.id] } },
+              );
+            } catch (error) {
+              check.deleteError = cleanupDiagnostic(error);
+              check.phase = "reconcile-delete-error";
+              if (!(await absent(api, path))) {
+                check.phase = "batch-delete";
+                throw error;
+              }
+            }
+            if (response !== undefined) {
+              check.phase = "validate-delete-response";
+              check.reply = deletionReply(response, ref.id);
+              if (
+                !check.reply.deletedArray ||
+                (check.reply.errorsPresent && !check.reply.errorsArray)
+              )
+                throw new CleanupConfirmationError("malformed");
+              if (check.reply.errorCount)
+                throw new CleanupConfirmationError("rejected");
+              if (!check.reply.requestedIdReportedDeleted)
+                throw new CleanupConfirmationError("missingId");
+            }
           }
-          if (
-            response &&
-            (!Array.isArray(response.result?.deleted) ||
-              !response.result.deleted.some((row) => row.id === ref.id) ||
-              response.result.errors?.length)
-          )
-            throw new Error("Instance batch deletion unconfirmed");
-        }
-        if (!(await absent(api, path)))
-          throw new Error("Instance deletion unconfirmed");
-      });
+          check.phase = "confirm-instance-absence";
+          check.finalAbsent = await absent(api, path);
+          if (!check.finalAbsent) throw new CleanupConfirmationError("visible");
+          check.phase = "absence-confirmed";
+        },
+        check,
+      );
+    }
   }
   if (state.providerAttempted) {
     for (const name of [p.names.suite, p.names.probes, p.names.observer])
@@ -397,7 +600,21 @@ export async function cleanup(api, p, state, deploy) {
           throw new Error("Worker deletion unconfirmed");
       });
   }
-  return { confirmed: failures.length === 0, failures };
+  return { confirmed: failures.length === 0, failures, instanceChecks };
+}
+export async function saveExecution(dir, data, now = Date.now()) {
+  if (data.cleanup !== undefined)
+    // Preserve each sanitized attempt before replacing the latest receipt.
+    // A failed history write must not erase the preceding failure evidence.
+    await appendFile(
+      join(dir, "cleanup-history.jsonl"),
+      JSON.stringify({ at: now, state: data.state, cleanup: data.cleanup }) +
+        "\n",
+    );
+  await writeFile(
+    join(dir, "execution.json"),
+    JSON.stringify(data, null, 2) + "\n",
+  );
 }
 export async function execute(
   api,
@@ -543,7 +760,7 @@ export async function main(args) {
     command = "plan",
     suite = "ct-native-canary-01",
     directory = "../../.local/managed-canary",
-    approvalPath,
+    approvalPathOrBillingMode,
   ] = args;
   if (!["plan", "package", "execute", "cleanup"].includes(command))
     throw new Error("Expected plan, package, execute, or cleanup");
@@ -557,7 +774,12 @@ export async function main(args) {
     } catch (error) {
       if (error?.code !== "ENOENT") throw error;
     }
-    const p = plan(suite, await buildDigest());
+    const p = plan(
+      suite,
+      await buildDigest(),
+      Date.now(),
+      approvalPathOrBillingMode,
+    );
     await materialize(p, dir);
     if (command === "package")
       for (const name of ["provider", "controller", "retire"]) {
@@ -587,12 +809,13 @@ export async function main(args) {
     suite,
     await buildDigest(),
     p.params.deadline - 1_800_000,
+    p.billingGate?.mode,
   );
   if (JSON.stringify(p) !== JSON.stringify(expected))
     throw new Error("Plan differs from current source or fixed scope");
   const approval =
-    command === "execute" && approvalPath
-      ? JSON.parse(await readFile(resolve(approvalPath), "utf8"))
+    command === "execute" && approvalPathOrBillingMode
+      ? JSON.parse(await readFile(resolve(approvalPathOrBillingMode), "utf8"))
       : undefined;
   let receipt;
   if (command === "execute") requireApproval(p, approval);
@@ -603,11 +826,7 @@ export async function main(args) {
   await materialize(p, dir); // Recreate configs from the validated scope before any mutation.
   const deploy = (name) =>
     wrangler(["deploy", "--config", join(dir, `${name}.json`)]);
-  const save = (data) =>
-    writeFile(
-      join(dir, "execution.json"),
-      JSON.stringify(data, null, 2) + "\n",
-    );
+  const save = (data) => saveExecution(dir, data);
   const { api, close } = await client();
   try {
     if (command === "execute")
