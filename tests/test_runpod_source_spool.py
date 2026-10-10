@@ -1,5 +1,5 @@
 """Real bounded tar/file/IPC controls; no Modal allocation or full seed export."""
-from contextlib import nullcontext
+from contextlib import ExitStack,nullcontext
 import json
 import os
 from pathlib import Path
@@ -53,14 +53,15 @@ class Sandbox:
 
 
 class SourceSpoolTests(unittest.TestCase):
-    def adapter(self,root,**kwargs):
+    def adapter(self,root,*,cleanup,**kwargs):
         sandbox=Sandbox(source(root/'seed'),**kwargs);adapter=ModalSource();adapter.sandbox=sandbox
-        self.addCleanup(sandbox.close);(root/'local').mkdir()
+        # Stop every producer before its owning temporary directory is removed.
+        cleanup.callback(sandbox.close);(root/'local').mkdir()
         return adapter,sandbox
 
     def test_actual_adapter_spools_tar_then_restores_identical_files(self):
-        with tempfile.TemporaryDirectory() as root,patch('coppertop.runpod_source.check_memory',return_value=0):
-            root=Path(root);adapter,sandbox=self.adapter(root)
+        with tempfile.TemporaryDirectory() as root,ExitStack() as cleanup,patch('coppertop.runpod_source.check_memory',return_value=0):
+            root=Path(root);adapter,sandbox=self.adapter(root,cleanup=cleanup)
             descriptor=adapter.collect_spool(str(root/'remote'),root/'local',seconds=30)
             self.assertLessEqual(sandbox.high_water,4096);self.assertGreater(sandbox.copies.count('part.tar'),1)
             self.assertEqual(list((root/'remote').glob('*.tar')),[])
@@ -76,9 +77,9 @@ class SourceSpoolTests(unittest.TestCase):
 
     def test_corrupt_copy_or_lost_ack_never_replays_or_creates_complete_bundle(self):
         for failure in ('corrupt','lost_ack'):
-            with self.subTest(failure=failure),tempfile.TemporaryDirectory() as root,\
+            with self.subTest(failure=failure),tempfile.TemporaryDirectory() as root,ExitStack() as cleanup,\
                     patch('coppertop.runpod_source.check_memory',return_value=0):
-                root=Path(root);adapter,sandbox=self.adapter(root,corrupt=failure=='corrupt',lose_ack=failure=='lost_ack')
+                root=Path(root);adapter,sandbox=self.adapter(root,cleanup=cleanup,corrupt=failure=='corrupt',lose_ack=failure=='lost_ack')
                 with self.assertRaises((ValueError,OSError)):
                     adapter.collect_spool(str(root/'remote'),root/'local',seconds=30)
                 self.assertEqual(sandbox.copies.count('part.tar'),1)
@@ -88,9 +89,9 @@ class SourceSpoolTests(unittest.TestCase):
 
     def test_spool_completion_checksum_and_part_limits_fail_closed(self):
         for failure in ('completion','part_limit','commands'):
-            with self.subTest(failure=failure),tempfile.TemporaryDirectory() as root,\
+            with self.subTest(failure=failure),tempfile.TemporaryDirectory() as root,ExitStack() as cleanup,\
                     patch('coppertop.runpod_source.check_memory',return_value=0):
-                root=Path(root);adapter,sandbox=self.adapter(root)
+                root=Path(root);adapter,sandbox=self.adapter(root,cleanup=cleanup)
                 original=adapter.command
                 def command(*args,**kwargs):
                     result=original(*args,**kwargs)

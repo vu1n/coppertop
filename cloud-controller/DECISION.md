@@ -101,3 +101,32 @@ A test pass provides bounded evidence for its tested fault; a documentation-base
 Recheck PR 7322's head before real-provider integration or whenever reconsidering the engine choice. A changed source or relevant recovery fix triggers rerunning both strict regressions and completed/clock/deferred/defect controls on a coherent workspace. Select B only after initial-execution and exhausted-parent-wake recovery pass without target contact. Retain the regressions as a potential contribution; no public submission or new durability engine is authorized.
 
 Real integration still needs reviewed unpublished Mac controller code and nonsecret migration state; a small authenticated Python Modal launch/status/cancel gateway; immutable provider deployment identity; independent stop/containment authority; supported client invocation; scoped access; native spend limits; reviewed grants, pricing and resource ownership; R2 archive/receipt preservation; and separately approved staging/deployment/canary tests. Manual epoch recovery and reconciling additional late costs after settlement remain explicit unsupported operations. The sidecar does not enter the robot action loop.
+
+## Managed canary preparation after PR 9
+
+[Managed canary preparation](managed-canary/README.md) now implements the supported
+native timeout/retry, sleep, event, cancellation, duplicate claim and independent
+containment probes. Six probe instances, one controller and one observer use two
+Workers and three fixed SQLite objects in one namespace. Effect services and the
+shared transactional ledger remain the baseline. Local controls are not managed
+acceptance; the original strict restart failures and provisional engine decision
+are unchanged.
+
+No supported host-process-loss injection was established in the inspected
+Workflow API. An activity timeout or lifecycle restart does not close that gate.
+Reports preserve `hostProcessLoss: "untested"` and `realProviderReady: false`.
+A managed pass would establish only the pinned build's no-restart native
+primitive and ledger controls. It is a prerequisite control result, not recovery
+evidence; it neither satisfies the managed-test criterion above nor changes the
+provisional choice. Approve that run only if this control result is worth the
+approval on its own. The separate observer shares the managed Workflow scheduler,
+while deadline containment relies on Durable Object alarms.
+Before integration, retain the explicit choice between a supported matching test
+and documented managed durability relied on as an unverified assumption.
+
+Temporary deployment and a $1 incremental cap still need separate approval.
+Subscription/quota reads were denied, and published DO overage rounding can add
+$12.50. A $1 bound cannot be asserted without verified existing billing allowance.
+The preparation refuses execution without approval and billing confirmation; no
+credential expansion, subscription change, deployment, paid use or Modal call
+has been performed. See the runbook for exact resources, cleanup and limits.

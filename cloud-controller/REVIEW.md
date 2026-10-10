@@ -78,3 +78,58 @@ Cursor independently reproduced all recorded counts, bundle/binding hashes and c
 The managed API caveat was checked against the pinned `WorkflowInstance` declaration (`workers-types/index.d.ts:18312`) and the [official Workers API](https://developers.cloudflare.com/workflows/build/workers-api/): its listed lifecycle methods do not expose host-process termination, and restart changes replay state. This establishes the inspected API surface, not the absence of every possible managed fault-injection mechanism. No deployment or account action was performed.
 
 Runtime sources, locks and captured results remain identical to b3b27e7. The documentation diff was checked for whitespace and local-link targets; all recorded executable-input hashes were reverified. Automatic hosted checks run on each new published head; their verified results are reported in the PR. No additional local runtime rerun is claimed for this wording-only change.
+
+## Managed canary preparation review
+
+The additive managed package is bounded to the native synthetic canary. Its
+private named service entrypoint, fixed six-mode selectors, envelope/row/count
+bounds and immutable source/deadline fences replace the initial fixtures' broad
+local diagnostic routes. Default ingress rejects traffic and all public routing
+is disabled. No real-provider gateway or production controller is added.
+
+Self-review strengthened receipt comparison against property-order differences,
+physical byte/hash validation, idempotent receipt replay after generation fencing,
+and retirement of admission during partial cleanup. Focused native runtime checks
+cover each behavior. The official Effect SQLite transaction boundary remains;
+workflow scheduling is delegated to native Workflows.
+
+Controller review corrected teardown to pinned Wrangler's supported batch-delete
+POST endpoint rather than assuming an instance DELETE endpoint, added exact-ID
+reconciliation after deletion reply loss, bounded complete namespace pagination,
+and preserved the provider Worker when namespace deletion is unconfirmed.
+Execution refuses missing deployment/$1 approval, unverified billing headroom,
+preexisting names, old matching namespaces, 403 responses and ambiguous preflight.
+No managed API mutation was executed to validate these paths.
+
+[Local preparation evidence](managed-canary/EVIDENCE.md) records checks and exact
+input hashes. This is a self-review of the scoped synthetic boundary, not an
+independent production security audit. Host-process-loss recovery remains
+untested, and paid DO rounding prevents asserting a $1 bound from the currently
+available account reads. No Mac, Modal, real provider, GPU, deployment,
+subscription, authentication setup, credential creation or merge was used.
+
+
+## PR 10 managed-canary review follow-up
+
+The [thirteen dispositions](managed-canary/REVIEW.md) distinguish implemented
+fixes from retained live-API and recovery caveats. Final local validation now has
+24 controller regressions, five actual workerd behaviors and one partial-source
+provenance record; the former hash-printing record is no longer counted as runtime
+execution. Raw evidence is retained and accepted locally, suite approval is
+consumed once per executor journal, cleanup authority survives loss of the spend
+approval file, and timing/cancellation/polling/pagination regressions pass. The
+observer shares the Workflow scheduler, and a managed pass would establish only
+no-restart controls, leaving the provisional choice and host-loss gate unchanged.
+The [updated evidence](managed-canary/EVIDENCE.md) records exact packaging hashes.
+
+
+## Cursor re-review: SDK connection classification
+
+Cursor confirmed twelve prior managed-canary findings and found the remaining
+connection retry check used Error.name rather than the pinned SDK class. The
+[follow-up disposition](managed-canary/REVIEW.md#cursor-re-review-at-36d4182)
+records the instance-based fix and real-SDK recovery/budget/abort regressions.
+All 34 canary checks and the full offline Python suite pass; all three dry-run
+Worker bundles are unchanged. The original transient-read thread and the new
+SDK classification thread are still open for reviewer confirmation; no thread
+resolution or new managed execution is claimed.
