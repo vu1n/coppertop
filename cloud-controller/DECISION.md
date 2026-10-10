@@ -124,9 +124,19 @@ while deadline containment relies on Durable Object alarms.
 Before integration, retain the explicit choice between a supported matching test
 and documented managed durability relied on as an unverified assumption.
 
-Temporary deployment and a $1 incremental cap still need separate approval.
+Every temporary deployment needs a fresh scope/deadline-bound approval.
 Subscription/quota reads were denied, and published DO overage rounding can add
-$12.50. A $1 bound cannot be asserted without verified existing billing allowance.
-The preparation refuses execution without approval and billing confirmation; no
-credential expansion, subscription change, deployment, paid use or Modal call
-has been performed. See the runbook for exact resources, cleanup and limits.
+$12.50. The default $1 mode requires verified billing headroom. A separate explicit
+credit-authorization mode records the user's acceptance of that disclosed risk
+for only the fixed synthetic run, with credit balance/applicability and the $1
+bound unverified. It preserves the same resource, deadline and single-use fences;
+it supplies no independently verified monetary ceiling.
+
+A prior authorized synthetic canary was reported to pass the supported controls,
+with first cleanup failing and a subsequent cleanup/absence check succeeding.
+Its raw ignored receipts were not restored in this workspace, and the first
+deletion failure cannot be diagnosed retrospectively. This does not establish
+host-process-loss recovery, resolve the managed durability choice above or
+authorize a Modal job. The approval/diagnostics change makes no new deployment,
+credential expansion or subscription change. See the [runbook](managed-canary/README.md)
+and [evidence limitations](managed-canary/EVIDENCE.md#credit-approval-and-cleanup-diagnostics).

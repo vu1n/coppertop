@@ -6,8 +6,10 @@ and accounting transition and Lane A's exact persisted-data codecs. The local
 fixtures from the initial spike are not deployed. Python, Modal, real providers,
 GPU work, R2 and the robot action loop are outside this package.
 
-**No managed test has run. Deployment and incremental spending need a separate
-approval. A $1 billing bound is currently unverified.**
+**Every new deployment and run needs its own scope-bound approval. A $1 billing
+bound remains unverified.** A prior authorized synthetic run was reported as
+passing its supported controls and later cleanup; its raw local receipts were
+not restored in this workspace. See [evidence and limitations](EVIDENCE.md#credit-approval-and-cleanup-diagnostics).
 
 ## Fixed resources and private control path
 
@@ -159,18 +161,68 @@ $1 approval**. No native account-wide spending setting is changed.
 
 ## Approved execution and cleanup protocol
 
-After the parent obtains the separate approval and verifies billing headroom,
+After the parent obtains the separate approval under one of the modes below,
 refresh the package using a unique `ct-...` suite name. Preparation fixes both
 resource names and an absolute deadline; do not reuse an expired plan or another
 suite's resources. Preserve the exact tested revision and its build digest.
 
-`execute` requires a local approval document naming the suite, build digest and
-exact plan `deadline`, with `approved: true`, `cleanupAuthorized: true`,
-`incrementalDollarCap: 1`,
-`billingHeadroomVerified: true`, and `subscriptionChangeAuthorized: false`.
-An implementation-only request does not provide those facts. No approved file
-is supplied in this PR. `plan.billingGate.verification` is informational; the
-actual execution check requires the operator headroom attestation.
+Both modes require an approval naming the exact suite, build digest and plan
+`deadline`, with `approved: true`, `cleanupAuthorized: true`, and
+`subscriptionChangeAuthorized: false`. The complete plan must match the fixed
+resource, ingress, duration and synthetic-only scope before a claim or API call.
+An implementation request or a prior suite's approval does not authorize a run.
+No executable approval file is supplied in this PR.
+
+The default `verified-headroom` mode retains `incrementalDollarCap: 1` and
+`billingHeadroomVerified: true`. `billingMode` may be omitted for this mode for
+compatibility. The operator must verify the allowance described above; the CLI
+cannot independently establish billing headroom.
+
+An explicitly selected `user-confirmed-credits` mode records a different
+authorization: the user confirms credits for this fixed synthetic run after
+disclosure that the $1 bound is unverified and DO overage can add a $12.50
+increment. It requires `billingMode: "user-confirmed-credits"`,
+`incrementalDollarCap: null`, `billingHeadroomVerified: false`, and this separate
+`creditAuthorization` object (replace evidence placeholders with the exact
+reviewed messages):
+
+```json
+{
+  "spendingScope": "this-bounded-synthetic-run-only",
+  "userConfirmedCreditsForPurpose": true,
+  "dollarOneCapUnverified": true,
+  "possibleDoOverageIncrementDollars": 12.5,
+  "overageRiskAccepted": true,
+  "creditBalanceVerified": false,
+  "creditApplicabilityVerified": false,
+  "evidence": {
+    "source": "user-message",
+    "userMessage": {
+      "messageId": "REPLACE_WITH_MESSAGE_ID",
+      "at": "REPLACE_WITH_UTC_ISO_TIMESTAMP",
+      "text": "REPLACE_WITH_EXACT_USER_AUTHORIZATION"
+    },
+    "priorDisclosure": {
+      "at": "REPLACE_WITH_UTC_ISO_TIMESTAMP",
+      "text": "REPLACE_WITH_EXACT_PRIOR_RISK_DISCLOSURE"
+    }
+  }
+}
+```
+
+Evidence must be nonblank bounded strings and valid UTC timestamps with the
+disclosure no later than the user message, and neither in the future. The trusted
+operator must review the actual message and risk acceptance; structural checks do
+not interpret natural language or prove a credit balance or applicability.
+`null` records the lack of a verified monetary ceiling. It grants only the exact
+bounded synthetic run; it grants no additional launches, provider jobs,
+subscriptions or unlimited resource use. The two modes cannot be mixed.
+
+Select the mode during preparation, before requesting the exact approval:
+
+```sh
+node controller.mjs package ct-UNIQUE ../../.local/managed-canary-package user-confirmed-credits
+```
 
 Before any API contact, execution atomically consumes a per-suite claim under
 `.local/managed-canary-executions/` and exclusively creates `execution.json`.
@@ -183,7 +235,7 @@ protection is not an account-wide replay barrier across fresh workspaces or
 manually deleted journals. A fresh suite requires fresh approval.
 
 ```sh
-# Only after the separate approval and billing verification:
+# Only after the separate exact approval and its billing-mode requirements:
 node controller.mjs execute ct-UNIQUE ../../.local/managed-canary-package /path/to/approval.json
 # Retry only that execution's containment/deletion using its saved receipt:
 node controller.mjs cleanup ct-UNIQUE ../../.local/managed-canary-package
@@ -213,8 +265,10 @@ the provider's `deleted_classes` migration, checks the namespace is absent, then
 removes the provider Worker. Worker script deletions deliberately omit `force`: a
 binding conflict remains a blocker rather than implicitly removing DO state. A
 refused controller deletion does not skip the provider namespace confirmation.
-This SDK path differs from Wrangler's Worker services deletion path; both its live
-behavior and namespace migration propagation remain unverified. It never deletes
+This SDK path differs from Wrangler's Worker services deletion path. The prior
+run's first instance-deletion failure remains unexplained because its response
+details were not captured. A later absence check does not identify its cause.
+It never deletes
 a preexisting name or unrelated
 namespace. If namespace deletion is denied, the provider Worker is retained to
 preserve cleanup authority. A retry uses the original scope and nonsecret local
@@ -224,10 +278,26 @@ does not need the original approval file, fresh billing attestation or an
 unexpired deadline, and it only uses the deletion migration, never active deploy.
 Preserve the tested source/configs and receipt for retries.
 
+Each instance check now records its phase, initial absence, whether deletion was
+attempted, a response summary, any sanitized deletion error and final absence.
+The summary distinguishes unsupported arrays, reported errors, a missing
+requested ID and an instance still visible after an acknowledged deletion.
+Failures retain the SDK error class, numeric HTTP status and bounded numeric API
+codes. Messages are controlled classifications; arbitrary API text, response
+bodies, causes, URLs and headers are omitted because they can contain credentials.
+A lost reply can be reconciled only by the same exact-ID absence checks.
+
+`cleanup-history.jsonl` appends the time, execution scope and sanitized cleanup
+result before replacing the latest `execution.json`. Keep both files. A successful
+retry preserves earlier failures, and a failed history write leaves the prior
+receipt intact. Later absence is an observation, not proof of eventual
+consistency; deleting the parent definition can also change later GET results.
+
 Native activity/step loops, independent expiry alarms and CLI cleanup provide
 bounded application authority, but they are not a platform kill switch or
 account-wide monetary limit. Executor death, a managed scheduler stall, or loss
 of cleanup permission may require a separate containment retry. The nonsecret
 local receipt records every attempted resource owner before deployment and saves
 output before deletion. A cleanup failure stays an explicit blocker; it does
-not reopen launch permission. No remote mutations have been exercised in this PR.
+not reopen launch permission. No remote mutations have been exercised for this
+approval/diagnostics change.
