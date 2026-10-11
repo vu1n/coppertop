@@ -130,8 +130,111 @@
     "evidenceCrossCheck": "passed",
     "focusedTestsCommand": "python -m unittest discover -s tests -p test_modal_seam.py -v",
     "focusedTestsFile": "tests/test_modal_seam.py",
+    "focusedTestsInterpreterRole": "dedicated pinned local controller virtual environment",
     "focusedTestsPassed": true,
+    "focusedTestsPythonVersion": "3.12.14",
     "focusedTestsRun": 34,
+    "fullSuite": {
+      "command": ".venv/bin/python -m unittest discover -s tests -v",
+      "completedAt": "2026-10-11T05:27:31.702241Z",
+      "environment": {
+        "packages": {
+          "Pillow": "12.3.0",
+          "aiohttp-socks": "0.12.0",
+          "av": "15.1.0",
+          "boto3": "1.43.108",
+          "modal": "1.6.1",
+          "numpy": "2.4.6",
+          "packaging": "26.3",
+          "pyarrow": "20.0.0",
+          "python-socks": "3.1.1",
+          "requests": "2.34.2",
+          "truststore": "0.10.4"
+        },
+        "pythonVersion": "3.12.14"
+      },
+      "exitCode": 0,
+      "failedTests": [],
+      "logSha256": "e117a9432d7d9e5cc1a274c6c81ab21feb2a409e17dd6aef59e5ad35a4963062",
+      "passed": true,
+      "phase": "after-provider-run",
+      "skipReasons": {
+        "Bounded pinned official evaluator source not supplied": 4,
+        "Bounded pinned official registry source not supplied": 1,
+        "Existing optional CPU torch runtime unavailable": 7,
+        "Pinned official evaluator source not provided": 1,
+        "Set COPPERTOP_SOURCE to the already acquired source": 2
+      },
+      "skippedTests": [
+        {
+          "reason": "Bounded pinned official evaluator source not supplied",
+          "test": "test_crop_truncates_to_243_square_and_bilinearly_resizes_without_mutation (test_evaluation_readiness.OfficialPurePreprocessingTests.test_crop_truncates_to_243_square_and_bilinearly_resizes_without_mutation)"
+        },
+        {
+          "reason": "Bounded pinned official evaluator source not supplied",
+          "test": "test_ee_first_axis_angle_state_matches_existing_local_view (test_evaluation_readiness.OfficialPurePreprocessingTests.test_ee_first_axis_angle_state_matches_existing_local_view)"
+        },
+        {
+          "reason": "Bounded pinned official evaluator source not supplied",
+          "test": "test_history_repeats_first_observation_and_matches_view_at_all_queue_lengths (test_evaluation_readiness.OfficialPurePreprocessingTests.test_history_repeats_first_observation_and_matches_view_at_all_queue_lengths)"
+        },
+        {
+          "reason": "Bounded pinned official evaluator source not supplied",
+          "test": "test_three_camera_order_state_padding_and_first_twelve_action_decode (test_evaluation_readiness.OfficialPurePreprocessingTests.test_three_camera_order_state_padding_and_first_twelve_action_decode)"
+        },
+        {
+          "reason": "Bounded pinned official registry source not supplied",
+          "test": "test_snapshot_is_exact_ast_projection_of_pinned_registry (test_evaluation_readiness.OfficialRegistryTests.test_snapshot_is_exact_ast_projection_of_pinned_registry)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_masked_velocity_loss_backward_update_and_reload (test_gpu_smoke.DifferentiationTests.test_masked_velocity_loss_backward_update_and_reload)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_native_positions_cache_mask_and_video_inputs (test_gpu_smoke.DifferentiationTests.test_native_positions_cache_mask_and_video_inputs)"
+        },
+        {
+          "reason": "Pinned official evaluator source not provided",
+          "test": "test_pinned_official_evaluator_with_fake_model_and_environment (test_official_recording.RecordingTests.test_pinned_official_evaluator_with_fake_model_and_environment)"
+        },
+        {
+          "reason": "Set COPPERTOP_SOURCE to the already acquired source",
+          "test": "test_export_rejects_unknown_camera_before_writing (test_roundtrip.RoundTripTests.test_export_rejects_unknown_camera_before_writing)"
+        },
+        {
+          "reason": "Set COPPERTOP_SOURCE to the already acquired source",
+          "test": "test_real_import_and_reproducible_exports (test_roundtrip.RoundTripTests.test_real_import_and_reproducible_exports)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_difference_rejected (test_smoke_reload.ComparisonTests.test_difference_rejected)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_head_mapping_rejects_extra_or_missing_keys (test_smoke_reload.ComparisonTests.test_head_mapping_rejects_extra_or_missing_keys)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_identical_tiny_tensors_report_zero (test_smoke_reload.ComparisonTests.test_identical_tiny_tensors_report_zero)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_shape_dtype_and_nonfinite_rejected (test_smoke_reload.ComparisonTests.test_shape_dtype_and_nonfinite_rejected)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_validation_case_geometry_and_timestep (test_smoke_reload.ComparisonTests.test_validation_case_geometry_and_timestep)"
+        }
+      ],
+      "sourceCommit": "46701a30b31713d0393d069df7427daff875217d",
+      "sourceTree": "4ceba9cab6646eecca59ded6275f075c5b49e001",
+      "startedAt": "2026-10-11T05:27:04.001241Z",
+      "testsPassed": 456,
+      "testsRun": 471,
+      "testsSkipped": 15,
+      "unittestSeconds": 27.102
+    },
     "sourceMatchesReviewedHead": "527083ba03a397bd88da299686559987184f584d"
   },
   "workspace": "vuluan"
