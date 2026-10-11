@@ -1,5 +1,24 @@
 # Clef/Jev scoring and the first timing intervention
 
+## Integration status, October 11, 2026
+
+This source-only recovery has now been exercised with CPU doubles through its
+actual gate/runner. Self-hosted joint-head output uses the explicit
+`GatePolicy(probability_decimals=4)` contract; generic provider validation stays
+strict. The runner measures completed-control age at scoring and rechecks it at
+candidate arrival. It records action sources, discarded offsets, changed controls
+and scorer/actor/pause/wall timing. Its Clef-off switch preserves the supplied
+stock queue with zero scorer or extra actor calls.
+
+The proposed `paused_synchronous` mode freezes controls during scoring/replanning
+for functional proof; it is separate from the existing continuously paced mode.
+Selecting the actual experiment design remains pending. Approximate measured
+serial/overlap latency misses the continuously advancing 20Hz two-control gate,
+and a 16-control candidate can expire. No simulator-mediated Clef intervention
+or real-model parity test has run. Historical hosted/cached results below are
+evidence, not permission for a new paid call. Current gates and the four-episode
+proposal are in [the evaluation specification](clef-evaluation-readiness.md).
+
 Use hosted Clef Flash first. Retain Jev as a state-only comparator and larger Clef
 as an optional accuracy comparator. Published general decision benchmarks do not
 establish a robotics winner. Fine-tuning becomes useful after measuring a repeatable

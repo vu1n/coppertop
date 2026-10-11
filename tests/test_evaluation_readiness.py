@@ -86,7 +86,12 @@ class ReadinessTests(unittest.TestCase):
         self.assertFalse(value['launch_ready'])
         self.assertFalse(value['paid_authorized'])
         self.assertFalse(value['cloud_actions'])
-        self.assertTrue(all(v is None for v in value['inputs'].values()))
+        self.assertEqual(value['inputs']['clef_code_commit'], readiness.RECOVERY_COMMIT)
+        self.assertEqual(value['inputs']['clef_snapshot_manifest_sha256'],
+                         readiness.RECOVERY_INPUTS['model-release.json'])
+        for name in ('clef_intervention_spec', 'complete_dev_seed_ledger',
+                     'runtime_image_digest', 'fresh_timeout_storage_cost_quote'):
+            self.assertIsNone(value['inputs'][name])
         self.assertFalse(value['protocol']['final_unseen_task_tuning'])
         self.assertFalse(value['xiaomi_model']['local_weights_verified'])
         self.assertTrue(all(row['status'] != 'passed' for row in value['preflight_matrix']))
@@ -97,6 +102,88 @@ class ReadinessTests(unittest.TestCase):
         self.assertTrue(later['potential_unpaired_xiaomi_baseline'])
         self.assertFalse(later['receipt_reconciled'])
         self.assertFalse(later['retained_xiaomi_clef_pair_established'])
+        self.assertTrue(later['mac_rehash_matches_receipts'])
+
+    def test_recovered_identity_remains_distinct_from_cloud_execution_proof(self):
+        value = readiness.manifest()
+        model = value['clef_model']
+        self.assertEqual(model['repo'], 'Cloudflare/clef-flash')
+        self.assertEqual(model['revision'], 'fde727a287004204b7518dcc983fe64379776712')
+        self.assertEqual(model['reported_snapshot_bytes'], 19083377419)
+        self.assertEqual(model['head']['sha256'], '19cdcec8c81dc9212be320fff47462ab342fbc1278be4368fb3da71241cf5ba0')
+        self.assertFalse(model['cloud_weights_verified'])
+        self.assertFalse(value['clef_gate']['data_usefulness_intervenes'])
+        self.assertFalse(value['clef_gate']['simulator_mediated_intervention_ever_run'])
+        self.assertIsNone(value['clef_gate']['query_budget'])
+        archives = value['prior_evidence']['later_dev1150_archives']['archives']
+        self.assertEqual([(a['cadence'], a['bytes'], a['controls'], a['queries']) for a in archives],
+                         [(16, 163737600, 211, 14), (8, 204820480, 224, 28)])
+        self.assertEqual(archives[0]['sha256'], '75283c1f846bc1e4e67ae89185fbe51a7a0e2341b9938c7140b4c75641eeb44b')
+        self.assertEqual(archives[1]['sha256'], '80511e4d15184a6184c336df4ca651163c8209cceace7c44fe03afc0f374914b')
+
+    def test_continuous_clock_exposes_stale_and_exhausted_candidate_design_gap(self):
+        p = readiness.freshness_plan()
+        self.assertEqual(p['freshness_budget_ms'], 100)
+        self.assertEqual((p['scorer_boundary_controls'], p['perfect_overlap_boundary_controls'],
+                          p['serial_boundary_controls']), (18, 23, 26))
+        self.assertGreater(p['actor_boundary_controls'], p['candidate_chunk_controls'])
+        self.assertEqual(p['illustrative_actor_usable_suffix'], 0)
+        self.assertFalse(p['recorded_path_fits_freshness'])
+        self.assertIsNone(p['selected_design'])
+        self.assertFalse(p['runtime_gate_tests_run'])
+
+    def test_proposed_caps_cover_work_without_selecting_or_qualifying_live_plan(self):
+        manifest = readiness.manifest()
+        p = manifest['pilot_proposal']
+        limits = p['proposed_core_deadlines_seconds']
+        for arm, key in (('stock', 'per_stock_episode'), ('clef', 'per_clef_episode')):
+            caps = p[key]
+            required = (limits['reset_and_initialization_capture']
+                + caps['input_calls']*limits['input'] + caps['actor_calls']*limits['actor']
+                + caps['scorer_calls']*limits['scorer']
+                + p['horizon_controls']*limits['step_and_audit']
+                + limits['total_cooperative_cleanup'])
+            self.assertEqual(required, p['core_component_sum_seconds'][arm])
+            self.assertLess(required, limits['episode'])
+        self.assertEqual(p['four_episode_caps']['actor_calls'],
+            2*p['per_stock_episode']['actor_calls']+2*p['per_clef_episode']['actor_calls'])
+        outer = p['proposed_outer_deadlines_seconds']
+        common = sum(outer[key] for key in ('startup', 'actor_load', 'archive_commit', 'process_teardown'))
+        self.assertEqual(outer['stock_job'], common+limits['episode'])
+        self.assertEqual(outer['clef_job'], common+limits['episode']+outer['optional_clef_load'])
+        self.assertEqual(outer['four_episode_jobs'], 2*(outer['stock_job']+outer['clef_job']))
+        self.assertLess(outer['actor_load']+limits['episode'], 600)
+        self.assertEqual(p['decision_completed_controls'], [8])
+        for key in ('selected', 'runtime_qualified', 'paid_authorized'):
+            self.assertFalse(p[key])
+        self.assertIsNone(p['quote']['monetary_amount'])
+        self.assertIsNone(manifest['freshness_design']['selected_design'])
+
+    def test_recovery_metadata_and_lock_are_authenticated_without_weights_or_runtime(self):
+        recovered = readiness.recovery_inputs()
+        release = recovered['model-release.json']
+        self.assertEqual(sum(row['bytes'] for row in release['files']), 19083377419)
+        self.assertEqual(release['revision'], readiness.CLEF_REVISION)
+        self.assertFalse(release['weights_in_repository'])
+        self.assertFalse(release['reference_implementation']['vendored'])
+        value = readiness.manifest()
+        self.assertEqual(value['recovery']['original_copied_file_count'], 16)
+        self.assertTrue(value['clef_runtime']['wheel_lock_available'])
+        self.assertFalse(value['clef_runtime']['wheel_runtime_executed'])
+        self.assertEqual(value['prior_evidence']['later_dev1150_archives']['run_ids'],
+                         ['mechanism-3ae4005ef2000970', 'mechanism-d7dfbc710920da91'])
+        for row, archive in zip(recovered['dev-archive-identities.json']['archives'],
+                value['prior_evidence']['later_dev1150_archives']['archives']):
+            self.assertEqual(archive, {'cadence': row['cadence'], 'bytes': row['archive_bytes'],
+                'sha256': row['archive_sha256'], 'recorded_success': row['recorded_success'],
+                'controls': row['controls'], 'queries': row['query_calls']})
+        changed = dict(readiness.RECOVERY_INPUTS, **{'config.json': '0'*64})
+        with patch.object(readiness, 'RECOVERY_INPUTS', changed):
+            with self.assertRaisesRegex(ValueError, 'metadata differs'):
+                readiness.recovery_inputs()
+        with patch.object(readiness, 'CLEF_LOCK_SHA256', '0'*64):
+            with self.assertRaisesRegex(ValueError, 'runtime lock differs'):
+                readiness.recovery_inputs()
 
     def test_manifest_is_deterministic_content_bound_and_has_no_launch_option(self):
         before = readiness.prepare()

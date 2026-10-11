@@ -1,5 +1,6 @@
 """Typed shadow judgments and a timing gate; never emits native robot actions."""
 from dataclasses import dataclass
+from decimal import Decimal
 import math
 
 from .chords import canonical, digest
@@ -67,22 +68,29 @@ class GatePolicy:
     threshold: float = 0.8
     margin: float = 0.2
     max_age_controls: int = 2
+    probability_decimals: int | None = None
 
     def __post_init__(self):
         probability(self.threshold)
         probability(self.margin)
         if type(self.max_age_controls) is not int or not 0 <= self.max_age_controls <= 8:
             raise ValueError('Bounded decision age required')
+        if self.probability_decimals not in (None, 4):
+            raise ValueError('Supported probability precision required')
 
     def decide(self, answers, *, observed_frame: int, current_frame: int,
                queued_until: int, remaining_queries: int, stopped: bool = False):
         """Query admission only. Candidate arrival/handoff remains the async runner's job."""
-        checked = validate_answers(answers)
+        checked = validate_answers(answers, probability_decimals=self.probability_decimals)
         if (any(type(value) is not int or value < 0 for value in
                 (observed_frame, current_frame, queued_until, remaining_queries))
                 or current_frame < observed_frame or type(stopped) is not bool):
             raise ValueError('Completed control indices and query budget required')
         timing = checked['timing']['probabilities']
+        # Compare serialized decimal probabilities without a binary subtraction
+        # turning an exact .6000-.4000 boundary into less than .2.
+        margin = Decimal(str(timing['replan'])) - max(
+            Decimal(str(timing[key])) for key in ('continue', 'uncertain'))
         reason = 'no_early_replan'
         if stopped:
             reason = 'episode_stopped'
@@ -93,7 +101,7 @@ class GatePolicy:
         elif remaining_queries == 0:
             reason = 'query_budget_exhausted'
         elif (timing['replan'] >= self.threshold
-              and timing['replan'] - max(timing['continue'], timing['uncertain']) >= self.margin):
+              and margin >= Decimal(str(self.margin))):
             reason = 'early_replan'
         return {'request_early_replan': reason == 'early_replan', 'reason': reason,
                 'observed_frame': observed_frame, 'current_frame': current_frame,
