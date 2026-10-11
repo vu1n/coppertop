@@ -1,5 +1,22 @@
 # Full frozen-policy recording baseline
 
+## Reconciliation, October 11, 2026
+
+The failed staging attempt described below is `mechanism-b187485658b65c94`;
+its archive remains lost and its retained metadata is 9,194 bytes. Later DEV1150
+attempts produced separate retained Xiaomi archives: execute16
+`mechanism-3ae4005ef2000970` (163,737,600 bytes, SHA-256
+`75283c1f846bc1e4e67ae89185fbe51a7a0e2341b9938c7140b4c75641eeb44b`)
+and execute8 `mechanism-d7dfbc710920da91` (204,820,480 bytes, SHA-256
+`80511e4d15184a6184c336df4ca651163c8209cceace7c44fe03afc0f374914b`).
+Their existing Mac-local bytes were rehashed against receipts on October 11;
+remote objects have not been freshly rechecked. Identity/release/receipt hashes
+are in `manifests/clef-recovery/dev-archive-identities.json`. These unpaired
+Xiaomi recordings establish no Clef comparison. Statements below about "current"
+lost recording/metadata describe that earlier failed attempt, not all DEV1150
+evidence. See [the evaluation inventory](clef-evaluation-readiness.md) for current
+pairing, seed and readback requirements.
+
 `official_recording_full` extends the verified short recorder through one official
 CoffeeSetupMug DEV episode (seed1150, constructor1000, task index3, episode0).
 The pinned stock evaluator owns history construction, action execution and stopping.

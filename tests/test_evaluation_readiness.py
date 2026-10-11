@@ -86,7 +86,12 @@ class ReadinessTests(unittest.TestCase):
         self.assertFalse(value['launch_ready'])
         self.assertFalse(value['paid_authorized'])
         self.assertFalse(value['cloud_actions'])
-        self.assertTrue(all(v is None for v in value['inputs'].values()))
+        self.assertEqual(value['inputs']['clef_code_commit'], readiness.RECOVERY_COMMIT)
+        self.assertEqual(value['inputs']['clef_snapshot_manifest_sha256'],
+                         readiness.RECOVERY_INPUTS['model-release.json'])
+        for name in ('clef_intervention_spec', 'complete_dev_seed_ledger',
+                     'runtime_image_digest', 'fresh_timeout_storage_cost_quote'):
+            self.assertIsNone(value['inputs'][name])
         self.assertFalse(value['protocol']['final_unseen_task_tuning'])
         self.assertFalse(value['xiaomi_model']['local_weights_verified'])
         self.assertTrue(all(row['status'] != 'passed' for row in value['preflight_matrix']))
@@ -120,12 +125,38 @@ class ReadinessTests(unittest.TestCase):
         p = readiness.freshness_plan()
         self.assertEqual(p['freshness_budget_ms'], 100)
         self.assertEqual((p['scorer_boundary_controls'], p['perfect_overlap_boundary_controls'],
-                          p['serial_boundary_controls']), (18, 19, 37))
+                          p['serial_boundary_controls']), (18, 23, 26))
         self.assertGreater(p['actor_boundary_controls'], p['candidate_chunk_controls'])
         self.assertEqual(p['illustrative_actor_usable_suffix'], 0)
         self.assertFalse(p['recorded_path_fits_freshness'])
         self.assertIsNone(p['selected_design'])
         self.assertFalse(p['runtime_gate_tests_run'])
+
+    def test_recovery_metadata_and_lock_are_authenticated_without_weights_or_runtime(self):
+        recovered = readiness.recovery_inputs()
+        release = recovered['model-release.json']
+        self.assertEqual(sum(row['bytes'] for row in release['files']), 19083377419)
+        self.assertEqual(release['revision'], readiness.CLEF_REVISION)
+        self.assertFalse(release['weights_in_repository'])
+        self.assertFalse(release['reference_implementation']['vendored'])
+        value = readiness.manifest()
+        self.assertEqual(value['recovery']['original_copied_file_count'], 16)
+        self.assertTrue(value['clef_runtime']['wheel_lock_available'])
+        self.assertFalse(value['clef_runtime']['wheel_runtime_executed'])
+        self.assertEqual(value['prior_evidence']['later_dev1150_archives']['run_ids'],
+                         ['mechanism-3ae4005ef2000970', 'mechanism-d7dfbc710920da91'])
+        for row, archive in zip(recovered['dev-archive-identities.json']['archives'],
+                value['prior_evidence']['later_dev1150_archives']['archives']):
+            self.assertEqual(archive, {'cadence': row['cadence'], 'bytes': row['archive_bytes'],
+                'sha256': row['archive_sha256'], 'recorded_success': row['recorded_success'],
+                'controls': row['controls'], 'queries': row['query_calls']})
+        changed = dict(readiness.RECOVERY_INPUTS, **{'config.json': '0'*64})
+        with patch.object(readiness, 'RECOVERY_INPUTS', changed):
+            with self.assertRaisesRegex(ValueError, 'metadata differs'):
+                readiness.recovery_inputs()
+        with patch.object(readiness, 'CLEF_LOCK_SHA256', '0'*64):
+            with self.assertRaisesRegex(ValueError, 'runtime lock differs'):
+                readiness.recovery_inputs()
 
     def test_manifest_is_deterministic_content_bound_and_has_no_launch_option(self):
         before = readiness.prepare()

@@ -8,16 +8,17 @@ import signal
 import subprocess
 import sys
 
-from .colocation_worker import CLEF_MODEL, CLEF_PYTHON, CLEF_ROOT, ROOT, worker_environment
+from .colocation_worker import (CLEF_MODEL, CLEF_PYTHON, CLEF_ROOT, ROOT,
+                               load_reference_code, worker_environment)
 
 
 def cpu_gate():
+    reference = load_reference_code(CLEF_MODEL)
     from PIL import Image
     from transformers import AutoProcessor
     import torch, torchvision, idna, httpx
     import numpy as np
-    sys.path.insert(0, str(CLEF_MODEL))
-    from joint_schema_model import encode_record
+    encode_record = reference.encode_record
     receipt = json.loads((CLEF_ROOT/'receipt.json').read_text())
     if receipt['status'] != 'cpu_cache_validated' or receipt['private_inputs_cached']:
         raise ValueError('Invalid cache receipt')

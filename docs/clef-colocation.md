@@ -1,5 +1,24 @@
 # Clef and Xiaomi in one GPU container
 
+## Integration status, October 11, 2026
+
+The completed-cache result immediately below is the final historical outcome:
+24 saved-input calls completed, with no simulator-mediated intervention. Later
+sections in this file preserve earlier failed attempts and then-unexecuted plans;
+their "latest", "not executed" and spending statements are chronological records,
+not current run instructions or authorization. The current integration is offline
+and permits no paid runs. Source recovery is pinned to
+`c381330c16dd43d75226af845555c795558cd78b`; original file hashes remain in the
+unchanged recovery provenance record.
+
+Four-decimal live-gate validation is now available by explicit policy opt-in,
+and candidate freshness is checked again at arrival using completed controls.
+CPU fixtures exercise these paths and a proposed paused functional mode; neither
+the real modelruntime nor a simulator gate ran during integration. See
+[the evaluation specification](clef-evaluation-readiness.md) for current gates,
+the clock decision and quote inputs. Historical image IDs and remote archive
+availability have not been freshly rechecked.
+
 ## Latest result: cached benchmark completed
 
 The approved cached attempt completed successfully: CPU image build and all three

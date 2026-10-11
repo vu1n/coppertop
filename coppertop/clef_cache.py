@@ -44,11 +44,11 @@ for item in meta['files']:
                       HF_HUB_DISABLE_IMPLICIT_TOKEN='1',HF_HUB_DISABLE_TELEMETRY='1')
     subprocess.run([python,'-c',script],env=download_env,check=True,timeout=450)
     # No private episodes enter the reusable layer. Real inputs get their own CPU gate.
-    check="""import sys
+    check="""from coppertop.colocation_worker import load_reference_code
+reference=load_reference_code('/opt/coppertop-clef/clef-model')
 from transformers import AutoProcessor
 from PIL import Image
-sys.path.insert(0,'/opt/coppertop-clef/clef-model')
-from joint_schema_model import encode_record
+encode_record=reference.encode_record
 processor=AutoProcessor.from_pretrained('/opt/coppertop-clef/clef-model',local_files_only=True)
 record={'state':'cache validation','images':[Image.new('RGB',(256,256)) for _ in range(3)],
  'questions':{'check':{'type':'choice','criteria':{'yes':'yes','no':'no'}}}}

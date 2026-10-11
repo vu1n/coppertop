@@ -3,6 +3,12 @@
 This lane prepares an experiment manifest and offline test matrix at main
 `46701a30b31713d0393d069df7427daff875217d`. It has no execution option. The
 existing official/one-update smoke pilot is unchanged. Its smoke head is not Clef.
+Source recovery is pinned to `c381330c16dd43d75226af845555c795558cd78b`,
+verified against the private remote branch before integration. The immutable
+recovery provenance SHA-256 remains
+`372adbebebfdfbca7cef293963c279dbf5edd702dc707d29bd3d602aad8b0364`;
+it binds the recovery originals, while the preparation manifest hashes current
+adaptations separately. No merge or paid run is included.
 
 ## Missing inputs and evidence inventory
 
@@ -12,9 +18,12 @@ The parent recovered the Mac inventory. Clef is `Cloudflare/clef-flash`, revisio
 joint-schema head. `joint_head.safetensors` SHA-256 is
 `19cdcec8c81dc9212be320fff47462ab342fbc1278be4368fb3da71241cf5ba0`.
 That head hash is not a whole-snapshot hash. Runtime is Torch2.11.0+cu128 /
-Transformers5.10.2 with 56 pinned wheels; the exact lock/manifest and reviewed
-source-only migration commit are pending. No cloud weight/code execution is
-established. Preserve separate Xiaomi/Clef runtime pins until compatibility is
+Transformers5.10.2 with 56 pinned wheels. The weight-free release/config inventory
+and exact wheel lock are now present and hash-authenticated. The release inventory
+contains sizes and LFS hashes, not a whole-snapshot byte hash. The reference
+`joint_schema_model.py` is not vendored; its pinned size/hash is now required
+before builder, CPU-gate or worker imports. No modelruntime execution is established.
+Preserve separate Xiaomi/Clef runtime pins until compatibility is
 qualified; do not assume they can share one dependency environment.
 
 Clef emits timing/usefulness probabilities, **not native actions**. Its timing
@@ -28,15 +37,14 @@ Existing Xiaomi file digests remain in `containers/gpu-smoke-pins.json`.
 
 The parent verified the historical 24-call benchmark's final receipt, which names
 `/Users/vuln/Documents/Codex/2026-10-05/task/coppertop-publish/docs/clef-colocation.md`,
-and confirms both Apps stopped. Mac inventory is recovered, but the source-only
-handoff is still being packaged by its owner. The minimal nonsecret handoff is that report
-and its implementation/hash receipt; the exact Clef inference/intervention source
-files with revision/file digests and license; pinned runtime dependencies; the
-evaluation config with off-switch, action interface, RNG and query/timeout bounds;
-and a checkpoint manifest with immutable location, file sizes and SHA-256 values
-(or an explicit weight-free design). Weight transfer/execution is a separate
-step after identity review. No environment files, credentials or bulk model/data
-exports are needed to identify these inputs.
+and confirms both Apps stopped. That report and the source-only handoff are now
+local, with model/config/license/dependency identities in
+`manifests/clef-recovery/` and `containers/clef-runtime.lock`. Receipt/archive
+identities do not supply complete payload closure or a fresh remote readback.
+An explicit pilot clock, score/actor budgets, complete unused-seed ledger, image
+digest, qualified runtime and fresh timeout/storage/cost quote remain missing.
+No environment files, credentials or bulk model/data exports are needed for the
+offline checks.
 
 The seed inventory is bounded evidence, not a complete historical ledger:
 
@@ -53,8 +61,9 @@ metadata. That attempt's payload is unavailable. This is not a statement that
 all DEV1150 evidence was lost. The parent verified later DEV1150 execute-16 and
 execute-8 archives by Mac-local rehash against their receipts in prior thread
 `01a10b0d-dfbe-73a4-85b9-d3731fb24083`. Remote R2 has not been freshly rechecked.
-Object/release references and complete receipts remain pending the packaged
-handoff. No provider or bulk artifact retrieval was performed by this lane.
+`dev-archive-identities.json` now supplies attempts, release IDs and receipt hashes;
+complete object closure and readback remain pending. No provider or bulk artifact
+retrieval was performed by this lane.
 
 | Retained Xiaomi archive | Bytes | SHA-256 | Reported outcome |
 | --- | ---: | --- | --- |
@@ -74,10 +83,13 @@ unused DEV seeds. Preserve both histories and reconcile receipts before reuse.
 ## Freshness and the required experiment decision
 
 At continuously advancing 20Hz controls, two controls are 100ms. Reported
-unoptimized Clef scoring is about 895ms and actor inference during overlap about
-918ms. At the next admission boundary, these illustrative times require 18 and 19
-controls respectively; perfect overlap still requires 19, and serial 895+918ms
-requires 37. The measured path cannot produce a ≤2-control-fresh replacement
+unoptimized serial Clef scoring is about 895ms and serial actor inference about
+399ms. In the actual overlap phase, Clef was about 1134ms and the actor about
+918ms. At the next admission boundary, scorer-only requires 18 controls;
+perfect overlap of the recorded overlap medians still requires 23, and serial
+895+399ms requires 26. These are illustrative medians from three saved cases,
+not shared-observation intervention measurements. The measured path cannot
+produce a ≤2-control-fresh replacement
 **under this continuous clock at these timings**. These approximate figures are
 not a bound on every future query/hardware configuration. An unpaced simulator
 can advance a different number of controls per wall second; admission must log
@@ -107,24 +119,38 @@ clock pause or model optimization is silently authorized. The manifest leaves
 
 ## Minimal no-GPU checks after exact source handoff
 
-The migration owner retains its packaging footprint. Until the exact commit and
-lock/config/hash receipts arrive, this lane changes only evaluation-owned specs
-and tests. The following tests must import the **actual migrated** parser/gate/
-adapter and use deterministic actor/scorer/environment/clock doubles. The clock
-arithmetic currently tested here is not GatePolicy or simulator execution.
+The integration imports the **actual migrated** parser/gate/runner and uses
+deterministic actor/scorer/environment/clock doubles. Generic validation stays
+strict; the self-hosted joint-head path explicitly selects
+`GatePolicy(probability_decimals=4)`, agreeing with the benchmark without
+normalizing probabilities. Exact decimal margin boundaries are preserved.
+The runner checks synchronized completed-control indices at scorer admission
+and checks age again at candidate handoff. Its explicit `paused_synchronous`
+mode is implemented and fixture-tested as a proposed functional design; the
+experiment manifest still leaves the actual pilot choice unset.
 
 | Test | Required assertion |
 | --- | --- |
-| Official four-decimal rounding | Pass an actual schema result through both benchmark validator and GatePolicy. Joint probabilities rounded to 4 decimals can sum 0.9999/1.0001; their admissibility must agree. Derive precision tolerance from the official schema/number of terms, preserve malformed/out-of-range/NaN rejection, and do not normalize silently. The known strict-default GatePolicy mismatch is a real pending fix. |
+| Official four-decimal rounding | Tested through actual validator and opted-in GatePolicy. Joint mass 0.9999/1.0001 agrees, with option-count precision tolerance; malformed/grid-invalid/out-of-range/NaN answers remain rejected. Strict generic mode remains strict. |
 | Gate boundaries/budget | Around p=.8 and margin=.2, test .7999/.8000/.8001 and .1999/.2000/.2001; ages 0/1/2 allowed, 3 stale; budget before/at exhaustion. Data-usefulness changes alone cannot trigger actor inference or replacement. |
 | Clef-off parity | With identical seeded inputs, assert exact decoded chunks, executed native controls, query counts/order and no Clef calls against stock Xiaomi. Fixture parity proves adapter control flow only; real model/evaluator parity remains a runtime gate. |
 | Actual intervention path | A schema-valid high-replan fixture authorizes an actor-produced 12D chunk; execute its changed commands through a fake step interface and retain decision/proposal/executed trace. Clef probabilities must never become controller actions. |
 | Async freshness/suffix | Advance an injected control clock while the old queue executes. Fresh candidates apply only at a control boundary; discard elapsed offsets; reject aged>2, exhausted suffix, failures and uncertainty while retaining the old queue. Add 895/918ms scenarios without sleeps; separately verify explicit empty-queue fallback. |
-| Selected synchronous design | If selected, freeze controls during scoring/replanning, preserve causal observations/index age, and include both waits in wall-time accounting; Clef-off still follows stock semantics. No continuous 20Hz claim. |
+| Proposed synchronous design | Actual runner fixture holds the same control index during virtual 895ms scoring +399ms actor work, executes changed native commands, and reports 1294ms pause plus control wall time. Clef-off makes no scorer/extra actor calls and preserves the supplied stock queue. No continuous 20Hz claim. |
 | Complete accounting | Journal all score/actor submissions, discarded candidates, failures and timeouts. Distinguish no-replan, stale-score, stale-candidate, exhausted-suffix, exhausted-budget, unchanged-action, applied-change and infrastructure-invalid outcomes. Zero interventions means the mechanism was not demonstrated; never manufacture improvement or retry/tune to force one. |
 
-These are planned gates, not passed checks. Existing durable staging fixture
-commit/reload/hash verification remains required before any approved GPU run.
+`test_evaluation_intervention.py` covers rounding, thresholds/margins/ages/budget,
+off-path queue parity, actual applied/unchanged actions, usefulness, failed actor,
+timeout and terminal stop. `test_evaluation_async.py` uses virtual time and owned
+thread barriers: age2 admits the suffix, age3 rejects it despite a fresh scorer,
+and in-progress controls do not fabricate completed age. Reference-code tests
+reject hash mismatch at actual builder/CPU-gate/worker boundaries before runtime
+imports. These are CPU fixture checks, not real Clef/Xiaomi inference, complete
+official-loader execution, RoboCasa rollouts or benefit proof. Full-episode
+queue exhaustion requires the outer controller to stop or make a separately
+bounded normal replan; the runner never replays expired controls. Whole-episode
+journaling and durable staging commit/reload/hash verification remain runtime
+gates before any approved GPU run.
 
 ## Prepare and verify
 
@@ -135,7 +161,9 @@ mkdir -p .local/evaluation-readiness
 /workspace/coppertop/.venv/bin/python tools/prepare_clef_pilot.py \
   > .local/evaluation-readiness/manifest.json
 /workspace/coppertop/.venv/bin/python -m unittest discover \
-  -s tests -p test_evaluation_readiness.py -v
+  -s tests -p 'test_evaluation*.py' -v
+/workspace/coppertop/.venv/bin/python -m unittest discover \
+  -s tests -p test_clef_identity.py -v
 ```
 
 `manifest_sha256` binds canonical manifest bytes, including preparation sources,
@@ -155,13 +183,32 @@ evaluator preprocessing functions with an injected processor/transport. These
 tests are not complete official-loader execution, model inference, simulator
 execution, or Clef-off parity. Without source paths, those five tests skip.
 
+Main's declared Modal seam test dependencies must also be available for the full
+suite. In this environment, the shared venv lacked three declared pins. They were
+installed only into an ignored target, without modifying that venv:
+
+```sh
+uv --cache-dir .local/uv-cache pip install \
+  --python /workspace/coppertop/.venv/bin/python \
+  --target .local/controller-test-deps --no-deps \
+  truststore==0.10.4 aiohttp-socks==0.12.0 python-socks==3.1.1
+PYTHONPATH="$PWD/.local/controller-test-deps" \
+  /workspace/coppertop/.venv/bin/python -m unittest discover -s tests -v
+```
+
+The target supplies the pins from `requirements-modal-seam.txt`; it does not
+alter credential/TLS/network configuration or invoke a provider. Set the two
+official-source path variables above when the authenticated bounded copies are
+available. The two existing real official-loader tests still require
+`COPPERTOP_SOURCE` and its already-acquired loader fixtures.
+
 | Gate | Offline evidence | Remaining runtime/input gate |
 | --- | --- | --- |
 | Task membership/horizon/seed schedule | All 50 original indices; 2,500 unique seeds; per-task horizons and query bounds | Confirm prospective runtime registry matches pins |
 | History/crop/state/cameras/decode | Causal offsets -6,-4,-2,0; .95 crop; EE-first14D padded60; three cameras; first12D decode | Real processor/model and stock Clef-off parity |
 | Two pairs | Same task/index/seed/horizon per pair; alternating arm order | Complete unused-seed ledger and matching native/simulator/camera/instruction initialization |
-| Clef intervention | Missing inputs explicit; smoke head rejected as substitute | Retain Clef decisions and proposed/executed actions; verify an attributable action change |
-| Rounding/freshness design | Recovered threshold/rounding gap and clock arithmetic recorded | Actual migrated parser/gate parity; explicit clock selection and empty-queue semantics |
+| Clef intervention | Actual gate/runner CPU fixture executes actor-produced 12D change; unchanged candidate is not counted as a change | Real-model/off parity and attributable simulator action change; full-episode integration |
+| Rounding/freshness design | Actual parser/gate precision parity, candidate age2/3, completed-control clock and proposed paused mode tested | Explicit pilot clock selection, qualified latency and full-episode empty-queue semantics |
 | Durable retention | Manifest names commit/reload/hash gate | Storage fixture round-trip before GPU; full result archive closure/readback before acceptance |
 | Outcomes/accounting | Manifest requires every query/failure/timeout and scheduled outcome | Separate infrastructure-invalid episodes from policy outcomes; no silent retries |
 
@@ -176,7 +223,7 @@ actual action intervention remain mandatory. Two pairs support feasibility only;
 make no statistical superiority claim and do not tune final unseen tasks.
 
 At stock execute-16, the four-episode maximum is 2,400 controls, 2,404 source
-observations and 152 Xiaomi queries. Extra Clef/probe queries need independent
+observations and 152 stock Xiaomi queries. Extra actor/Clef/probe queries need independent
 bounds. These counts are quote inputs, not cost or timeout estimates. Obtain exact
 model/Clef/evaluator/image digests, all query deadlines, per-episode load/startup/
 runtime allowances, CPU staging/cache/readback/cleanup and GPU resource seconds,

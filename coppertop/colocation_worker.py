@@ -11,11 +11,43 @@ import subprocess
 import sys
 import time
 import traceback
+from types import ModuleType
+from uuid import uuid4
 
 ROOT = Path('/tmp/colocation')
 CLEF_ROOT = Path(os.environ.get('COPPERTOP_CLEF_ROOT', '/tmp'))
 CLEF_MODEL = CLEF_ROOT/'clef-model'
 CLEF_PYTHON = str(CLEF_ROOT/'clef-env/bin/python')
+REFERENCE_BYTES = 23263
+REFERENCE_SHA256 = '0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3'
+
+
+def require_reference_code(model_directory):
+    """Return bounded, authenticated reference bytes without executing them."""
+    with (Path(model_directory)/'joint_schema_model.py').open('rb') as source:
+        raw = source.read(REFERENCE_BYTES + 1)
+    if len(raw) != REFERENCE_BYTES or hashlib.sha256(raw).hexdigest() != REFERENCE_SHA256:
+        raise ValueError('Pinned Clef reference bytes required')
+    return raw
+
+
+def load_reference_code(model_directory):
+    """Execute the authenticated bytes directly, bypassing path and bytecode caches."""
+    raw = require_reference_code(model_directory)
+    source_path = Path(model_directory)/'joint_schema_model.py'
+    name = '_coppertop_clef_reference_' + uuid4().hex
+    module = ModuleType(name)
+    module.__file__ = str(source_path)
+    module.__package__ = ''
+    # Dataclasses resolve annotations through their defining module's identity.
+    sys.modules[name] = module
+    try:
+        exec(compile(raw, str(source_path), 'exec'), module.__dict__)
+    except BaseException:
+        if sys.modules.get(name) is module:
+            del sys.modules[name]
+        raise
+    return module
 
 
 def worker_environment(parent):
@@ -33,14 +65,16 @@ def emit(value):
 
 
 def serve_worker(kind):
+    if kind == 'clef':
+        with contextlib.redirect_stdout(sys.stderr):
+            reference = load_reference_code(CLEF_MODEL)
     import numpy as np
     import torch
     torch.set_grad_enabled(False)
     with contextlib.redirect_stdout(sys.stderr):
         if kind == 'clef':
             from PIL import Image
-            sys.path.insert(0, str(CLEF_MODEL))
-            from joint_schema_model import load_release_model, systemone
+            load_release_model, systemone = reference.load_release_model, reference.systemone
             (ROOT/'clef-startup.json').write_text(json.dumps({'torch':torch.__version__,
                 'cuda':torch.version.cuda,'device':torch.cuda.get_device_name(),
                 'free_total_bytes':torch.cuda.mem_get_info()}))

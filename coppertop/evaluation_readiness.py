@@ -17,11 +17,36 @@ NUM_TRIALS = 50
 CLEF_REPO = 'Cloudflare/clef-flash'
 CLEF_REVISION = 'fde727a287004204b7518dcc983fe64379776712'
 CLEF_HEAD_SHA256 = '19cdcec8c81dc9212be320fff47462ab342fbc1278be4368fb3da71241cf5ba0'
+RECOVERY_COMMIT = 'c381330c16dd43d75226af845555c795558cd78b'
+RECOVERY_INPUTS = {
+    'source-provenance.json': '372adbebebfdfbca7cef293963c279dbf5edd702dc707d29bd3d602aad8b0364',
+    'model-release.json': '04f2b73887a050974eb57924978ad157deb837c692d82c3390821d55d961a386',
+    'config.json': '66f87f6fb2616b46604daf2a9c67ddc87938296d07156efa34d59b5be49e3238',
+    'dev-archive-identities.json': '0b18bdc50073e78508b1363440eb08cc3314a15bef00775d30315ef4da935d30'}
+CLEF_LOCK_SHA256 = '8f7dd61474e3b4a0f8b40eb014cd04a46fe14263835b9f7fa7d8a9b7b5634019'
 ROOT = Path(__file__).resolve().parents[1]
 FILES = ('coppertop/evaluation_readiness.py', 'tools/prepare_clef_pilot.py',
          'containers/robocasa-target50.json', 'containers/gpu-smoke-pins.json',
          'coppertop/performance_eval.py', 'coppertop/gpu_smoke.py', 'coppertop/chords.py',
-         'requirements-simulator.lock', 'requirements-gpu-smoke.lock')
+         'requirements-simulator.lock', 'requirements-gpu-smoke.lock',
+         'coppertop/decision_gate.py', 'coppertop/decision_runner.py',
+         'coppertop/clef_cache.py', 'coppertop/colocation_worker.py',
+         'coppertop/colocation_stage.py', 'containers/clef-runtime.lock',
+         *(f'manifests/clef-recovery/{name}' for name in RECOVERY_INPUTS))
+
+
+def recovery_inputs():
+    values = {}
+    for name, expected in RECOVERY_INPUTS.items():
+        with (ROOT/'manifests/clef-recovery'/name).open('rb') as source:
+            raw = source.read(32769)
+        if hashlib.sha256(raw).hexdigest() != expected:
+            raise ValueError('Pinned recovery metadata differs')
+        values[name] = json.loads(raw)
+    with (ROOT/'containers/clef-runtime.lock').open('rb') as source:
+        if hashlib.file_digest(source, 'sha256').hexdigest() != CLEF_LOCK_SHA256:
+            raise ValueError('Pinned Clef runtime lock differs')
+    return values
 
 
 def target50():
@@ -54,31 +79,35 @@ def benchmark_matrix():
 def freshness_plan():
     """Illustrative clock arithmetic from reported timings, not a latency bound."""
     control_ms, age_limit, chunk_controls = 50, 2, 16
-    scorer_ms, actor_ms = 895, 918
-    overlap_controls = math.ceil(max(scorer_ms, actor_ms)/control_ms)
+    scorer_ms, serial_actor_ms, overlap_scorer_ms, actor_ms = 895, 399, 1134, 918
+    overlap_controls = math.ceil(max(overlap_scorer_ms, actor_ms)/control_ms)
     return {'clock_assumption': 'continuously advancing controls at 20Hz; admission at next control boundary',
         'control_ms': control_ms, 'max_age_controls': age_limit,
         'freshness_budget_ms': control_ms*age_limit,
         'reported_approx_scorer_ms': scorer_ms, 'reported_approx_overlap_actor_ms': actor_ms,
+        'reported_approx_serial_actor_ms': serial_actor_ms,
+        'reported_approx_overlap_scorer_ms': overlap_scorer_ms,
         'scorer_boundary_controls': math.ceil(scorer_ms/control_ms),
         'perfect_overlap_boundary_controls': overlap_controls,
-        'serial_boundary_controls': math.ceil((scorer_ms+actor_ms)/control_ms),
+        'serial_boundary_controls': math.ceil((scorer_ms+serial_actor_ms)/control_ms),
         'actor_boundary_controls': math.ceil(actor_ms/control_ms),
         'candidate_chunk_controls': chunk_controls,
         'candidate_window_ms': chunk_controls*control_ms,
         'illustrative_actor_usable_suffix': max(0, chunk_controls-math.ceil(actor_ms/control_ms)),
-        'recorded_path_fits_freshness': max(scorer_ms, actor_ms) <= control_ms*age_limit,
+        'recorded_path_fits_freshness': max(overlap_scorer_ms, actor_ms) <= control_ms*age_limit,
         'scope': 'these reported timings under this clock; not every future latency or an unpaced/paused simulator',
         'selected_design': None, 'recommended_design': 'paused_synchronous_functional_pilot',
         'decision_required': 'pause controls during scoring/replanning for functional proof, or qualify continuous async latency first',
         'async_requirements': 'old queue continues; admission checks measured control-index age and nonempty unexpired candidate suffix',
         'synchronous_requirements': 'freeze simulator at predeclared decision boundary; report pause/load/score/actor/total wall time; no real-time claim',
-        'rounding_gap': 'benchmark validator accepts official four-decimal probabilities; migrated GatePolicy strict default does not',
+        'rounding_contract': 'self-hosted joint head explicitly selects GatePolicy(probability_decimals=4); generic default remains strict',
+        'fixture_gate_tests': 'tests/test_evaluation_intervention.py; tests/test_evaluation_async.py',
         'runtime_gate_tests_run': False}
 
 
 def manifest():
     rows = target50()
+    recovered = recovery_inputs()
     pilot = next(row for row in rows if row['task'] == 'CoffeeSetupMug')
     episodes = [2, 3]
     schedule = []
@@ -106,13 +135,16 @@ def manifest():
             'architecture': 'Qwen3_5ForConditionalGeneration',
             'head': {'file': 'joint_head.safetensors', 'sha256': CLEF_HEAD_SHA256},
             'output': 'official joint-schema timing/usefulness probabilities; not native actions',
-            'evidence': 'parent-verified Mac inventory; source-only migration commit pending',
+            'evidence': 'weight-free metadata authenticated from verified recovery commit; no local weights',
             'cloud_weights_verified': False},
         'clef_runtime': {'torch': '2.11.0+cu128', 'transformers': '5.10.2',
-            'reported_pinned_wheels': 56, 'wheel_lock_available': False,
+            'reported_pinned_wheels': 56, 'wheel_lock_available': True,
+            'wheel_lock_sha256': CLEF_LOCK_SHA256, 'wheel_runtime_executed': False,
             'shared_xiaomi_environment_qualified': False},
         'inputs': {
-            'clef_code_commit': None, 'clef_snapshot_manifest_sha256': None, 'clef_config_sha256': None,
+            'clef_code_commit': RECOVERY_COMMIT,
+            'clef_snapshot_manifest_sha256': RECOVERY_INPUTS['model-release.json'],
+            'clef_config_sha256': RECOVERY_INPUTS['config.json'],
             'clef_intervention_spec': None, 'complete_dev_seed_ledger': None,
             'runtime_image_digest': None, 'fresh_timeout_storage_cost_quote': None},
         'clef_gate': {'replan_probability_min': .8, 'margin_min': .2,
@@ -121,9 +153,14 @@ def manifest():
             'native_action_source': 'frozen Xiaomi actor; Clef may authorize replacement',
             'async_semantics': 'continue old queue during scoring/actor inference; discard elapsed candidate offsets',
             'fallback': 'stale/failed/uncertain retains old queue; empty-queue handling must be specified',
-            'probability_contract': 'official four-decimal serialization; parser/gate parity unresolved',
+            'probability_contract': 'explicit four-decimal parser/gate parity; no silent normalization',
             'simulator_mediated_intervention_ever_run': False},
         'freshness_design': freshness_plan(),
+        'recovery': {'commit': RECOVERY_COMMIT, 'provenance_sha256': RECOVERY_INPUTS['source-provenance.json'],
+            'originals': 'recovery provenance binds c381330 original bytes; preparation_sources binds current derivatives',
+            'original_copied_file_count': len(recovered['source-provenance.json']['copied_files']),
+            'reference_code_vendored': False, 'runtime_parity_verified': False,
+            'release_inventory_scope': 'file sizes and LFS hashes; not a whole-snapshot byte hash or local weight verification'},
         'protocol': {'robocasa_version': '1.0.1', 'task_set': 'target50',
             'environment_split': 'pretrain', 'kitchen_object_split': 'pretrain',
             'groups': {'atomic_seen': 18, 'composite_seen': 16, 'composite_unseen': 16},
@@ -145,8 +182,8 @@ def manifest():
             'policy_seed': 20261006, 'policy_seed_scope': 'same initial diffusion RNG after model load in each arm',
             'candidate_episodes': episodes, 'candidate_seeds': [row['seed'] for row in schedule[::2]],
             'unused_seed_status': 'provisional; complete historical DEV ledger required',
-            'prior_dev_used_seeds': [8, 9, 12, 15, 23, 1150],
-            'prior_dev_reserved_seeds': [1151],
+            'prior_dev_used_seeds': recovered['dev-archive-identities.json']['development_seeds'],
+            'prior_dev_reserved_seeds': recovered['dev-archive-identities.json']['additional_holdout_exclusion'],
             'seed_evidence': ['coppertop/performance_eval.py::DEV_SEEDS',
                 'docs/performance-eval.md (scheduled 1150/1151)',
                 'docs/full-rollout-recording.md (executed 1150)',
@@ -159,7 +196,7 @@ def manifest():
             'termination': 'success, environment termination/truncation, or full registry horizon',
             'max_controls': 4*pilot['horizon'], 'max_observations': 4*(pilot['horizon']+1),
             'max_fixed16_xiaomi_queries': 4*((pilot['horizon']+15)//16),
-            'query_bound_scope': 'stock execute16 only; extra Clef/probe queries need separate bounds',
+            'query_bound_scope': 'stock execute16 only; extra actor/Clef/probe queries need separate bounds',
             'claim_scope': 'two DEV pairs establish feasibility only; no statistical superiority claim'},
         'acceptance': {
             'clef_off_parity': 'same seeded inputs, decoded chunks, executed controls and query counts as stock Xiaomi',
@@ -176,31 +213,34 @@ def manifest():
             'later_dev1150_archives': {'cadences': [16, 8],
                 'status': 'parent-verified Mac local rehash matches receipts; remote R2 not freshly rechecked',
                 'source_thread': '01a10b0d-dfbe-73a4-85b9-d3731fb24083',
-                'run_ids': None, 'archive_refs': None, 'release_sha256': None,
+                'run_ids': [row['attempt'] for row in recovered['dev-archive-identities.json']['archives']],
+                'archive_refs': None,
+                'release_sha256': [row['release'] for row in recovered['dev-archive-identities.json']['archives']],
+                'identity_manifest_sha256': RECOVERY_INPUTS['dev-archive-identities.json'],
                 'receipt_reconciled': False, 'mac_rehash_matches_receipts': True,
-                'archives': [
-                    {'cadence': 16, 'bytes': 163737600,
-                     'sha256': '75283c1f846bc1e4e67ae89185fbe51a7a0e2341b9938c7140b4c75641eeb44b',
-                     'success': True, 'controls': 211, 'queries': 14},
-                    {'cadence': 8, 'bytes': 204820480,
-                     'sha256': '80511e4d15184a6184c336df4ca651163c8209cceace7c44fe03afc0f374914b',
-                     'success': True, 'controls': 224, 'queries': 28}],
+                'archives': [{'cadence': row['cadence'], 'bytes': row['archive_bytes'],
+                    'sha256': row['archive_sha256'], 'recorded_success': row['recorded_success'],
+                    'controls': row['controls'], 'queries': row['query_calls']}
+                    for row in recovered['dev-archive-identities.json']['archives']],
                 'initialization': {'base_seed': 1000, 'task_index': 3, 'episode_index': 0,
                     'num_trials': 50, 'seed': 1150, 'actor_query_seed': 20261006},
                 'potential_unpaired_xiaomi_baseline': True,
                 'retained_xiaomi_clef_pair_established': False},
             'clef_latency_24_calls': {'status': 'parent verified historical 24-call completion and both Apps stopped; not rollout-success evidence',
                 'historical_report': '/Users/vuln/Documents/Codex/2026-10-05/task/coppertop-publish/docs/clef-colocation.md',
-                'report_available_in_cloud_dev': False, 'implementation_hash_receipt': None,
-                'mac_inventory_recovered': True, 'source_only_migration_commit': None},
+                'report_available_in_cloud_dev': True,
+                'implementation_hash_receipt': RECOVERY_INPUTS['source-provenance.json'],
+                'mac_inventory_recovered': True, 'source_only_migration_commit': RECOVERY_COMMIT},
             'one_update_head': 'smoke-only; never substitute for Clef'},
         'preflight_matrix': [
             {'gate': 'pins_seed_stride_horizons', 'status': 'offline_checkable',
              'test': 'tests/test_evaluation_readiness.py'},
             {'gate': 'history_crop_state_padding_action_decode', 'status': 'offline_checkable',
              'test': 'tests/test_evaluation_readiness.py; optional hash-authenticated pure official functions'},
-            {'gate': 'clef_code_weights_config_intervention', 'status': 'missing_inputs'},
-            {'gate': 'four_decimal_rounding_and_gate_parity', 'status': 'planned_after_source_handoff'},
+            {'gate': 'clef_code_config_identity', 'status': 'offline_checkable'},
+            {'gate': 'clef_weights_runtime_intervention', 'status': 'not_run'},
+            {'gate': 'four_decimal_rounding_and_gate_parity', 'status': 'offline_checkable',
+             'test': 'tests/test_evaluation_intervention.py'},
             {'gate': 'explicit_sync_async_clock_design', 'status': 'decision_required'},
             {'gate': 'complete_unused_dev_seed_ledger', 'status': 'missing_input'},
             {'gate': 'clef_off_parity_and_actual_intervention', 'status': 'not_run'},
