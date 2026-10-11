@@ -65,6 +65,33 @@ class ArchiveValidationTests(unittest.TestCase):
             self.assertTrue(cleaned['verified']);self.assertEqual(fake.calls,['abort','list_parts','delete','head'])
             self.assertEqual((root/'source'/'one').read_bytes(),b'preserve original')
 
+    def test_reduced_deadline_is_enforced_before_cleanup(self):
+        runner=Mock(side_effect=subprocess.TimeoutExpired('publisher',596))
+        result=v.run_publisher(['publisher'],{},runner=runner,execution_seconds=596)
+        self.assertTrue(result['timed_out'])
+        self.assertEqual(runner.call_args.kwargs['timeout'],596)
+        for value in (0,601,True,596.0):
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                v.run_publisher(['publisher'],{},runner=runner,execution_seconds=value)
+        self.assertEqual(runner.call_count,1)
+
+    def test_reduced_request_cap_prevents_an_extra_provider_dispatch(self):
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root);plan,key,fake,client,state=self.setup_case(root)
+            plan['publication_requests_max']=28
+            fake.head_object=Mock(return_value={'ContentLength':1})
+            journal=v.JournalClient(fake,plan,root);journal.keys=[key]
+            for _ in range(28):journal.head_object(Bucket='coppertop',Key=key)
+            with self.assertRaises(ValueError):journal.head_object(Bucket='coppertop',Key=key)
+            self.assertEqual(fake.head_object.call_count,28)
+            plan['publication_requests_max']=1
+            fake.put_object=Mock();fake.head_object.reset_mock()
+            journal=v.JournalClient(fake,plan,root)
+            with self.assertRaises(ValueError):
+                journal.put_object(Bucket='coppertop',Key=key,Body=b'fixture')
+            fake.head_object.assert_not_called();fake.put_object.assert_not_called()
+            self.assertFalse((root/'owned-keys.json').exists())
+
     def test_uncertain_completion_and_receipt_failure_delete_exact_objects(self):
         for receipt_failed in (False,True):
             with self.subTest(receipt_failed=receipt_failed),tempfile.TemporaryDirectory() as root:
@@ -144,10 +171,17 @@ class ArchiveValidationTests(unittest.TestCase):
     def test_prepare_and_approval_never_read_credentials_or_call_sdk(self):
         with tempfile.TemporaryDirectory() as root,patch.object(v,'sdk_client',side_effect=AssertionError('no SDK')):
             directory=Path(root)/'new'
-            sha=v.prepare(directory);plan=v.load(directory/'plan.json');approval=v.load(directory/'approval.example.json')
+            sha=v.prepare(directory,execution_seconds=596,publication_requests_max=28)
+            plan=v.load(directory/'plan.json');approval=v.load(directory/'approval.example.json')
             self.assertEqual(approval['plan_sha256'],sha)
             self.assertEqual(plan['descriptor']['archive']['size'],156098560)
+            self.assertEqual(plan['execution_seconds'],596)
+            self.assertEqual(plan['publication_requests_max'],28)
             v.validate_plan(plan,directory)
+            for field,ceiling in (('execution_seconds',600),('publication_requests_max',32)):
+                for value in (0,ceiling+1,True,float(plan[field])):
+                    with self.subTest(field=field,value=value),self.assertRaises(ValueError):
+                        v.validate_plan(dict(plan,**{field:value}),directory)
             with self.assertRaises(ValueError):v.validate_approval(plan,approval)
             for key,value in list(approval.items()):
                 if value is False:approval[key]=True
@@ -156,10 +190,19 @@ class ArchiveValidationTests(unittest.TestCase):
             with self.assertRaises(ValueError):v.validate_approval(plan,approval)
             with self.assertRaises(FileExistsError):v.prepare(directory)
 
+    def test_invalid_prepare_limits_do_not_create_an_attempt(self):
+        with tempfile.TemporaryDirectory() as root:
+            directory=Path(root)/'new'
+            for limits in ({'execution_seconds':601},{'publication_requests_max':33},
+                           {'execution_seconds':0},{'publication_requests_max':True}):
+                with self.subTest(limits=limits),self.assertRaises(ValueError):
+                    v.prepare(directory,**limits)
+                self.assertFalse(directory.exists())
+
     def test_controller_failure_paths_always_report_cleanup_and_preserve_source(self):
         for mode in ('timeout','uncertain_completion','receipt_failure','expired_cleanup','invalid_journal'):
             with self.subTest(mode=mode),tempfile.TemporaryDirectory() as root:
-                directory=Path(root)/'attempt';v.prepare(directory)
+                directory=Path(root)/'attempt';v.prepare(directory,execution_seconds=596,publication_requests_max=28)
                 plan=v.load(directory/'plan.json');approval=v.load(directory/'approval.example.json')
                 for key,value in list(approval.items()):
                     if value is False:approval[key]=True
@@ -180,10 +223,11 @@ class ArchiveValidationTests(unittest.TestCase):
                     return TemporaryCredentials('dummy','dummy','dummy',0 if expired else 2**40)
                 with patch('coppertop.reload_launch.selected_env',return_value={'CLOUDFLARE_R2_URL':ENDPOINT}),\
                      patch('coppertop.reload_launch.parent_credentials',return_value=('dummy','dummy')),\
-                     patch.object(v,'run_publisher',side_effect=stopped),\
+                     patch.object(v,'run_publisher',side_effect=stopped) as publisher,\
                      patch.object(v,'mint',side_effect=credentials) as signing,\
                      patch.object(v,'sdk_client',return_value=fake):
                     result=v.execute(directory,directory/'approval.json','never-read.env')
+                self.assertEqual(publisher.call_args.kwargs['execution_seconds'],596)
                 self.assertEqual(len(list((directory/'source'/'camera-state').glob('*.bin'))),1939)
                 self.assertTrue((directory/'result.json').exists())
                 self.assertFalse(result['publication']['verified'])
