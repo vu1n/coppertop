@@ -62,7 +62,7 @@ class OfficialQuery:
         self.native.client_socket.close()
 
 
-def serve(output):
+def serve(output, *, lifetime_seconds=240):
     """Runs only on an already allocated CUDA worker; provisions nothing."""
     import signal
     import torch
@@ -76,7 +76,9 @@ def serve(output):
     source_gate()
     if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
         raise ValueError('Single CUDA device required')
-    signal.alarm(240)
+    if type(lifetime_seconds) is not int or not 1 <= lifetime_seconds <= 600:
+        raise ValueError("Actor lifetime must be between 1 and 600 seconds")
+    signal.alarm(lifetime_seconds)
     pins = read_json(Path('/app/containers/gpu-smoke-pins.json'))
     verify_snapshot(MODEL, pins['model'])
     torch.set_grad_enabled(False)

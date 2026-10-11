@@ -1,0 +1,127 @@
+{
+  "source_checkout": "coppertop-publish",
+  "source_head": "dda676f63c88d32ba563708eefc992271ee8feca",
+  "source_state": "uncommitted recovery files; originals unchanged",
+  "migration_base": "46701a30b31713d0393d069df7427daff875217d",
+  "copied_files": [
+    {
+      "path": "coppertop/decision_gate.py",
+      "sha256": "7e530c33a903e8d071d9603797a283b47c87d01f35b67d2d3a3664b7bcc7d538",
+      "bytes": 5158
+    },
+    {
+      "path": "coppertop/decision_provider.py",
+      "sha256": "0dbada048209f4959a88ad613ac41c2c6512214fb216ba4472c282e78226d68c",
+      "bytes": 9720
+    },
+    {
+      "path": "coppertop/decision_recording.py",
+      "sha256": "8cb8dedf4be7e89a50d61d8b6be2f643da3a06c99fcb86be100c761762fefc9d",
+      "bytes": 11305
+    },
+    {
+      "path": "coppertop/decision_runner.py",
+      "sha256": "2ce03a1776b0f4791288deab28b7cd3d87b33a5cc513d1e9a82e0d9587e9a07c",
+      "bytes": 5561
+    },
+    {
+      "path": "coppertop/decision_cli.py",
+      "sha256": "9a6cca7b60f8532847c7356380cbbbd1197ef3b52d3167ffc913f9197c755fac",
+      "bytes": 3538
+    },
+    {
+      "path": "coppertop/decision_latency.py",
+      "sha256": "8e5a465c3c0338932ddc85282ec8907c0d35c71154a47eb38e69e089ca7fc296",
+      "bytes": 2982
+    },
+    {
+      "path": "coppertop/colocation_worker.py",
+      "sha256": "7ea2292e6d50353ad168e1c6f70ce3894d7cfda5db95982221d9b39b8380999d",
+      "bytes": 8296
+    },
+    {
+      "path": "coppertop/colocation_stage.py",
+      "sha256": "0166d3671f9be61febab831250269d75fab374c08266556356162ab77c9f3327",
+      "bytes": 5702
+    },
+    {
+      "path": "coppertop/clef_cache.py",
+      "sha256": "ffae7f191509ca1ebc0687c0794894b878963cf3cd153382e64dce2f0ab5dbbd",
+      "bytes": 3430
+    },
+    {
+      "path": "containers/clef-runtime.lock",
+      "sha256": "8f7dd61474e3b4a0f8b40eb014cd04a46fe14263835b9f7fa7d8a9b7b5634019",
+      "bytes": 13386
+    },
+    {
+      "path": "tests/test_decision_gate.py",
+      "sha256": "31e3f0daf95e7a3b15c5e1c6b84a20352c18db26c6cf65412b39e591574eb7fc",
+      "bytes": 17326
+    },
+    {
+      "path": "tests/test_decision_latency.py",
+      "sha256": "5755fd0ece5059dd9127b20d177caeb83d97e043ae3c07142100a04f65ae29c6",
+      "bytes": 2298
+    },
+    {
+      "path": "tests/test_colocation_worker.py",
+      "sha256": "c3f9f5205e2d63a384d8c56156c1ed1eeb0f9903eeed2a318c1317627504c605",
+      "bytes": 6304
+    },
+    {
+      "path": "docs/decision-gate.md",
+      "sha256": "5f07a7c94210764d15ad053d1378ef3f05502fbd64ac0907ab073d2502eb097f",
+      "bytes": 11349
+    },
+    {
+      "path": "docs/clef-colocation.md",
+      "sha256": "a920735299f2e8e867270f04c89919cabbcb1e9fc1ef9dbc48bfed8d29920a5e",
+      "bytes": 13889
+    },
+    {
+      "path": "docs/clef-training-data.md",
+      "sha256": "9319782f4562df741ab0f9b4a2f591102d3e108086feb45f772b1ad835de260b",
+      "bytes": 11512
+    }
+  ],
+  "schema_sha256": "a9abffbc5e4ae1d949629d81f1a2a6785a2f181517cdf24b9202ca561a3ea527",
+  "runtime_parity_verified": false,
+  "packaging_files": [
+    {
+      "path": "coppertop/mechanism_policy.py",
+      "sha256": "d1e5fde2685121f55c2b69139b4cad91dc5d546922c1409db1f5a7c32be9e5fa",
+      "bytes": 4762
+    },
+    {
+      "path": "manifests/clef-recovery/LICENSE.upstream",
+      "sha256": "bbedc3fda3305820b977265f01b8619d87570a6739de3a5582c3464840f1e57a",
+      "bytes": 11544
+    },
+    {
+      "path": "manifests/clef-recovery/README.md",
+      "sha256": "2fa8afbc17edf9d2d0559d364aa8f058b7453fceea49205fa8b671249099b981",
+      "bytes": 3196
+    },
+    {
+      "path": "manifests/clef-recovery/config.json",
+      "sha256": "66f87f6fb2616b46604daf2a9c67ddc87938296d07156efa34d59b5be49e3238",
+      "bytes": 2832
+    },
+    {
+      "path": "manifests/clef-recovery/dev-archive-identities.json",
+      "sha256": "0b18bdc50073e78508b1363440eb08cc3314a15bef00775d30315ef4da935d30",
+      "bytes": 1861
+    },
+    {
+      "path": "manifests/clef-recovery/joint_head_config.json",
+      "sha256": "77efe959a38b5b17b241543e129e695f3c77465ece55a25985279bd8176279a0",
+      "bytes": 119
+    },
+    {
+      "path": "manifests/clef-recovery/model-release.json",
+      "sha256": "04f2b73887a050974eb57924978ad157deb837c692d82c3390821d55d961a386",
+      "bytes": 3020
+    }
+  ]
+}
