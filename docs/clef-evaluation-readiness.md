@@ -8,7 +8,13 @@ verified against the private remote branch before integration. The immutable
 recovery provenance SHA-256 remains
 `372adbebebfdfbca7cef293963c279dbf5edd702dc707d29bd3d602aad8b0364`;
 it binds the recovery originals, while the preparation manifest hashes current
-adaptations separately. No merge or paid run is included.
+adaptations separately. Preparation has no paid or provider execution option.
+
+The first source-review correction is separately pinned to
+`ae19c264ccbf1154315ca21539fb644d7c46b076`: model/cache subprocesses receive an
+explicit runtime-variable allowlist. Subsequent reviewed corrections are bound
+in `manifests/clef-review-derivatives.json`. Original recovery metadata and bytes
+at `c381330` stay intact; reviewed derivatives have a separate manifest.
 
 ## Missing inputs and evidence inventory
 
@@ -50,6 +56,7 @@ The seed inventory is bounded evidence, not a complete historical ledger:
 
 | CoffeeSetupMug DEV seeds | Evidence | Treatment |
 | --- | --- | --- |
+| 7 | `episode.EXPLORED_DEV_SEEDS` declares explored DEV; not proof of CoffeeSetupMug execution | Also exclude conservatively |
 | 8, 9, 12, 15, 23 | `performance_eval.DEV_SEEDS`, performance pilot docs | Used; exclude |
 | 1150 | Full-rollout docs report execution; mechanism config also selects it | Used; exclude |
 | 1151 | Old performance pilot scheduled episode 1 | Conservatively reserve |
@@ -293,18 +300,105 @@ complete closure and compare archive/restored-byte hashes **before GPU**. The
 existing local/fake storage tests do not prove the actual remote storage boundary.
 Do not make provider/storage calls under this offline authorization.
 
-Independent no-cost work can freeze the proposed config and quote worksheet,
-audit source/config/wheel-lock identities, check the acquired ledger/receipt
-handoff for unused 1152/1153 and archive closure, and generate/round-trip a bounded
-local storage fixture. Finish the existing recorder's full-episode scheduler and
-journal glue with 600-control CPU fixtures for budgets, queue boundaries, stop
-flags and failures; the single-boundary helper is not a four-episode launcher.
+Available-source audit now authenticates all 23 original recovery entries and
+separately hashes current derivatives. It records used/reserved/explored seeds,
+including declared explored seed 7, without claiming 1152/1153 are unused. Raw
+completion receipts and historical archive payloads are absent here, so their
+closure and complete historical ledger remain inputs.
+
+Full original-byte authentication requires the exact `c381330` Git object in
+local history and fails if it is absent. Shallow checkouts skip only that
+source-dependent test class for Git's exact missing-object result. The portable
+seed/receipt checks still verify pinned current metadata and run without Git;
+they do not replace original-byte verification or fetch missing history.
+
+`evaluation_episode.run_fixture_pilot` now executes four 600-control CPU-double
+episodes through the actual gate, including candidate offsets 8..15 after the
+control 8 handoff, bounded normal queries, full journals, partial failure tapes and
+all cleanup attempts. Its fixture result requires matched reset bytes, stock
+parity and attributable fake action changes. Failed/uncertain/unchanged results
+never force retries. This is an injected CPU adapter; real simulator recording
+plumbing and outer hard process deadlines remain runtime work.
+
+`evaluation_roundtrip` uses the existing LocalStore/Tape/archive/stage machinery
+to seal, locally fsync, independently reload and hash the complete ten-object
+fixture closure. Raw closure is capped at 16MiB and total retained local copies at
+66.125MiB. Corrupt/missing files fail; originals survive; cleanup failures retain
+the primary error. The source and restored closure include accounting and every
+audited Tape frame/action, not real camera/model payloads or remote durability.
+
+The canonical unpacker's cleanup fix changes its source hash. The historical
+`containers/archive-live-admission.json` receipt remains immutable and therefore
+does not qualify the modified archive code. Its existing admission guard correctly
+rejects the new bytes until an actual separately authorized commit/readback check
+passes; no live receipt or runtime qualification was fabricated to satisfy tests.
+
+Reproduce all available no-cost evidence in a new ignored directory:
+
+```sh
+/workspace/coppertop/.venv/bin/python tools/verify_clef_readiness.py \
+  --directory .local/evaluation-readiness/new-offline-verification
+```
+
+The command emits the preparation manifest, source/seed/receipt audit, complete
+pilot accounting, local hash receipt and verification summary. It has no execute
+option and leaves selection, live readiness and paid authorization false.
+
 Complete local official-loader checks only if their
 already-acquired source/fixtures are supplied. Those inputs are not fabricated
 when absent. The exact remaining decision is functional pause versus a separate
 async latency/freshness experiment, plus opportunity/query/fallback bounds; paid
 approval must name the resulting complete CPU/storage/four-episode plan and its
 fresh all-in monetary cap. No statistical superiority claim follows from two pairs.
+
+### Concrete unselected deadline proposal
+
+`pilot_proposal()` records operational failure caps, not qualified performance:
+each stock episode allows 38 actor/input calls; each Clef episode allows 39 actor,
+40 input and one scorer call. The extra actor uses the same detached control-8
+input as the scorer. All failures/timeouts consume a submitted call; retries and
+additional decision opportunities are zero. An admitted candidate covers controls
+8 through 23, including the eight controls after the single-boundary helper ends;
+normal replanning resumes only when its queue ends. Rejecting it preserves only
+the unexpired old queue.
+
+| Proposed core cap | Seconds | Meaning |
+| --- | ---: | --- |
+| Reset plus initial-state capture | 30 | Includes matched initialization evidence |
+| Each detached input | .5 | Input preparation is separately counted |
+| Each actor / each scorer call | 5 / 5 | End-to-end preparation/IPC/forward/decode deadlines |
+| Each native step plus audit | .25 | Functional wall cap; no 20Hz throughput claim |
+| All cooperative close operations | 10 | Preserve primary failure and attempt all owned cleanup |
+| Full episode core | 435 | Reset, inputs, queries, up to600 steps and cooperative cleanup |
+
+The conservative component sums are 399 seconds stock and 410 seconds Clef,
+leaving headroom within 435. These caps must pass actual runtime qualification;
+they do not establish that a rollout finishes within them. A timed-out normal
+actor stops an empty queue as infrastructure-invalid. A failed scorer/extra actor
+retains only available old controls while recording infrastructure-invalid status.
+Uncertain judgments and unchanged actions are valid policy outcomes. Explicit
+success/termination/truncation stops immediately; reaching 600 controls records a
+horizon outcome without manufacturing success. Cancellation/cleanup failure
+preserves partial evidence and requires the outer supervisor to stop the worker.
+
+Proposed outer phase allowances are startup 90, actor load 120, optional Clef
+load 120, archive commit 120 and process teardown 30 seconds in addition to the
+435-second core: stock job≤795s and Clef job≤915s, **four GPU episode jobs≤3420s**.
+Load Clef first when enabled, then the actor: a proposed 600-second actor alarm
+covers actor load 120 plus core 435. The existing 450-second colocation benchmark
+launcher is not this pilot launcher. Outer process supervision, interruptible
+operations and deadline coverage remain qualification inputs; the CPU callback
+fixtures cannot terminate an uninterruptible simulator or model process.
+
+Apply fresh selected-region GPU/CPU/RAM rates to these conservative episode-job
+caps, plus separately bounded CPU image/cache/qualification/storage/readback jobs,
+retained GB-months, requests, egress and an explicit margin. Any qualification
+probe calls need their own caps. Image/model/config/evaluator/runtime payload
+identities, peak host/device memory, exact actual storage destination/retention,
+all CPU job bounds, current rates and the preserved spend ledger are still required.
+If measurements exceed a proposed cap, revise the proposal and obtain approval
+before execution; do not shorten horizons or silently widen deadlines. This
+proposal is unselected and carries no spending or provider authorization.
 
 The later full comparison is **2,500 episodes per arm**, 5,000 for two arms,
 on RoboCasa1.0.1 target50 in the pretrain kitchen/object split, 50 trials per task.

@@ -231,8 +231,12 @@ def unpack_archive(archive, descriptor, destination):
             if seen != set(entries):
                 raise ValueError('Archive incomplete')
         return destination
-    except BaseException:
-        shutil.rmtree(destination)
+    except BaseException as error:
+        try:
+            shutil.rmtree(destination)
+        except BaseException as cleanup_error:
+            error.add_note('Archive extraction cleanup failed; partial evidence retained at '
+                f'{destination}: {type(cleanup_error).__name__}: {cleanup_error}')
         raise
 
 

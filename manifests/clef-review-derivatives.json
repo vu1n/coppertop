@@ -1,0 +1,14 @@
+{
+  "kind": "clef_source_review_derivatives",
+  "original_recovery_commit": "c381330c16dd43d75226af845555c795558cd78b",
+  "original_provenance_sha256": "372adbebebfdfbca7cef293963c279dbf5edd702dc707d29bd3d602aad8b0364",
+  "review_finding": "https://github.com/vu1n/coppertop/pull/16#discussion_r4240335094",
+  "change": "Explicit runtime environment allowlist prevents arbitrary ambient credentials reaching model/cache subprocesses. Original source bytes remain preserved at the recovery commit; this file binds the reviewed derivatives.",
+  "files": {
+    "coppertop/colocation_worker.py": "3eae7364a0a96a0d662af19454e3e88e6d2833b4592726fe0af04fbd9951ce50",
+    "tests/test_evaluation_environment.py": "c531910a981fe4903a07bf0d68c589e32e6d0fcfcde8451ffe75348c987c7b3e"
+  },
+  "model_runtime_verified": false,
+  "provider_calls": false,
+  "paid_authorized": false
+}

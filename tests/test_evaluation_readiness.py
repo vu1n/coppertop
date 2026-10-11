@@ -132,6 +132,33 @@ class ReadinessTests(unittest.TestCase):
         self.assertIsNone(p['selected_design'])
         self.assertFalse(p['runtime_gate_tests_run'])
 
+    def test_proposed_caps_cover_work_without_selecting_or_qualifying_live_plan(self):
+        manifest = readiness.manifest()
+        p = manifest['pilot_proposal']
+        limits = p['proposed_core_deadlines_seconds']
+        for arm, key in (('stock', 'per_stock_episode'), ('clef', 'per_clef_episode')):
+            caps = p[key]
+            required = (limits['reset_and_initialization_capture']
+                + caps['input_calls']*limits['input'] + caps['actor_calls']*limits['actor']
+                + caps['scorer_calls']*limits['scorer']
+                + p['horizon_controls']*limits['step_and_audit']
+                + limits['total_cooperative_cleanup'])
+            self.assertEqual(required, p['core_component_sum_seconds'][arm])
+            self.assertLess(required, limits['episode'])
+        self.assertEqual(p['four_episode_caps']['actor_calls'],
+            2*p['per_stock_episode']['actor_calls']+2*p['per_clef_episode']['actor_calls'])
+        outer = p['proposed_outer_deadlines_seconds']
+        common = sum(outer[key] for key in ('startup', 'actor_load', 'archive_commit', 'process_teardown'))
+        self.assertEqual(outer['stock_job'], common+limits['episode'])
+        self.assertEqual(outer['clef_job'], common+limits['episode']+outer['optional_clef_load'])
+        self.assertEqual(outer['four_episode_jobs'], 2*(outer['stock_job']+outer['clef_job']))
+        self.assertLess(outer['actor_load']+limits['episode'], 600)
+        self.assertEqual(p['decision_completed_controls'], [8])
+        for key in ('selected', 'runtime_qualified', 'paid_authorized'):
+            self.assertFalse(p[key])
+        self.assertIsNone(p['quote']['monetary_amount'])
+        self.assertIsNone(manifest['freshness_design']['selected_design'])
+
     def test_recovery_metadata_and_lock_are_authenticated_without_weights_or_runtime(self):
         recovered = readiness.recovery_inputs()
         release = recovered['model-release.json']

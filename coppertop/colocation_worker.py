@@ -53,8 +53,12 @@ def load_reference_code(model_directory):
 def worker_environment(parent):
     # Modal injects helper packages through PYTHONPATH. Installing against that
     # path can hide missing venv dependencies when the worker later drops it.
-    env = {key:value for key,value in parent.items()
-           if key not in ('PYTHONHOME','PYTHONUSERBASE','VIRTUAL_ENV')}
+    # Runtime imports execute pinned third-party code. Keep only the same native
+    # interpreter/CUDA settings as the evaluator, plus the explicit Clef location;
+    # arbitrary controller credentials must never enter these child processes.
+    keep = ('PATH', 'HOME', 'LD_LIBRARY_PATH', 'NVIDIA_VISIBLE_DEVICES',
+            'CUDA_VISIBLE_DEVICES', 'LANG', 'LC_ALL', 'COPPERTOP_CLEF_ROOT')
+    env = {key: parent[key] for key in keep if key in parent}
     env.update(PYTHONPATH='/app', PYTHONNOUSERSITE='1', HF_HUB_OFFLINE='1',
                TRANSFORMERS_OFFLINE='1', MUJOCO_GL='egl')
     return env

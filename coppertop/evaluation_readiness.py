@@ -7,6 +7,7 @@ from pathlib import Path
 from .chords import canonical
 from .performance_eval import SOURCE_PINS, SOURCE_BLOBS
 from .gpu_smoke import MODEL_REPO, MODEL_REVISION
+from .evaluation_audit import seed_ledger
 
 BASE_COMMIT = '46701a30b31713d0393d069df7427daff875217d'
 REGISTRY_SHA256 = '607b3a94856df1e522ac849165fd0af1ebcbc53d35ca5b56f75827da616ddb02'
@@ -18,6 +19,7 @@ CLEF_REPO = 'Cloudflare/clef-flash'
 CLEF_REVISION = 'fde727a287004204b7518dcc983fe64379776712'
 CLEF_HEAD_SHA256 = '19cdcec8c81dc9212be320fff47462ab342fbc1278be4368fb3da71241cf5ba0'
 RECOVERY_COMMIT = 'c381330c16dd43d75226af845555c795558cd78b'
+RECOVERY_REVIEW_COMMIT = 'ae19c264ccbf1154315ca21539fb644d7c46b076'
 RECOVERY_INPUTS = {
     'source-provenance.json': '372adbebebfdfbca7cef293963c279dbf5edd702dc707d29bd3d602aad8b0364',
     'model-release.json': '04f2b73887a050974eb57924978ad157deb837c692d82c3390821d55d961a386',
@@ -32,6 +34,9 @@ FILES = ('coppertop/evaluation_readiness.py', 'tools/prepare_clef_pilot.py',
          'coppertop/decision_gate.py', 'coppertop/decision_runner.py',
          'coppertop/clef_cache.py', 'coppertop/colocation_worker.py',
          'coppertop/colocation_stage.py', 'containers/clef-runtime.lock',
+         'coppertop/evaluation_audit.py', 'coppertop/evaluation_episode.py',
+         'coppertop/evaluation_roundtrip.py', 'coppertop/record_archive.py',
+         'tools/verify_clef_readiness.py', 'manifests/clef-review-derivatives.json',
          *(f'manifests/clef-recovery/{name}' for name in RECOVERY_INPUTS))
 
 
@@ -105,9 +110,63 @@ def freshness_plan():
         'runtime_gate_tests_run': False}
 
 
+def pilot_proposal():
+    """Unselected failure caps, not qualified performance or paid authorization."""
+    return {
+        'kind': 'paused_functional_four_episode_proposal',
+        'selected': False, 'runtime_qualified': False, 'paid_authorized': False,
+        'clock_mode': 'paused_synchronous', 'horizon_controls': 600,
+        'decision_completed_controls': [8], 'execute_controls': 16,
+        'replan_probability_min': .8, 'margin_min': .2, 'max_age_controls': 2,
+        'actor_seed': 20261006,
+        'actor_seed_scope': 'proposed explicit per-query seed; real stock parity remains required',
+        'per_stock_episode': {'actor_calls': 38, 'scorer_calls': 0, 'input_calls': 38},
+        'per_clef_episode': {'actor_calls': 39, 'scorer_calls': 1, 'input_calls': 40,
+            'extra_actor_calls': 1},
+        'four_episode_caps': {'controls': 2400, 'observations': 2404,
+            'actor_calls': 154, 'scorer_calls': 2, 'input_calls': 156},
+        'automatic_retries': 0,
+        'proposed_core_deadlines_seconds': {'episode': 435, 'reset_and_initialization_capture': 30,
+            'input': .5, 'actor': 5, 'scorer': 5, 'step_and_audit': .25,
+            'total_cooperative_cleanup': 10, 'score_actor_handoff': 10},
+        'core_component_sum_seconds': {'stock': 399, 'clef': 410},
+        'proposed_outer_deadlines_seconds': {'startup': 90, 'actor_load': 120,
+            'optional_clef_load': 120, 'archive_commit': 120, 'process_teardown': 30,
+            'stock_job': 795, 'clef_job': 915, 'four_episode_jobs': 3420},
+        'model_load_order': 'Clef first when enabled, then actor; fresh models per episode',
+        'actor_lifetime_constraint': 'proposed 600s alarm: actor load120 +core435 <600; qualify actual launcher',
+        'deadline_scope': 'proposed hard failure caps, not measured completion bounds; CPU callbacks require cooperative cancellation and an outer process supervisor',
+        'existing_launcher': '450s colocation benchmark is not this pilot launcher',
+        'fallback': {
+            'uncertain_or_unchanged': 'retain existing queue; no additional opportunity or retry',
+            'scorer_or_extra_actor_failure': 'retain only unexpired old queue; journal failure and infrastructure-invalid outcome',
+            'queue_exhaustion': 'one bounded normal actor query or infrastructure-invalid stop; never replay expired controls',
+            'terminal': 'stop on explicit success/termination/truncation; never infer success from done',
+            'horizon': 'stop after600 controls with explicit horizon outcome; do not fabricate success',
+            'cancellation_or_cleanup_failure': 'preserve partial evidence and primary error; stop owned worker process through separate outer supervisor'},
+        'storage': {'fixture_max_bytes': 16*1024**2, 'fixture_scope': 'local synthetic accounting/Tape closure only',
+            'production_raw_bytes_per_episode_cap': 1024**3,
+            'production_objects_per_episode_cap': 6000,
+            'production_archive_bytes_per_episode_cap': 1024**3+16*1024**2,
+            'destination': None, 'retention_seconds': None, 'actual_commit_reload_verified': False},
+        'quote': {'monetary_amount': None, 'rates_verified': False,
+            'formula': 'sum(all job seconds * compatible GPU/CPU/RAM rates) +retained storage +requests +readback/egress +declared margin',
+            'gpu_episode_seconds_cap': 3420,
+            'additional_cpu_job_bounds_required': ['conditional image rebuild/cache staging',
+                'runtime/processor/parity qualification', 'actual durable fixture commit/reload',
+                'result publication/readback/closure and cleanup'],
+            'missing_inputs': ['selected resource/region and peak model/activation/KV/host memory',
+                'current image availability/digest and actual runtime payload hashes',
+                'qualified startup/load/input/query/step/archive bounds within proposed caps',
+                'actual durable destination/retention/object counts and complete hash readback',
+                'fresh rates and preserved cumulative spend ledger',
+                'bounded qualification/probe scope and exact-plan monetary approval']}}
+
+
 def manifest():
     rows = target50()
     recovered = recovery_inputs()
+    available_ledger = seed_ledger()
     pilot = next(row for row in rows if row['task'] == 'CoffeeSetupMug')
     episodes = [2, 3]
     schedule = []
@@ -156,7 +215,9 @@ def manifest():
             'probability_contract': 'explicit four-decimal parser/gate parity; no silent normalization',
             'simulator_mediated_intervention_ever_run': False},
         'freshness_design': freshness_plan(),
-        'recovery': {'commit': RECOVERY_COMMIT, 'provenance_sha256': RECOVERY_INPUTS['source-provenance.json'],
+        'pilot_proposal': pilot_proposal(),
+        'available_dev_seed_audit': available_ledger,
+        'recovery': {'commit': RECOVERY_COMMIT, 'review_correction_commit': RECOVERY_REVIEW_COMMIT, 'provenance_sha256': RECOVERY_INPUTS['source-provenance.json'],
             'originals': 'recovery provenance binds c381330 original bytes; preparation_sources binds current derivatives',
             'original_copied_file_count': len(recovered['source-provenance.json']['copied_files']),
             'reference_code_vendored': False, 'runtime_parity_verified': False,
@@ -184,6 +245,8 @@ def manifest():
             'unused_seed_status': 'provisional; complete historical DEV ledger required',
             'prior_dev_used_seeds': recovered['dev-archive-identities.json']['development_seeds'],
             'prior_dev_reserved_seeds': recovered['dev-archive-identities.json']['additional_holdout_exclusion'],
+            'prior_dev_explored_seeds': available_ledger['explored'],
+            'conservative_seed_exclusions': available_ledger['exclusions'],
             'seed_evidence': ['coppertop/performance_eval.py::DEV_SEEDS',
                 'docs/performance-eval.md (scheduled 1150/1151)',
                 'docs/full-rollout-recording.md (executed 1150)',
@@ -243,6 +306,12 @@ def manifest():
              'test': 'tests/test_evaluation_intervention.py'},
             {'gate': 'explicit_sync_async_clock_design', 'status': 'decision_required'},
             {'gate': 'complete_unused_dev_seed_ledger', 'status': 'missing_input'},
+            {'gate': 'available_source_seed_receipt_audit', 'status': 'offline_checkable',
+             'test': 'tests/test_evaluation_audit.py'},
+            {'gate': 'full600_scheduler_journal', 'status': 'offline_fixture_checkable',
+             'test': 'tests/test_evaluation_episode.py'},
+            {'gate': 'bounded_local_artifact_roundtrip', 'status': 'offline_fixture_checkable',
+             'test': 'tests/test_evaluation_roundtrip.py'},
             {'gate': 'clef_off_parity_and_actual_intervention', 'status': 'not_run'},
             {'gate': 'durable_artifact_commit_reload', 'status': 'not_run'},
             {'gate': 'simulator_reset_render_matched_init', 'status': 'not_run'},

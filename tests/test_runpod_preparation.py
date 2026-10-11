@@ -544,10 +544,14 @@ class CacheReuseTest(unittest.TestCase):
                 self.assertEqual(result['status'],'failed');self.assertFalse(any(v[0]=='POST' for v in api.calls))
                 self.assertTrue(api.values['networkvolumes'])
 
-    def test_archive_live_evidence_matches_exact_shared_code_without_runtime_claim(self):
+    def test_archive_historical_evidence_rejects_modified_shared_code(self):
         from coppertop.runpod_cloud import live_archive_verified
-        self.assertTrue(live_archive_verified())
+        # Cleanup-error preservation changed the shared unpacker. Keep the old
+        # readback receipt immutable: it cannot qualify these new source bytes.
+        self.assertFalse(live_archive_verified())
         proof=read_json(Path(prep.__file__).resolve().parents[1]/'containers/archive-live-admission.json',4096)
+        self.assertNotEqual(proof['file_sha256']['coppertop/record_archive.py'],
+            digest((Path(prep.__file__).resolve().parents[1]/'coppertop/record_archive.py').read_bytes()))
         self.assertFalse(proof['Modal_runtime_verified']);self.assertFalse(proof['RunPod_runtime_verified'])
 
 
