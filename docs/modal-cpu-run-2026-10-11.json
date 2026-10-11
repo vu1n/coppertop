@@ -1,0 +1,241 @@
+{
+  "app": {
+    "id": "ap-ghuh8owVffINshUVBnVctG",
+    "identityJournaledBeforeImageLookup": true,
+    "unknownIdentityObserved": false
+  },
+  "billing": {
+    "actualCostUsd": null,
+    "invoiceCapVerified": false
+  },
+  "cleanup": {
+    "activeContainers": 0,
+    "activeSandboxes": 0,
+    "appState": "APP_STATE_STOPPED",
+    "postRunAbsenceConfirmed": true,
+    "stopAndIndependentAbsenceConfirmed": true
+  },
+  "environment": "main",
+  "environmentId": "en-EhttSv3ddODfhLwFvinthV",
+  "evidenceSha256": {
+    "execution/cleanup-history.jsonl": "8c2a5b7eca222680d6197cc3b5ae83e2f823efd0ecbb99f441f3ba7231c95379",
+    "execution/observations.json": "ce33fc1ec514099e7653a586d94558b4de3f1ba9672bacb1e24287bc10d04d55",
+    "execution/outcome.json": "0c8c8c9af1658f64120aeeba8cb51d4dba29fddb4f330e733a71839937cc0849",
+    "execution/ownership.json": "9a74eff3278cb95fc1c39b01a581f7f3891f9ad7f94cb58e9c8071672a5fff8f",
+    "execution/plan.json": "49b4b66c7fc46504ddc151256d8e7f7b2a9eba35183d94152b0f0d3aa094057a",
+    "execution/preflight.json": "776a9fa55cfb48a63532e94bbdc23fd8cf00c3ffb0afd7227451ae0c0879ad98",
+    "execution/resolved-image.json": "53125aee47e1d270b11c6b0a12b9d1fac6de69b522931c0a70b2a8b37d8ee979",
+    "execution/run-authority.json": "5046020a8ce6e952f81372179ab2609837404e5e7a401eb13968d982951fddfa",
+    "final-verification.json": "d92a4bcd9aaa1bcc5446bc331d467383d69376b10b0d8ab6439aa96ff3d12752",
+    "readiness.json": "7a8474c246af8c510de0a436fb7215f33c5f82c4c4cd3364d04716610378b455"
+  },
+  "image": {
+    "cacheHit": true,
+    "customBuildRequested": false,
+    "id": "im-GYYHaMJMKETlbgCvh62lOr",
+    "identityJournaledBeforeInput": true,
+    "independentMetadataVerified": true,
+    "recipe": {
+      "allowGlobalDeployment": false,
+      "builderVersion": "2025.06",
+      "customBuildAuthorized": false,
+      "forceBuild": false,
+      "ignoreCache": false,
+      "name": "debian_slim",
+      "namespace": "global",
+      "pythonVersion": "3.12.10"
+    }
+  },
+  "inputs": {
+    "cancellation": {
+      "callId": "fc-01M4MHYTAV97ADYSSW9NN035Y7",
+      "cancelAcknowledged": true,
+      "containerAbsentBeforeAppStop": true,
+      "containerId": "ta-01M4MHYGFCG99V7M7ZZJ42P7QR",
+      "nativeTerminalState": "not-asserted",
+      "sameContainerAsCompletion": true,
+      "startObserved": true,
+      "withinHoldSeconds": 20
+    },
+    "completion": {
+      "callId": "fc-01M4MHYG8K20NKXN7SQCN1W472",
+      "containerId": "ta-01M4MHYGFCG99V7M7ZZJ42P7QR",
+      "receiptValidated": true
+    },
+    "sameContainerForBothInputs": true
+  },
+  "limitations": [
+    "Actual billing and the provider invoice ceiling remain unverified.",
+    "Cancellation acknowledgement and container absence do not assert a native terminal-state classification.",
+    "No exact per-input timestamps were recorded.",
+    "A whole-executor loss after AppCreate and before App ID journaling remains a general cleanup limitation; it was not observed in this run.",
+    "The concurrent container cap does not guarantee one lifetime allocation; both observed inputs used the same container.",
+    "This test does not establish orchestration, Cloudflare/R2 integration, managed recovery, GPU execution, or durable remote payload storage."
+  ],
+  "limits": {
+    "apps": 1,
+    "cleanupSeconds": 60,
+    "cpuRequestAndLimit": [
+      0.125,
+      0.125
+    ],
+    "executionSeconds": 180,
+    "functions": 1,
+    "gpu": false,
+    "maximumConcurrentContainers": 1,
+    "memoryRequestAndLimitMiB": [
+      256,
+      256
+    ],
+    "operationalAllowanceUsd": "0.25",
+    "retries": 0
+  },
+  "payload": {
+    "bytes": 32,
+    "definition": "bytes(range(32))",
+    "localArtifactReadbackVerified": true,
+    "probeSourceSha256": "51c354dd476c6cb352396693353b4bc1087b281c12e95126272cf8a03734d97e",
+    "sha256": "630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd"
+  },
+  "result": "passed",
+  "schemaVersion": 1,
+  "scope": "single-modal-cpu-synthetic-seam",
+  "source": {
+    "commit": "46701a30b31713d0393d069df7427daff875217d",
+    "filesSha256": {
+      "coppertop/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "coppertop/modal_seam.py": "66b52e868bf6bcca5b714c8bcce4259aab69e96bd626e9189a37dae66b2ee96d",
+      "coppertop/modal_seam_probe.py": "51c354dd476c6cb352396693353b4bc1087b281c12e95126272cf8a03734d97e",
+      "coppertop/modal_seam_tls.py": "386b010947802cd3382895988b7abf077576563167269bc301bb7b5d14c57650",
+      "requirements-gpu-controller.txt": "e149980011992b96376b22a551d6979cc12fc1bdc130565bb6cc22b0c67fca1f",
+      "requirements-modal-seam.txt": "742fa6683f3f562fec0dd08e82098a08ec31d2dfe52dc24c8cd859e753edd0ce",
+      "tools/run_modal_seam.py": "d5bd16d530566f06c69f86eabd350c4b3c93744a44f60d9888ac2f12cd77e1f8"
+    },
+    "planSha256": "49b4b66c7fc46504ddc151256d8e7f7b2a9eba35183d94152b0f0d3aa094057a",
+    "sdkVersion": "1.6.1",
+    "tree": "4ceba9cab6646eecca59ded6275f075c5b49e001"
+  },
+  "suiteId": "ct-modal-35d8f83d64cf4920ba38",
+  "timestamps": {
+    "cleanupReceiptRecordedAt": "2026-10-11T04:01:32Z",
+    "executionDeadline": "2026-10-11T04:04:10.659827Z",
+    "executionDeadlineUnixSeconds": 1791691450.6598275,
+    "executionStartedAt": "2026-10-11T04:01:10.659827Z",
+    "executionStartedAtUnixSeconds": 1791691270.6598275,
+    "perInputTimestampsAvailable": false,
+    "postRunVerificationStartedAt": "2026-10-11T04:02:00Z",
+    "readinessCheckedAt": "2026-10-11T04:00:29Z"
+  },
+  "validation": {
+    "evidenceCrossCheck": "passed",
+    "focusedTestsCommand": "python -m unittest discover -s tests -p test_modal_seam.py -v",
+    "focusedTestsFile": "tests/test_modal_seam.py",
+    "focusedTestsInterpreterRole": "dedicated pinned local controller virtual environment",
+    "focusedTestsPassed": true,
+    "focusedTestsPythonVersion": "3.12.14",
+    "focusedTestsRun": 34,
+    "fullSuite": {
+      "command": ".venv/bin/python -m unittest discover -s tests -v",
+      "completedAt": "2026-10-11T05:27:31.702241Z",
+      "environment": {
+        "packages": {
+          "Pillow": "12.3.0",
+          "aiohttp-socks": "0.12.0",
+          "av": "15.1.0",
+          "boto3": "1.43.108",
+          "modal": "1.6.1",
+          "numpy": "2.4.6",
+          "packaging": "26.3",
+          "pyarrow": "20.0.0",
+          "python-socks": "3.1.1",
+          "requests": "2.34.2",
+          "truststore": "0.10.4"
+        },
+        "pythonVersion": "3.12.14"
+      },
+      "exitCode": 0,
+      "failedTests": [],
+      "logSha256": "e117a9432d7d9e5cc1a274c6c81ab21feb2a409e17dd6aef59e5ad35a4963062",
+      "passed": true,
+      "phase": "after-provider-run",
+      "skipReasons": {
+        "Bounded pinned official evaluator source not supplied": 4,
+        "Bounded pinned official registry source not supplied": 1,
+        "Existing optional CPU torch runtime unavailable": 7,
+        "Pinned official evaluator source not provided": 1,
+        "Set COPPERTOP_SOURCE to the already acquired source": 2
+      },
+      "skippedTests": [
+        {
+          "reason": "Bounded pinned official evaluator source not supplied",
+          "test": "test_crop_truncates_to_243_square_and_bilinearly_resizes_without_mutation (test_evaluation_readiness.OfficialPurePreprocessingTests.test_crop_truncates_to_243_square_and_bilinearly_resizes_without_mutation)"
+        },
+        {
+          "reason": "Bounded pinned official evaluator source not supplied",
+          "test": "test_ee_first_axis_angle_state_matches_existing_local_view (test_evaluation_readiness.OfficialPurePreprocessingTests.test_ee_first_axis_angle_state_matches_existing_local_view)"
+        },
+        {
+          "reason": "Bounded pinned official evaluator source not supplied",
+          "test": "test_history_repeats_first_observation_and_matches_view_at_all_queue_lengths (test_evaluation_readiness.OfficialPurePreprocessingTests.test_history_repeats_first_observation_and_matches_view_at_all_queue_lengths)"
+        },
+        {
+          "reason": "Bounded pinned official evaluator source not supplied",
+          "test": "test_three_camera_order_state_padding_and_first_twelve_action_decode (test_evaluation_readiness.OfficialPurePreprocessingTests.test_three_camera_order_state_padding_and_first_twelve_action_decode)"
+        },
+        {
+          "reason": "Bounded pinned official registry source not supplied",
+          "test": "test_snapshot_is_exact_ast_projection_of_pinned_registry (test_evaluation_readiness.OfficialRegistryTests.test_snapshot_is_exact_ast_projection_of_pinned_registry)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_masked_velocity_loss_backward_update_and_reload (test_gpu_smoke.DifferentiationTests.test_masked_velocity_loss_backward_update_and_reload)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_native_positions_cache_mask_and_video_inputs (test_gpu_smoke.DifferentiationTests.test_native_positions_cache_mask_and_video_inputs)"
+        },
+        {
+          "reason": "Pinned official evaluator source not provided",
+          "test": "test_pinned_official_evaluator_with_fake_model_and_environment (test_official_recording.RecordingTests.test_pinned_official_evaluator_with_fake_model_and_environment)"
+        },
+        {
+          "reason": "Set COPPERTOP_SOURCE to the already acquired source",
+          "test": "test_export_rejects_unknown_camera_before_writing (test_roundtrip.RoundTripTests.test_export_rejects_unknown_camera_before_writing)"
+        },
+        {
+          "reason": "Set COPPERTOP_SOURCE to the already acquired source",
+          "test": "test_real_import_and_reproducible_exports (test_roundtrip.RoundTripTests.test_real_import_and_reproducible_exports)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_difference_rejected (test_smoke_reload.ComparisonTests.test_difference_rejected)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_head_mapping_rejects_extra_or_missing_keys (test_smoke_reload.ComparisonTests.test_head_mapping_rejects_extra_or_missing_keys)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_identical_tiny_tensors_report_zero (test_smoke_reload.ComparisonTests.test_identical_tiny_tensors_report_zero)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_shape_dtype_and_nonfinite_rejected (test_smoke_reload.ComparisonTests.test_shape_dtype_and_nonfinite_rejected)"
+        },
+        {
+          "reason": "Existing optional CPU torch runtime unavailable",
+          "test": "test_validation_case_geometry_and_timestep (test_smoke_reload.ComparisonTests.test_validation_case_geometry_and_timestep)"
+        }
+      ],
+      "sourceCommit": "46701a30b31713d0393d069df7427daff875217d",
+      "sourceTree": "4ceba9cab6646eecca59ded6275f075c5b49e001",
+      "startedAt": "2026-10-11T05:27:04.001241Z",
+      "testsPassed": 456,
+      "testsRun": 471,
+      "testsSkipped": 15,
+      "unittestSeconds": 27.102
+    },
+    "sourceMatchesReviewedHead": "527083ba03a397bd88da299686559987184f584d"
+  },
+  "workspace": "vuluan"
+}
