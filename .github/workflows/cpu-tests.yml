@@ -2,8 +2,10 @@ name: CPU tests
 on:
   push:
     branches: [main]
+    paths-ignore: &prose ["**.md", "docs/**"]
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
+    paths-ignore: *prose
 permissions:
   contents: read
 # A newer commit on the same PR or branch cancels the in-flight run.
@@ -12,7 +14,10 @@ concurrency:
   cancel-in-progress: true
 jobs:
   tests:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    # Draft PRs, and PRs labelled local-verified (checks already passed locally), skip.
+    if: >-
+      github.event_name != 'pull_request' || (!github.event.pull_request.draft &&
+      !contains(github.event.pull_request.labels.*.name, 'local-verified'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
