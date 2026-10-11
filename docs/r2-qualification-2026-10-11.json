@@ -37,7 +37,7 @@
     "Observed object absence does not prove that a late accepted write can never appear.",
     "Actual billed cost and a provider-enforced invoice ceiling were not verified.",
     "This single-PUT test does not qualify large multipart completion or cloud compute.",
-    "Independent code review is pending; this record grants no merge or additional execution authority."
+    "Independent static review grants no merge or additional execution authority."
   ],
   "limits": {
     "automaticRetries": 0,
@@ -122,7 +122,30 @@
     "focusedTestsPassed": true,
     "focusedUnittestSeconds": 7.646,
     "fullSuiteRunForThisChange": false,
-    "independentCodeReviewStatus": "pending",
+    "independentCodeReview": {
+      "baseCommit": "9b842bdf181b13019407bc5f798b74e874ee7e28",
+      "confirmedActionableFindings": 0,
+      "historicalClaimsNotIndependentlyReobserved": [
+        "The original user authorization and prior 23-test passing run.",
+        "Live provider outcomes, credential-handling history, and remote repository privacy checks."
+      ],
+      "independentlyVerified": [
+        "All 10 original evidence file hashes and all six runtime file hashes match.",
+        "The aggregate implementation hash, captured harness tree, and original parameterization patch match.",
+        "The canonical fresh plan hash, five approval booleans, and documented limits match.",
+        "The retained archive hash, size, manifest, and 1939 archived and source file hashes match.",
+        "Telemetry contains 12 publication calls and four cleanup calls, including two delete 204 / HEAD 404 pairs.",
+        "The original private attempt is ignored and contains no tracked files.",
+        "Source inspection confirms strict lower limits, approved timeout propagation, request caps, and exact cleanup scope."
+      ],
+      "limitations": "Static and local evidence review does not repeat live execution or establish actual billing.",
+      "method": "Independent static source review and preserved local evidence cross-check",
+      "providerCallsPerformed": 0,
+      "reviewedCommit": "66d1e936f37fe8a539fe58328bd6725c434cc3d0",
+      "runtimeChangesRequired": false,
+      "testsRerun": false
+    },
+    "independentCodeReviewStatus": "completed",
     "testsMatchCapturedHarnessCommit": true
   },
   "verification": {
