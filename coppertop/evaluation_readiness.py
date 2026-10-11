@@ -1,18 +1,22 @@
 """Offline Xiaomi/Clef pilot preparation; there is deliberately no launch path."""
 import hashlib
 import json
+import math
 from pathlib import Path
 
 from .chords import canonical
 from .performance_eval import SOURCE_PINS, SOURCE_BLOBS
 from .gpu_smoke import MODEL_REPO, MODEL_REVISION
 
-BASE_COMMIT = '7d3f7e3cc0d48864ce940209efbd6add56109069'
+BASE_COMMIT = '46701a30b31713d0393d069df7427daff875217d'
 REGISTRY_SHA256 = '607b3a94856df1e522ac849165fd0af1ebcbc53d35ca5b56f75827da616ddb02'
 REGISTRY_BYTES = 6687
 ENTRY_SHA256 = '18d70fade4c990210dc5b9c34285c8030eac142d9c332066c73335e1c0aaa28e'
 ARMS = ('xiaomi_only', 'xiaomi_clef')
 NUM_TRIALS = 50
+CLEF_REPO = 'Cloudflare/clef-flash'
+CLEF_REVISION = 'fde727a287004204b7518dcc983fe64379776712'
+CLEF_HEAD_SHA256 = '19cdcec8c81dc9212be320fff47462ab342fbc1278be4368fb3da71241cf5ba0'
 ROOT = Path(__file__).resolve().parents[1]
 FILES = ('coppertop/evaluation_readiness.py', 'tools/prepare_clef_pilot.py',
          'containers/robocasa-target50.json', 'containers/gpu-smoke-pins.json',
@@ -47,6 +51,32 @@ def benchmark_matrix():
             for row in target50()]
 
 
+def freshness_plan():
+    """Illustrative clock arithmetic from reported timings, not a latency bound."""
+    control_ms, age_limit, chunk_controls = 50, 2, 16
+    scorer_ms, actor_ms = 895, 918
+    overlap_controls = math.ceil(max(scorer_ms, actor_ms)/control_ms)
+    return {'clock_assumption': 'continuously advancing controls at 20Hz; admission at next control boundary',
+        'control_ms': control_ms, 'max_age_controls': age_limit,
+        'freshness_budget_ms': control_ms*age_limit,
+        'reported_approx_scorer_ms': scorer_ms, 'reported_approx_overlap_actor_ms': actor_ms,
+        'scorer_boundary_controls': math.ceil(scorer_ms/control_ms),
+        'perfect_overlap_boundary_controls': overlap_controls,
+        'serial_boundary_controls': math.ceil((scorer_ms+actor_ms)/control_ms),
+        'actor_boundary_controls': math.ceil(actor_ms/control_ms),
+        'candidate_chunk_controls': chunk_controls,
+        'candidate_window_ms': chunk_controls*control_ms,
+        'illustrative_actor_usable_suffix': max(0, chunk_controls-math.ceil(actor_ms/control_ms)),
+        'recorded_path_fits_freshness': max(scorer_ms, actor_ms) <= control_ms*age_limit,
+        'scope': 'these reported timings under this clock; not every future latency or an unpaced/paused simulator',
+        'selected_design': None, 'recommended_design': 'paused_synchronous_functional_pilot',
+        'decision_required': 'pause controls during scoring/replanning for functional proof, or qualify continuous async latency first',
+        'async_requirements': 'old queue continues; admission checks measured control-index age and nonempty unexpired candidate suffix',
+        'synchronous_requirements': 'freeze simulator at predeclared decision boundary; report pause/load/score/actor/total wall time; no real-time claim',
+        'rounding_gap': 'benchmark validator accepts official four-decimal probabilities; migrated GatePolicy strict default does not',
+        'runtime_gate_tests_run': False}
+
+
 def manifest():
     rows = target50()
     pilot = next(row for row in rows if row['task'] == 'CoffeeSetupMug')
@@ -71,10 +101,29 @@ def manifest():
         'xiaomi_model': {'repo': MODEL_REPO, 'revision': MODEL_REVISION,
             'file_hash_manifest': 'containers/gpu-smoke-pins.json',
             'local_weights_verified': False},
+        'clef_model': {'repo': CLEF_REPO, 'revision': CLEF_REVISION,
+            'reported_snapshot_bytes': 19083377419, 'dtype': 'BF16',
+            'architecture': 'Qwen3_5ForConditionalGeneration',
+            'head': {'file': 'joint_head.safetensors', 'sha256': CLEF_HEAD_SHA256},
+            'output': 'official joint-schema timing/usefulness probabilities; not native actions',
+            'evidence': 'parent-verified Mac inventory; source-only migration commit pending',
+            'cloud_weights_verified': False},
+        'clef_runtime': {'torch': '2.11.0+cu128', 'transformers': '5.10.2',
+            'reported_pinned_wheels': 56, 'wheel_lock_available': False,
+            'shared_xiaomi_environment_qualified': False},
         'inputs': {
-            'clef_code': None, 'clef_weights': None, 'clef_config': None,
+            'clef_code_commit': None, 'clef_snapshot_manifest_sha256': None, 'clef_config_sha256': None,
             'clef_intervention_spec': None, 'complete_dev_seed_ledger': None,
             'runtime_image_digest': None, 'fresh_timeout_storage_cost_quote': None},
+        'clef_gate': {'replan_probability_min': .8, 'margin_min': .2,
+            'max_age_controls': 2, 'query_budget': None,
+            'data_usefulness_intervenes': False,
+            'native_action_source': 'frozen Xiaomi actor; Clef may authorize replacement',
+            'async_semantics': 'continue old queue during scoring/actor inference; discard elapsed candidate offsets',
+            'fallback': 'stale/failed/uncertain retains old queue; empty-queue handling must be specified',
+            'probability_contract': 'official four-decimal serialization; parser/gate parity unresolved',
+            'simulator_mediated_intervention_ever_run': False},
+        'freshness_design': freshness_plan(),
         'protocol': {'robocasa_version': '1.0.1', 'task_set': 'target50',
             'environment_split': 'pretrain', 'kitchen_object_split': 'pretrain',
             'groups': {'atomic_seen': 18, 'composite_seen': 16, 'composite_unseen': 16},
@@ -125,14 +174,25 @@ def manifest():
                 'observations': 212, 'retained_metadata_bytes': 9194,
                 'this_attempt_recording_available': False, 'usable_as_retained_pair': False},
             'later_dev1150_archives': {'cadences': [16, 8],
-                'status': 'parent reports fully published and hash-verified; exact receipts not present at base commit',
+                'status': 'parent-verified Mac local rehash matches receipts; remote R2 not freshly rechecked',
                 'source_thread': '01a10b0d-dfbe-73a4-85b9-d3731fb24083',
                 'run_ids': None, 'archive_refs': None, 'release_sha256': None,
-                'receipt_reconciled': False, 'potential_unpaired_xiaomi_baseline': True,
+                'receipt_reconciled': False, 'mac_rehash_matches_receipts': True,
+                'archives': [
+                    {'cadence': 16, 'bytes': 163737600,
+                     'sha256': '75283c1f846bc1e4e67ae89185fbe51a7a0e2341b9938c7140b4c75641eeb44b',
+                     'success': True, 'controls': 211, 'queries': 14},
+                    {'cadence': 8, 'bytes': 204820480,
+                     'sha256': '80511e4d15184a6184c336df4ca651163c8209cceace7c44fe03afc0f374914b',
+                     'success': True, 'controls': 224, 'queries': 28}],
+                'initialization': {'base_seed': 1000, 'task_index': 3, 'episode_index': 0,
+                    'num_trials': 50, 'seed': 1150, 'actor_query_seed': 20261006},
+                'potential_unpaired_xiaomi_baseline': True,
                 'retained_xiaomi_clef_pair_established': False},
             'clef_latency_24_calls': {'status': 'parent verified historical 24-call completion and both Apps stopped; not rollout-success evidence',
                 'historical_report': '/Users/vuln/Documents/Codex/2026-10-05/task/coppertop-publish/docs/clef-colocation.md',
-                'report_available_in_cloud_dev': False, 'implementation_hash_receipt': None},
+                'report_available_in_cloud_dev': False, 'implementation_hash_receipt': None,
+                'mac_inventory_recovered': True, 'source_only_migration_commit': None},
             'one_update_head': 'smoke-only; never substitute for Clef'},
         'preflight_matrix': [
             {'gate': 'pins_seed_stride_horizons', 'status': 'offline_checkable',
@@ -140,6 +200,8 @@ def manifest():
             {'gate': 'history_crop_state_padding_action_decode', 'status': 'offline_checkable',
              'test': 'tests/test_evaluation_readiness.py; optional hash-authenticated pure official functions'},
             {'gate': 'clef_code_weights_config_intervention', 'status': 'missing_inputs'},
+            {'gate': 'four_decimal_rounding_and_gate_parity', 'status': 'planned_after_source_handoff'},
+            {'gate': 'explicit_sync_async_clock_design', 'status': 'decision_required'},
             {'gate': 'complete_unused_dev_seed_ledger', 'status': 'missing_input'},
             {'gate': 'clef_off_parity_and_actual_intervention', 'status': 'not_run'},
             {'gate': 'durable_artifact_commit_reload', 'status': 'not_run'},
@@ -151,6 +213,9 @@ def manifest():
             'per-episode startup/load/runtime timeouts covering full600 horizons',
             'CPU preflight/staging/readback/cleanup resource seconds and GPU resource seconds',
             'raw-array/video/archive byte and object bounds, durable retention/readback destination',
+            'selected clock design and frozen decision opportunities/score budget/actor budget/empty-queue fallback',
+            'Clef 19083377419-byte cache and 56-wheel lock; isolated runtime compatibility and peak model/activation/KV memory',
+            'qualified latency distribution and actual control-index age, candidate suffix and stale/failed/unchanged counters',
             'fresh rates and preserved cumulative spend ledger; exact-plan financial authorization'],
         'sources': ['https://robocasa.ai/docs/build/html/benchmarking/multitask_learning.html',
             'https://github.com/XiaomiRobotics/Xiaomi-Robotics-1/blob/'+SOURCE_PINS['xiaomi']+'/eval_robocasa365/entry.py',

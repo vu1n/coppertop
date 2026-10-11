@@ -1,22 +1,35 @@
 # Retained Xiaomi/Clef pilot: offline preparation
 
 This lane prepares an experiment manifest and offline test matrix at main
-`7d3f7e3cc0d48864ce940209efbd6add56109069`. It has no execution option. The
+`46701a30b31713d0393d069df7427daff875217d`. It has no execution option. The
 existing official/one-update smoke pilot is unchanged. Its smoke head is not Clef.
 
 ## Missing inputs and evidence inventory
 
-At this base commit, repository searches found no Clef inference/intervention
-implementation, weight artifact, or evaluation config. Exact code revision,
-checkpoint digest/location, config digest, Clef-off setting and action-intervention
-semantics are required. Latency from 24 Clef calls does not establish rollout
-success. Local Xiaomi weights and the prospective image have not been verified.
+The parent recovered the Mac inventory. Clef is `Cloudflare/clef-flash`, revision
+`fde727a287004204b7518dcc983fe64379776712`, reported snapshot size
+19,083,377,419 bytes, BF16 `Qwen3_5ForConditionalGeneration` with the official
+joint-schema head. `joint_head.safetensors` SHA-256 is
+`19cdcec8c81dc9212be320fff47462ab342fbc1278be4368fb3da71241cf5ba0`.
+That head hash is not a whole-snapshot hash. Runtime is Torch2.11.0+cu128 /
+Transformers5.10.2 with 56 pinned wheels; the exact lock/manifest and reviewed
+source-only migration commit are pending. No cloud weight/code execution is
+established. Preserve separate Xiaomi/Clef runtime pins until compatibility is
+qualified; do not assume they can share one dependency environment.
+
+Clef emits timing/usefulness probabilities, **not native actions**. Its timing
+gate may authorize a fresh Xiaomi actor replacement when replan probability
+≥.8, margin ≥.2, age ≤2 controls and query budget permits. Data usefulness never
+intervenes. The recorded async design continues the old queue during scoring
+and actor inference, discards elapsed candidate offsets, and retains the old
+queue for stale/failed/uncertain results. No simulator-mediated Clef intervention
+has run. Local Xiaomi weights and the prospective image remain unverified.
 Existing Xiaomi file digests remain in `containers/gpu-smoke-pins.json`.
 
 The parent verified the historical 24-call benchmark's final receipt, which names
 `/Users/vuln/Documents/Codex/2026-10-05/task/coppertop-publish/docs/clef-colocation.md`,
-and confirms both Apps stopped. This is a Mac-local historical location, not an
-available cloud-dev input. The minimal reviewed nonsecret handoff is that report
+and confirms both Apps stopped. Mac inventory is recovered, but the source-only
+handoff is still being packaged by its owner. The minimal nonsecret handoff is that report
 and its implementation/hash receipt; the exact Clef inference/intervention source
 files with revision/file digests and license; pinned runtime dependencies; the
 evaluation config with off-switch, action interface, RNG and query/timeout bounds;
@@ -37,17 +50,81 @@ The seed inventory is bounded evidence, not a complete historical ledger:
 The full-rollout doc describes **one failed staging attempt** that reported
 success at 211 controls / 14 queries / 212 observations and retained only 9,194B
 metadata. That attempt's payload is unavailable. This is not a statement that
-all DEV1150 evidence was lost. The parent subsequently reports fully published,
-hash-verified DEV1150 execute-16 and execute-8 archives in prior thread
-`01a10b0d-dfbe-73a4-85b9-d3731fb24083`. Their exact run IDs, object/release hashes,
-and receipts are absent from this checkout; Personal Context lookup returned
-unavailable. No provider or bulk artifact retrieval was performed.
+all DEV1150 evidence was lost. The parent verified later DEV1150 execute-16 and
+execute-8 archives by Mac-local rehash against their receipts in prior thread
+`01a10b0d-dfbe-73a4-85b9-d3731fb24083`. Remote R2 has not been freshly rechecked.
+Object/release references and complete receipts remain pending the packaged
+handoff. No provider or bulk artifact retrieval was performed by this lane.
+
+| Retained Xiaomi archive | Bytes | SHA-256 | Reported outcome |
+| --- | ---: | --- | --- |
+| execute16 | 163,737,600 | `75283c1f846bc1e4e67ae89185fbe51a7a0e2341b9938c7140b4c75641eeb44b` | Success, 211 controls, 14 queries |
+| execute8 | 204,820,480 | `80511e4d15184a6184c336df4ca651163c8209cceace7c44fe03afc0f374914b` | Success, 224 controls, 28 queries |
+
+Both use DEV1150: base 1000, original target50 index 3, episode 0, stride 50;
+actor query seed 20261006. Seeds 8, 9, 12, 15, 23, 1150 are known used and 1151 is
+also excluded. 1152/1153 remain provisional until the full ledger is packaged.
 
 Those later archives may supply an **unpaired retained Xiaomi baseline** once
 receipts establish source/model/evaluator/config, initialization, seeds, complete
 closure and readback. Execute-8 is a cadence experiment; the proposed stock arm
 uses execute-16. Neither archive establishes a retained Xiaomi/Clef pair or two
 unused DEV seeds. Preserve both histories and reconcile receipts before reuse.
+
+## Freshness and the required experiment decision
+
+At continuously advancing 20Hz controls, two controls are 100ms. Reported
+unoptimized Clef scoring is about 895ms and actor inference during overlap about
+918ms. At the next admission boundary, these illustrative times require 18 and 19
+controls respectively; perfect overlap still requires 19, and serial 895+918ms
+requires 37. The measured path cannot produce a ≤2-control-fresh replacement
+**under this continuous clock at these timings**. These approximate figures are
+not a bound on every future query/hardware configuration. An unpaced simulator
+can advance a different number of controls per wall second; admission must log
+actual observation/admission control indices rather than infer age from nominal
+simulation timestep alone.
+
+A 16-action candidate spans 800ms under that continuous clock. At 918ms, discarding
+elapsed offsets leaves no suffix. Widening freshness alone would not repair that
+candidate, and the old 16-action queue can also exhaust while work is pending.
+The empty-queue fallback must be explicit; silent freezes, retries, or replaying
+expired controls would change the experiment.
+
+The smallest recommended decision is a **paused synchronous functional pilot**:
+at predeclared decision boundaries, freeze simulator controls while Clef scores
+and, if admitted, Xiaomi replans. The same observation/control index remains
+current, so age/elapsed offsets stay zero during the pause. Execute actual native
+Xiaomi actions selected by the gate; report load, score, actor, pause and total
+wall time for each arm. This tests simulator-mediated intervention, not real-time
+execution, and must be explicitly selected before implementation/quote.
+
+Alternatively retain continuous async execution and the strict ≤2-control gate.
+At the recorded timings, expect stale-only/non-intervening cases; this is a
+latency/fallback diagnostic, not intervention proof. A capable async pilot needs
+qualified latency and a nonempty unexpired candidate suffix. No freshness widening,
+clock pause or model optimization is silently authorized. The manifest leaves
+`selected_design=null` while recording the synchronous recommendation.
+
+## Minimal no-GPU checks after exact source handoff
+
+The migration owner retains its packaging footprint. Until the exact commit and
+lock/config/hash receipts arrive, this lane changes only evaluation-owned specs
+and tests. The following tests must import the **actual migrated** parser/gate/
+adapter and use deterministic actor/scorer/environment/clock doubles. The clock
+arithmetic currently tested here is not GatePolicy or simulator execution.
+
+| Test | Required assertion |
+| --- | --- |
+| Official four-decimal rounding | Pass an actual schema result through both benchmark validator and GatePolicy. Joint probabilities rounded to 4 decimals can sum 0.9999/1.0001; their admissibility must agree. Derive precision tolerance from the official schema/number of terms, preserve malformed/out-of-range/NaN rejection, and do not normalize silently. The known strict-default GatePolicy mismatch is a real pending fix. |
+| Gate boundaries/budget | Around p=.8 and margin=.2, test .7999/.8000/.8001 and .1999/.2000/.2001; ages 0/1/2 allowed, 3 stale; budget before/at exhaustion. Data-usefulness changes alone cannot trigger actor inference or replacement. |
+| Clef-off parity | With identical seeded inputs, assert exact decoded chunks, executed native controls, query counts/order and no Clef calls against stock Xiaomi. Fixture parity proves adapter control flow only; real model/evaluator parity remains a runtime gate. |
+| Actual intervention path | A schema-valid high-replan fixture authorizes an actor-produced 12D chunk; execute its changed commands through a fake step interface and retain decision/proposal/executed trace. Clef probabilities must never become controller actions. |
+| Async freshness/suffix | Advance an injected control clock while the old queue executes. Fresh candidates apply only at a control boundary; discard elapsed offsets; reject aged>2, exhausted suffix, failures and uncertainty while retaining the old queue. Add 895/918ms scenarios without sleeps; separately verify explicit empty-queue fallback. |
+| Selected synchronous design | If selected, freeze controls during scoring/replanning, preserve causal observations/index age, and include both waits in wall-time accounting; Clef-off still follows stock semantics. No continuous 20Hz claim. |
+| Complete accounting | Journal all score/actor submissions, discarded candidates, failures and timeouts. Distinguish no-replan, stale-score, stale-candidate, exhausted-suffix, exhausted-budget, unchanged-action, applied-change and infrastructure-invalid outcomes. Zero interventions means the mechanism was not demonstrated; never manufacture improvement or retry/tune to force one. |
+
+These are planned gates, not passed checks. Existing durable staging fixture
+commit/reload/hash verification remains required before any approved GPU run.
 
 ## Prepare and verify
 
@@ -84,6 +161,7 @@ execution, or Clef-off parity. Without source paths, those five tests skip.
 | History/crop/state/cameras/decode | Causal offsets -6,-4,-2,0; .95 crop; EE-first14D padded60; three cameras; first12D decode | Real processor/model and stock Clef-off parity |
 | Two pairs | Same task/index/seed/horizon per pair; alternating arm order | Complete unused-seed ledger and matching native/simulator/camera/instruction initialization |
 | Clef intervention | Missing inputs explicit; smoke head rejected as substitute | Retain Clef decisions and proposed/executed actions; verify an attributable action change |
+| Rounding/freshness design | Recovered threshold/rounding gap and clock arithmetic recorded | Actual migrated parser/gate parity; explicit clock selection and empty-queue semantics |
 | Durable retention | Manifest names commit/reload/hash gate | Storage fixture round-trip before GPU; full result archive closure/readback before acceptance |
 | Outcomes/accounting | Manifest requires every query/failure/timeout and scheduled outcome | Separate infrastructure-invalid episodes from policy outcomes; no silent retries |
 
@@ -104,6 +182,13 @@ model/Clef/evaluator/image digests, all query deadlines, per-episode load/startu
 runtime allowances, CPU staging/cache/readback/cleanup and GPU resource seconds,
 raw-array/video/archive object and byte bounds, retention destination/duration,
 fresh prices and the preserved spend ledger before quoting an approval envelope.
+Also freeze decision opportunities, Clef score and extra actor query budgets,
+query deadlines, chosen clock semantics and stale/failure/empty-queue fallback.
+Quote the 19,083,377,419-byte Clef cache/source transfer only from exact artifact
+manifests; qualify the 56-wheel lock and isolated runtime compatibility. Measure
+peak combined model/activation/KV memory before choosing resources, and obtain
+latency distribution/control-index-age evidence for any async qualification.
+Include synchronous pauses in per-episode/total timeout and all billing bounds.
 Old paid approvals cannot authorize this new experiment. No paid action is
 authorized by this preparation.
 

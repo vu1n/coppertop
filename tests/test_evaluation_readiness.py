@@ -97,6 +97,35 @@ class ReadinessTests(unittest.TestCase):
         self.assertTrue(later['potential_unpaired_xiaomi_baseline'])
         self.assertFalse(later['receipt_reconciled'])
         self.assertFalse(later['retained_xiaomi_clef_pair_established'])
+        self.assertTrue(later['mac_rehash_matches_receipts'])
+
+    def test_recovered_identity_remains_distinct_from_cloud_execution_proof(self):
+        value = readiness.manifest()
+        model = value['clef_model']
+        self.assertEqual(model['repo'], 'Cloudflare/clef-flash')
+        self.assertEqual(model['revision'], 'fde727a287004204b7518dcc983fe64379776712')
+        self.assertEqual(model['reported_snapshot_bytes'], 19083377419)
+        self.assertEqual(model['head']['sha256'], '19cdcec8c81dc9212be320fff47462ab342fbc1278be4368fb3da71241cf5ba0')
+        self.assertFalse(model['cloud_weights_verified'])
+        self.assertFalse(value['clef_gate']['data_usefulness_intervenes'])
+        self.assertFalse(value['clef_gate']['simulator_mediated_intervention_ever_run'])
+        self.assertIsNone(value['clef_gate']['query_budget'])
+        archives = value['prior_evidence']['later_dev1150_archives']['archives']
+        self.assertEqual([(a['cadence'], a['bytes'], a['controls'], a['queries']) for a in archives],
+                         [(16, 163737600, 211, 14), (8, 204820480, 224, 28)])
+        self.assertEqual(archives[0]['sha256'], '75283c1f846bc1e4e67ae89185fbe51a7a0e2341b9938c7140b4c75641eeb44b')
+        self.assertEqual(archives[1]['sha256'], '80511e4d15184a6184c336df4ca651163c8209cceace7c44fe03afc0f374914b')
+
+    def test_continuous_clock_exposes_stale_and_exhausted_candidate_design_gap(self):
+        p = readiness.freshness_plan()
+        self.assertEqual(p['freshness_budget_ms'], 100)
+        self.assertEqual((p['scorer_boundary_controls'], p['perfect_overlap_boundary_controls'],
+                          p['serial_boundary_controls']), (18, 19, 37))
+        self.assertGreater(p['actor_boundary_controls'], p['candidate_chunk_controls'])
+        self.assertEqual(p['illustrative_actor_usable_suffix'], 0)
+        self.assertFalse(p['recorded_path_fits_freshness'])
+        self.assertIsNone(p['selected_design'])
+        self.assertFalse(p['runtime_gate_tests_run'])
 
     def test_manifest_is_deterministic_content_bound_and_has_no_launch_option(self):
         before = readiness.prepare()
