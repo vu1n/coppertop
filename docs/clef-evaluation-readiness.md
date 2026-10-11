@@ -11,7 +11,7 @@ it binds the recovery originals, while the preparation manifest hashes current
 adaptations separately. Preparation has no paid or provider execution option.
 
 The source-review corrections are separately pinned to
-`db7a8a80dfbf4875d8fce151c63e8267c380dc00`: model/cache subprocesses receive an
+`27faad33c497bceccece18a5f4f6c285d5759055`: model/cache subprocesses receive an
 explicit runtime-variable allowlist and fresh owned HOME/cache defaults through
 child completion and cleanup. Live/unknown child status retains the owned home
 and annotates the primary error. This isolates default credential discovery;
@@ -19,6 +19,11 @@ it is not a filesystem sandbox or qualified hard-stop supervisor. The exact
 reference bytes execute only after authentication. Derivatives are bound in
 `manifests/clef-review-derivatives.json`; original recovery metadata and bytes
 at `c381330` stay intact.
+
+The benchmark acceptance gate also requires every actor row to contain a valid
+chunk hash and each saved case's hashes to match across all five phases. A
+complete schedule and positive timing alone do not establish actor parity;
+the recovered latency summaries remain historical reports.
 
 ## Missing inputs and evidence inventory
 

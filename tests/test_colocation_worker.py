@@ -71,8 +71,12 @@ class CachedStageTests(unittest.TestCase):
         rows = []
         for kind, phases in (('actor', ('warmup','alone_before','coresident_serial','overlap','alone_after')),
                              ('clef', ('warmup','coresident_serial','overlap'))):
-            rows.extend({'kind':kind,'phase':phase,'index':index,'seconds':.25}
-                        for phase in phases for index in range(3))
+            for phase in phases:
+                for index in range(3):
+                    row = {'kind':kind,'phase':phase,'index':index,'seconds':.25}
+                    if kind == 'actor':
+                        row['chunk_sha256'] = f'{index+1:064x}'
+                    rows.append(row)
         return {'returncode':0,'timeout':False,'files':{
             'result.json':json.dumps({'status':'passed','rows':rows})}}
 
@@ -100,6 +104,64 @@ class CachedStageTests(unittest.TestCase):
         result['rows'][0]['seconds'] = float('nan')
         response['files']['result.json'] = json.dumps(result)
         with self.assertRaises(ValueError):require_complete(response)
+
+    def test_valid_case_hashes_preserve_unmodified_result_in_any_row_order(self):
+        import json
+        from coppertop.colocation_stage import require_complete
+        response = self.response()
+        result = json.loads(response['files']['result.json'])
+        self.assertEqual(len({row['chunk_sha256'] for row in result['rows']
+                              if row['kind'] == 'actor'}), 3)
+        self.assertTrue(all('chunk_sha256' not in row for row in result['rows']
+                            if row['kind'] == 'clef'))
+        self.assertEqual(require_complete(response), result)
+        result['rows'].reverse()
+        response['files']['result.json'] = json.dumps(result)
+        self.assertEqual(require_complete(response), result)
+
+    def test_missing_actor_hash_rejected_for_every_case_and_phase(self):
+        import json
+        from coppertop.colocation_stage import require_complete
+        for phase in ('warmup','alone_before','coresident_serial','overlap','alone_after'):
+            for index in range(3):
+                with self.subTest(phase=phase, index=index):
+                    response = self.response()
+                    result = json.loads(response['files']['result.json'])
+                    row = next(row for row in result['rows']
+                        if (row['kind'], row['phase'], row['index']) == ('actor', phase, index))
+                    del row['chunk_sha256']
+                    response['files']['result.json'] = json.dumps(result)
+                    with self.assertRaisesRegex(ValueError, 'Missing or malformed actor chunk SHA256'):
+                        require_complete(response)
+
+    def test_actor_hash_requires_exact_lowercase_hex(self):
+        import json
+        from coppertop.colocation_stage import require_complete
+        malformed = (None, '', '0'*63, '0'*65, 'A'*64, 'g'*64, '0'*64+'\n',
+                     '0'*63+'ｆ', 0, False, [], {})
+        for value in malformed:
+            with self.subTest(value=value):
+                response = self.response()
+                result = json.loads(response['files']['result.json'])
+                result['rows'][0]['chunk_sha256'] = value
+                response['files']['result.json'] = json.dumps(result)
+                with self.assertRaisesRegex(ValueError, 'Missing or malformed actor chunk SHA256'):
+                    require_complete(response)
+
+    def test_actor_parity_rejects_one_changed_hash_in_every_case_and_phase(self):
+        import json
+        from coppertop.colocation_stage import require_complete
+        for phase in ('warmup','alone_before','coresident_serial','overlap','alone_after'):
+            for index in range(3):
+                with self.subTest(phase=phase, index=index):
+                    response = self.response()
+                    result = json.loads(response['files']['result.json'])
+                    row = next(row for row in result['rows']
+                        if (row['kind'], row['phase'], row['index']) == ('actor', phase, index))
+                    row['chunk_sha256'] = 'f'*64
+                    response['files']['result.json'] = json.dumps(result)
+                    with self.assertRaisesRegex(ValueError, f'Actor chunk parity failed for case {index}'):
+                        require_complete(response)
 
     def test_deadline_keeps_partial_receipts_and_kills_group(self):
         from pathlib import Path
