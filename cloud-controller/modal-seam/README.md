@@ -18,7 +18,27 @@ The default command only prepares local metadata and source hashes:
 .venv/bin/python tools/run_modal_seam.py prepare
 ```
 
-It leaves unknown workspace/image fields null and creates no approval document.
+Install the local controller dependencies with
+`.venv/bin/python -m pip install -r requirements-modal-seam.txt`. This pins
+Modal 1.6.1's `api-proxy-support` extra, Truststore 0.10.4 and its two proxy
+dependencies. The remote standard-library probe receives none of them.
+
+The owned worker application explicitly calls `truststore.inject_into_ssl()`
+before importing Modal. Every independent stop/container/Sandbox subprocess
+does the same; SSL state cannot be inherited across those process boundaries.
+The bootstrap preserves `CERT_REQUIRED`, hostname verification and the default
+CA paths, uses the existing platform trust store, and changes no CA file or
+setting. It rejects late SDK import and dependency drift. Importing the helper
+module alone performs no injection or authentication. This follows Truststore's
+application/script guidance, which forbids import-time injection in libraries.
+[Truststore user guide](https://truststore.readthedocs.io/en/latest/#user-guide).
+
+The separate fresh-executor TLS lane reported authenticated read-only Modal
+access to workspace `vuluan`, environment `main` (`en-EhttSv3ddODfhLwFvinthV`).
+That closes connectivity for its tested executor/bootstrap; the CPU probe,
+compatible image identity and paid execution remain pending.
+
+Offline preparation leaves unknown workspace/image fields null and creates no approval document.
 After the configured workspace and an existing immutable image have been
 verified, preparation accepts `--workspace` and `--image-id`. The SDK is pinned to
 `modal==1.6.1`; the remote image must run Python 3.12 and the standard library.
@@ -28,8 +48,8 @@ the pinned SDK does not support its on-demand hydration. This single internal
 lookup is version-bound and never calls `ImageGetOrCreate` or requests a build.
 The old GPU/model seed image is not selected or used as a fallback.
 
-There are no image build commands, dependency installs, secrets or project-tree
-uploads. Only the empty package initializer and the exact standalone probe are
+The remote image recipe requests no build commands, dependency installs,
+secrets or project-tree uploads. Only the empty package initializer and the exact standalone probe are
 mounted at startup with `add_local_file(copy=False)`. In the pinned SDK this
 preserves the existing base image ID. The mounted probe hashes its own bytes
 against the approved request before executing. Unknown image identity or
@@ -39,11 +59,15 @@ implicit build. [Modal image documentation](https://modal.com/docs/sdk/py/latest
 
 ## Fixed scope and observed gates
 
-- One ephemeral App in `main`, one Function, at most one container, two sequential
+- One ephemeral App in `main`, one Function, at most one concurrent container, two sequential
   spawn attempts. No persistent deployment, public endpoint, GPU, Volume, Sandbox,
   R2 access, injected compute secrets or subscription change.
-- CPU request/limit `(0.125, 0.125)`, memory `(256, 256)` MiB, single-use containers,
-  zero retries, zero minimum/buffer containers and a two-second scaledown window.
+- CPU request/limit `(0.125, 0.125)`, memory `(256, 256)` MiB, container reuse,
+  zero retries, zero minimum/buffer containers and a 180-second scaledown window
+  within the supervisor's execution bound. Both calls must report the same
+  container ID; a replacement container fails the check before cancellation.
+  The capacity limit does not guarantee one lifetime allocation: a provider
+  replacement could start before its changed identity is observed and rejected.
   Input timeout is 30 seconds and startup timeout 60 seconds. Function networking
   and Modal API access are blocked; the client retains normal control-plane access.
 - The local supervisor fixes one absolute 180-second execution deadline before
@@ -104,8 +128,10 @@ Known identity discovered during failed context entry is retained for cleanup.
 `cleanup --plan ... --output ...` uses the original validated ownership and
 cleanup authority after plan expiry or source repair. Its plan, approval and
 execution claim must match the original saved receipts; current source hashes
-are a launch-only gate. It cannot relaunch or build. Append-only
-sanitized history retains both failed and successful containment attempts;
+are a launch-only gate. It cannot relaunch or build.
+The original pre-TLS source manifest is accepted for cleanup only, preserving
+the same saved approval/claim/ownership binding after this controller update.
+Append-only sanitized history retains both failed and successful containment attempts;
 messages omit arbitrary API text, URLs, headers, bodies and causes.
 
 This supervisor survives child death/hangs, not loss of the whole local executor.

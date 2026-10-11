@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from types import SimpleNamespace
@@ -47,7 +48,7 @@ class SeamTests(unittest.TestCase):
         return {**{k: request[k] for k in ('schemaVersion', 'runId', 'generation', 'bodyId', 'sourceSha256', 'payloadBase64')},
                 'containerId': container, 'digest': probe.PAYLOAD_HASH, 'bytes': 32}
 
-    def marker(self, request, container='ta-Hold'):
+    def marker(self, request, container='ta-Complete'):
         return {**{k: request[k] for k in ('runId', 'generation', 'bodyId', 'sourceSha256')},
                 'schemaVersion': 1, 'event': 'started', 'payloadSha256': probe.PAYLOAD_HASH,
                 'containerId': container}
@@ -57,7 +58,7 @@ class SeamTests(unittest.TestCase):
                 'workspace': self.plan['workspace'], 'environment': 'main', 'cleanupAuthorized': True,
                 'creationAttempted': attempted, 'appId': app_id}
 
-    def fake_calls(self, *, bad_receipt=False, bad_marker=False, cancel_error=False, slow=False):
+    def fake_calls(self, *, bad_receipt=False, bad_marker=False, cancel_error=False, slow=False, different_container=False):
         state = SimpleNamespace(calls=[], cancels=[], active=True, clock=0)
         test = self
         class Call:
@@ -71,7 +72,7 @@ class SeamTests(unittest.TestCase):
                     result['digest'] = '0'*64
                 return result
             def stream(self, timeout):
-                marker = test.marker(self.request)
+                marker = test.marker(self.request, 'ta-Hold' if different_container else 'ta-Complete')
                 if bad_marker:
                     marker['generation'] = 'wrong'
                 line = probe.START_PREFIX+json.dumps(marker)+'\n'
@@ -89,7 +90,7 @@ class SeamTests(unittest.TestCase):
                 state.calls.append(request)
                 return Call(request)
         def runner(argv, **options):
-            rows = [{'container_id': 'ta-Hold', 'app_id': APP, 'app_name': 'ct-modal-test', 'start_time': 'fixture'}] if state.active else []
+            rows = [{'container_id': 'ta-Complete', 'app_id': APP, 'app_name': 'ct-modal-test', 'start_time': 'fixture'}] if state.active else []
             return SimpleNamespace(returncode=0, stdout=json.dumps(rows).encode(), stderr=b'')
         return Function(), runner, state
 
@@ -162,7 +163,8 @@ class SeamTests(unittest.TestCase):
         self.assertEqual(options['max_containers'], 1)
         self.assertEqual(options['secrets'], [])
         self.assertEqual(options['volumes'], {})
-        self.assertTrue(options['single_use_containers'])
+        self.assertFalse(options['single_use_containers'])
+        self.assertEqual(options['scaledown_window'], 180)
         self.assertTrue(options['block_network'])
         self.assertFalse(options['include_source'])
         self.assertEqual(options['retries'], 0)
@@ -176,6 +178,53 @@ class SeamTests(unittest.TestCase):
             app, function = seam.create_probe(modal, image, self.root, self.plan['suiteId'])
         self.assertIsNone(app.app_id)
         self.assertIsInstance(function, modal.Function)
+
+    def test_tls_bootstrap_is_application_local_preserves_verification_and_precedes_sdk(self):
+        script = '''
+import ssl,sys
+from coppertop.modal_seam_tls import bootstrap
+assert 'modal' not in sys.modules
+original_context = ssl.SSLContext
+original_paths = ssl.get_default_verify_paths()
+bootstrap()
+import truststore
+assert ssl.SSLContext is truststore.SSLContext
+context = ssl.create_default_context()
+assert context.verify_mode == ssl.CERT_REQUIRED and context.check_hostname
+assert ssl.get_default_verify_paths() == original_paths
+bootstrap()
+import modal
+from modal._utils.grpc_utils import ModalChannel
+context = ModalChannel._get_default_ssl_context(None)
+assert context.verify_mode == ssl.CERT_REQUIRED and context.check_hostname
+print('verified')
+'''
+        repository = Path(__file__).resolve().parents[1]
+        response = subprocess.run([sys.executable,'-c',script],cwd=repository,capture_output=True,timeout=10)
+        self.assertEqual(response.returncode,0,response.stderr.decode())
+        self.assertEqual(response.stdout,b'verified\n')
+
+    def test_tls_bootstrap_rejects_late_or_missing_dependency_before_authentication(self):
+        repository = Path(__file__).resolve().parents[1]
+        for prelude in ("import modal", "from unittest.mock import patch; p=patch('importlib.metadata.version',return_value='wrong'); p.start()"):
+            script = prelude+'''
+from coppertop.modal_seam_tls import bootstrap
+try:
+    bootstrap()
+except ValueError:
+    print('refused')
+else:
+    raise AssertionError('Invalid bootstrap accepted')
+'''
+            response = subprocess.run([sys.executable,'-c',script],cwd=repository,capture_output=True,timeout=10)
+            self.assertEqual(response.returncode,0,response.stderr.decode())
+            self.assertEqual(response.stdout,b'refused\n')
+
+    def test_cleanup_subprocess_bootstrap_runs_before_sdk_even_from_another_directory(self):
+        script = "import ssl; from modal._utils.grpc_utils import ModalChannel; c=ModalChannel._get_default_ssl_context(None); assert c.verify_mode==ssl.CERT_REQUIRED and c.check_hostname; print('verified')"
+        response = subprocess.run(seam.sdk_command(script),cwd=self.root,capture_output=True,timeout=10)
+        self.assertEqual(response.returncode,0,response.stderr.decode())
+        self.assertEqual(response.stdout,b'verified\n')
 
     def test_existing_image_lookup_uses_only_bounded_read_rpc_and_rejects_metadata_drift(self):
         from modal.client import _Client
@@ -249,6 +298,8 @@ class SeamTests(unittest.TestCase):
         self.assertEqual(len(state.calls), 2)
         self.assertEqual(state.cancels, [{'terminate_containers':True}])
         self.assertTrue(result['cancellation']['containerAbsentBeforeAppStop'])
+        self.assertTrue(result['cancellation']['sameContainerAsCompletion'])
+        self.assertEqual(result['completion']['containerId'], result['cancellation']['containerId'])
         self.assertIsNone(result['completion']['cost'])
         path = self.output/result['completion']['localArtifact']
         self.assertEqual(path.read_bytes(), bytes(range(32)))
@@ -264,6 +315,14 @@ class SeamTests(unittest.TestCase):
                 seam.execute_calls(function, self.plan, APP, output, runner=runner)
             self.assertEqual(len(state.calls), 1 if bad=='bad_receipt' else 2)
             self.assertEqual(state.cancels, [])
+
+    def test_replacement_container_fails_before_cancel_and_cannot_pass_one_container_scope(self):
+        self.output.mkdir()
+        function, runner, state = self.fake_calls(different_container=True)
+        with self.assertRaisesRegex(ValueError, 'reuse the same owned container'):
+            seam.execute_calls(function, self.plan, APP, self.output, runner=runner)
+        self.assertEqual(len(state.calls), 2)
+        self.assertEqual(state.cancels, [])
 
     def test_cancel_denial_is_not_retried_and_slow_natural_absence_cannot_pass(self):
         for option, error in [('cancel_error',PermissionError), ('slow',TimeoutError)]:
@@ -312,7 +371,7 @@ class SeamTests(unittest.TestCase):
         def active(argv, **kwargs):
             if 'stop' in argv:
                 return SimpleNamespace(returncode=0,stdout=b'',stderr=b'')
-            if '-c' in argv:
+            if 'Sandbox.list' in argv[2]:
                 return SimpleNamespace(returncode=0,stdout=b'["sbActive"]',stderr=b'')
             return SimpleNamespace(returncode=0,stdout=b'[]',stderr=b'')
         with patch.object(seam.time,'sleep'), self.assertRaises(TimeoutError):
@@ -421,6 +480,21 @@ class SeamTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             seam.cleanup_receipt(self.root,self.plan,self.output,cleanup=lambda identity:calls.append(identity))
         self.assertEqual(calls,[])
+
+    def test_pre_tls_original_manifest_remains_cleanup_only_after_controller_upgrade(self):
+        self.plan['sourceSha256'] = {name:self.plan['sourceSha256'][name] for name in seam.LEGACY_SOURCE_FILES}
+        self.plan['functionOptions'] = json.loads(seam.canonical(seam.LEGACY_OPTIONS))
+        with self.assertRaises(ValueError):
+            seam.require_approval(self.root,self.plan,self.approval())
+        self.output.mkdir()
+        seam.claim_execution(self.root,self.plan,self.output)
+        seam.save(self.output/'plan.json',self.plan)
+        seam.save(self.output/'approval.json',self.approval())
+        seam.save(self.output/'ownership.json',self.owner())
+        _, cleanup, _, calls, _ = self.fake_process()
+        result = seam.cleanup_receipt(self.root,self.plan,self.output,cleanup=cleanup)
+        self.assertTrue(result['confirmed'])
+        self.assertEqual(calls,[APP])
 
     def test_direct_or_replayed_worker_is_refused_without_erasing_prior_ownership(self):
         self.output.mkdir()

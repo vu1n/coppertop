@@ -20,13 +20,17 @@ from . import modal_seam_probe as body
 SDK_VERSION = '1.6.1'
 APP_ID = r'ap-[A-Za-z0-9]{22}'
 SOURCE_FILES = ('coppertop/__init__.py', 'coppertop/modal_seam_probe.py',
-                'coppertop/modal_seam.py', 'tools/run_modal_seam.py',
-                'requirements-gpu-controller.txt')
+                'coppertop/modal_seam.py', 'coppertop/modal_seam_tls.py',
+                'tools/run_modal_seam.py', 'requirements-gpu-controller.txt',
+                'requirements-modal-seam.txt')
+LEGACY_SOURCE_FILES = tuple(name for name in SOURCE_FILES if name not in
+                           ('coppertop/modal_seam_tls.py', 'requirements-modal-seam.txt'))
 OPTIONS = dict(cpu=(0.125, 0.125), memory=(256, 256), gpu=None,
                min_containers=0, max_containers=1, buffer_containers=0,
-               single_use_containers=True, scaledown_window=2, retries=0,
+               single_use_containers=False, scaledown_window=180, retries=0,
                timeout=30, startup_timeout=60, secrets=[], volumes={},
                block_network=True, restrict_modal_access=True, include_source=False)
+LEGACY_OPTIONS = {**OPTIONS, 'single_use_containers': True, 'scaledown_window': 2}
 
 
 def canonical(value):
@@ -77,11 +81,14 @@ def validate_plan(root, plan, *, check_current_sources=True):
     if not isinstance(plan, dict):
         raise ValueError('Exact plan required')
     hashes = plan.get('sourceSha256')
-    if (not isinstance(hashes, dict) or set(hashes) != set(SOURCE_FILES)
+    source_names = (set(SOURCE_FILES),) if check_current_sources else (set(SOURCE_FILES), set(LEGACY_SOURCE_FILES))
+    if (not isinstance(hashes, dict) or set(hashes) not in source_names
         or any(not isinstance(value, str) or not re.fullmatch(r'[a-f0-9]{64}', value) for value in hashes.values())):
         raise ValueError('Exact reviewed source manifest required')
     expected = fixed_plan(plan.get('suiteId'), plan.get('workspace'), plan.get('imageId'),
                           sources(root) if check_current_sources else hashes, now=plan.get('createdAt'))
+    if not check_current_sources and plan.get('functionOptions') == json.loads(canonical(LEGACY_OPTIONS)):
+        expected['functionOptions'] = json.loads(canonical(LEGACY_OPTIONS))
     if canonical(plan) != canonical(expected):
         raise ValueError('Plan differs from current source or fixed scope')
 
@@ -151,10 +158,22 @@ def cli_json(argv, runner=subprocess.run, *, timeout=10):
     return value
 
 
+def sdk_command(script, *args):
+    # Runtime SSL state cannot cross a process boundary. Every independent
+    # observer/stop application bootstraps before its own first SDK import.
+    bootstrap = ('import sys; sys.path.insert(0,sys.argv.pop(1)); '
+                 'from coppertop.modal_seam_tls import bootstrap; bootstrap(); ')
+    return [sys.executable, '-c', bootstrap+script, str(Path(__file__).resolve().parents[1]), *args]
+
+
+def modal_cli(*args):
+    return sdk_command("import runpy; runpy.run_module('modal',run_name='__main__',alter_sys=True)", *args)
+
+
 def active_containers(app_id, runner=subprocess.run):
     if not isinstance(app_id, str) or not re.fullmatch(APP_ID, app_id):
         raise ValueError('Exact owned App ID required')
-    rows = cli_json([sys.executable, '-m', 'modal', 'container', 'list', '--app-id', app_id, '--env', 'main', '--json'], runner)
+    rows = cli_json(modal_cli('container', 'list', '--app-id', app_id, '--env', 'main', '--json'), runner)
     found = set()
     for row in rows:
         if (not isinstance(row, dict) or set(row) != {'container_id', 'app_id', 'app_name', 'start_time'}
@@ -171,7 +190,7 @@ def contain(app_id, runner=subprocess.run):
     with deadline(60):
         if not isinstance(app_id, str) or not re.fullmatch(APP_ID, app_id):
             raise ValueError('Exact owned App ID required')
-        stopped = runner([sys.executable, '-m', 'modal', 'app', 'stop', app_id, '--env', 'main', '--yes'], capture_output=True, timeout=10, check=False)
+        stopped = runner(modal_cli('app', 'stop', app_id, '--env', 'main', '--yes'), capture_output=True, timeout=10, check=False)
         if not isinstance(stopped.stdout, bytes) or not isinstance(stopped.stderr, bytes) or len(stopped.stdout)+len(stopped.stderr) > 65536:
             raise ValueError('Stop reply exceeds metadata bound')
         acknowledged = stopped.returncode == 0 or any(
@@ -179,7 +198,7 @@ def contain(app_id, runner=subprocess.run):
         for _ in range(30):
             containers = active_containers(app_id, runner)
             script = 'import modal,json,sys; print(json.dumps([s.object_id for s in modal.Sandbox.list(app_id=sys.argv[1])]))'
-            sandboxes = cli_json([sys.executable, '-c', script, app_id], runner)
+            sandboxes = cli_json(sdk_command(script, app_id), runner)
             if not acknowledged:
                 raise ValueError('Owned App stop not acknowledged')
             if not containers and sandboxes == []:
@@ -301,8 +320,8 @@ def execute_calls(function, plan, app_id, output, *, runner=subprocess.run,
             result['stage'] = 'hold-start'
             marker = start_marker(call, req)
             container = marker['containerId']
-            if container == result['completion']['containerId']:
-                raise ValueError('Single-use containers were not distinct')
+            if container != result['completion']['containerId']:
+                raise ValueError('Both calls must reuse the same owned container')
             if container not in active_containers(app_id, runner):
                 raise ValueError('Running container not observed in owned App')
             # The hold cannot finish normally before 20 seconds from spawn's
@@ -317,7 +336,7 @@ def execute_calls(function, plan, app_id, output, *, runner=subprocess.run,
                     raise ValueError('Cancellation absence arrived after natural hold bound')
             result['cancellation'] = {'callId': call.object_id, 'containerId': container,
                 'startObserved': True, 'cancelAcknowledged': True, 'containerAbsentBeforeAppStop': True,
-                'withinHoldSeconds': 20, 'nativeTerminalState': 'not-asserted'}
+                'sameContainerAsCompletion': True, 'withinHoldSeconds': 20, 'nativeTerminalState': 'not-asserted'}
         record()
     result['stage'] = 'calls-verified'
     record()
@@ -348,6 +367,8 @@ def worker(root, plan, approval, output):
     try:
         if not all(name in os.environ for name in ('MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET')):
             raise ValueError('Injected Modal API credential pair absent')
+        from .modal_seam_tls import bootstrap
+        bootstrap()
         import modal as sdk
         if sdk.__version__ != SDK_VERSION:
             raise ValueError('Pinned Modal SDK required')
