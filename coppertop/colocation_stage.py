@@ -69,7 +69,7 @@ def require_complete(response):
     if result.get('status') != 'passed' or len(rows) != 24 or actual != expected:
         raise ValueError('Incomplete benchmark schedule')
     import math
-    if any(not isinstance(r['seconds'], (int,float)) or not math.isfinite(r['seconds']) or r['seconds'] <= 0
+    if any(type(r['seconds']) not in (int,float) or not math.isfinite(r['seconds']) or r['seconds'] <= 0
            for r in rows):
         raise ValueError('Invalid benchmark timing')
     actor_hashes = {}
