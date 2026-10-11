@@ -10,11 +10,15 @@ recovery provenance SHA-256 remains
 it binds the recovery originals, while the preparation manifest hashes current
 adaptations separately. Preparation has no paid or provider execution option.
 
-The first source-review correction is separately pinned to
-`ae19c264ccbf1154315ca21539fb644d7c46b076`: model/cache subprocesses receive an
-explicit runtime-variable allowlist. Subsequent reviewed corrections are bound
-in `manifests/clef-review-derivatives.json`. Original recovery metadata and bytes
-at `c381330` stay intact; reviewed derivatives have a separate manifest.
+The source-review corrections are separately pinned to
+`db7a8a80dfbf4875d8fce151c63e8267c380dc00`: model/cache subprocesses receive an
+explicit runtime-variable allowlist and fresh owned HOME/cache defaults through
+child completion and cleanup. Live/unknown child status retains the owned home
+and annotates the primary error. This isolates default credential discovery;
+it is not a filesystem sandbox or qualified hard-stop supervisor. The exact
+reference bytes execute only after authentication. Derivatives are bound in
+`manifests/clef-review-derivatives.json`; original recovery metadata and bytes
+at `c381330` stay intact.
 
 ## Missing inputs and evidence inventory
 
@@ -28,7 +32,7 @@ Transformers5.10.2 with 56 pinned wheels. The weight-free release/config invento
 and exact wheel lock are now present and hash-authenticated. The release inventory
 contains sizes and LFS hashes, not a whole-snapshot byte hash. The reference
 `joint_schema_model.py` is not vendored; its pinned size/hash is now required
-before builder, CPU-gate or worker imports. No modelruntime execution is established.
+before builder, CPU-gate or worker imports. No model runtime execution is established.
 Preserve separate Xiaomi/Clef runtime pins until compatibility is
 qualified; do not assume they can share one dependency environment.
 

@@ -7,8 +7,10 @@ import json
 import os
 from pathlib import Path
 import select
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 from types import ModuleType
@@ -50,18 +52,49 @@ def load_reference_code(model_directory):
     return module
 
 
-def worker_environment(parent):
+@contextlib.contextmanager
+def worker_environment(parent, *, processes=()):
+    """Own isolated defaults; retain HOME if registered children have not exited."""
     # Modal injects helper packages through PYTHONPATH. Installing against that
     # path can hide missing venv dependencies when the worker later drops it.
     # Runtime imports execute pinned third-party code. Keep only the same native
     # interpreter/CUDA settings as the evaluator, plus the explicit Clef location;
     # arbitrary controller credentials must never enter these child processes.
-    keep = ('PATH', 'HOME', 'LD_LIBRARY_PATH', 'NVIDIA_VISIBLE_DEVICES',
+    keep = ('PATH', 'LD_LIBRARY_PATH', 'NVIDIA_VISIBLE_DEVICES',
             'CUDA_VISIBLE_DEVICES', 'LANG', 'LC_ALL', 'COPPERTOP_CLEF_ROOT')
     env = {key: parent[key] for key in keep if key in parent}
     env.update(PYTHONPATH='/app', PYTHONNOUSERSITE='1', HF_HUB_OFFLINE='1',
                TRANSFORMERS_OFFLINE='1', MUJOCO_GL='egl')
-    return env
+    # Third-party libraries also discover credentials through HOME and cache
+    # defaults. Own fresh directories until all synchronous/worker children exit.
+    home = Path(tempfile.mkdtemp(prefix='coppertop-worker-'))
+    primary = None
+    try:
+        locations = {'HOME': home, 'XDG_CONFIG_HOME': home/'config',
+            'XDG_CACHE_HOME': home/'cache', 'XDG_DATA_HOME': home/'data',
+            'HF_HOME': home/'huggingface', 'HF_HUB_CACHE': home/'huggingface/hub',
+            'TRANSFORMERS_CACHE': home/'huggingface/transformers',
+            'TORCH_HOME': home/'torch', 'PIP_CACHE_DIR': home/'pip'}
+        for path in locations.values():
+            path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        env.update({key: str(path) for key, path in locations.items()})
+        env['HF_TOKEN_PATH'] = str(home/'huggingface/token')
+        yield env
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        try:
+            if any(process.poll() is None for process in processes):
+                raise RuntimeError('Registered child has not exited')
+            shutil.rmtree(home)
+        except BaseException as cleanup_error:
+            note = ('Owned runtime HOME retained after incomplete cleanup at '
+                    f'{home}: {type(cleanup_error).__name__}: {cleanup_error}')
+            if primary is None:
+                cleanup_error.add_note(note)
+                raise
+            primary.add_note(note)
 
 
 def emit(value):
@@ -142,14 +175,20 @@ def send(process, index):
 
 
 def benchmark():
+    with contextlib.ExitStack() as environments:
+        return _benchmark(environments)
+
+
+def _benchmark(environments):
     ROOT.mkdir(exist_ok=True)
     processes = []
     logs = []
     rows = []
     def start(command, name):
         log = (ROOT/(name+'.log')).open('w'); logs.append(log)
+        env = environments.enter_context(worker_environment(os.environ, processes=processes))
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=log, text=True, bufsize=1, env=worker_environment(os.environ))
+            stderr=log, text=True, bufsize=1, env=env)
         processes.append(process)
         return process
     def memory():

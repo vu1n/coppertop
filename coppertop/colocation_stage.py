@@ -22,8 +22,9 @@ def cpu_gate():
     receipt = json.loads((CLEF_ROOT/'receipt.json').read_text())
     if receipt['status'] != 'cpu_cache_validated' or receipt['private_inputs_cached']:
         raise ValueError('Invalid cache receipt')
-    subprocess.run([sys.executable, '-m', 'pip', 'check'], check=True, timeout=30,
-                   env=worker_environment(os.environ))
+    with worker_environment(os.environ) as env:
+        subprocess.run([sys.executable, '-m', 'pip', 'check'], check=True, timeout=30,
+                       env=env)
     processor = AutoProcessor.from_pretrained(str(CLEF_MODEL), local_files_only=True)
     bodies = json.loads((ROOT/'clef-inputs.json').read_text())
     if len(bodies) != 3:
@@ -76,7 +77,6 @@ def require_complete(response):
 def run_stage(stage):
     """Keep process-group cleanup and receipts even when the inner deadline expires."""
     ROOT.mkdir(exist_ok=True)
-    env = worker_environment(os.environ)
     if stage == 'cpu':
         command = [CLEF_PYTHON, '-m', 'coppertop.colocation_stage', 'cpu-gate']
         deadline = 150
@@ -86,8 +86,11 @@ def run_stage(stage):
     else:
         raise ValueError('Unknown stage')
     response = {'stage':stage, 'timeout':False, 'files':{}, 'truncated_logs':[]}
-    with (ROOT/'stage-stdout.log').open('w') as out, (ROOT/'stage-stderr.log').open('w') as err:
+    processes = []
+    with worker_environment(os.environ, processes=processes) as env, \
+         (ROOT/'stage-stdout.log').open('w') as out, (ROOT/'stage-stderr.log').open('w') as err:
         process = subprocess.Popen(command, env=env, stdout=out, stderr=err, start_new_session=True)
+        processes.append(process)
         try:
             process.wait(timeout=deadline)
         except subprocess.TimeoutExpired:
