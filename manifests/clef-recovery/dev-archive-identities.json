@@ -1,0 +1,56 @@
+{
+  "archives": [
+    {
+      "attempt": "mechanism-3ae4005ef2000970",
+      "cadence": 16,
+      "seed": 1150,
+      "split": "development",
+      "archive_sha256": "75283c1f846bc1e4e67ae89185fbe51a7a0e2341b9938c7140b4c75641eeb44b",
+      "archive_bytes": 163737600,
+      "completion_receipt_sha256": "2dad6506dd3f4e6494c6be36d7ae346ece948b2d6119a591c3fad75b8b03998a",
+      "manifest_sha256": "9f0c14b42b6b33b90b3dcda3923a5c3ca29f9a857efa102b55c3000959edc234",
+      "release": "6d2e1af9543e6bbee06443bcddea48c1e51bf5344aafd5fa18de0834d01d96f9",
+      "controls": 211,
+      "query_calls": 14,
+      "source_frames": 212,
+      "recorded_success": true,
+      "local_archive_sha256_reverified": "2026-10-11",
+      "remote_objects_rechecked": false
+    },
+    {
+      "attempt": "mechanism-d7dfbc710920da91",
+      "cadence": 8,
+      "seed": 1150,
+      "split": "development",
+      "archive_sha256": "80511e4d15184a6184c336df4ca651163c8209cceace7c44fe03afc0f374914b",
+      "archive_bytes": 204820480,
+      "completion_receipt_sha256": "aefbade0b7489d35c253eec4164bbb65687c0e3e42136bcaf24b37b6b93e943c",
+      "manifest_sha256": "6962130b1159a885bc05331e300819b6735e2fb8a58b509c688fa7192f6974dc",
+      "release": "2bd82d0ad8d910ee0e28b7406502605b3c392b04e52e45c52008273243fbb0c0",
+      "controls": 224,
+      "query_calls": 28,
+      "source_frames": 225,
+      "recorded_success": true,
+      "local_archive_sha256_reverified": "2026-10-11",
+      "remote_objects_rechecked": false
+    }
+  ],
+  "raw_data_in_repository": false,
+  "separate_failed_attempt": {
+    "attempt": "mechanism-b187485658b65c94",
+    "retained_metadata_bytes": 9194,
+    "volume_id": "vo-ZTJ3CANaIxouEDS7yVdVPL",
+    "archive_recovered": false
+  },
+  "development_seeds": [
+    8,
+    9,
+    12,
+    15,
+    23,
+    1150
+  ],
+  "additional_holdout_exclusion": [
+    1151
+  ]
+}
