@@ -1,0 +1,310 @@
+{
+  "files": [
+    {
+      "bytes": 11840,
+      "git_blob": "615bcdeaaecae649ef6d300e9a1669cd5c774c72",
+      "path": "coppertop/colocation_worker.py",
+      "sha256": "03834a739cf8434e7b89eb3dc5a55474bde4365b8b94976f5a95bf109dd82168"
+    },
+    {
+      "bytes": 6349,
+      "git_blob": "83c2cf24fd21c06085f494d7ade110c5fc75271f",
+      "path": "coppertop/colocation_stage.py",
+      "sha256": "0d02eb70e5222ed3a77d63e5e8855136ee268e4c1b92bff565a8f0c39bd22002"
+    },
+    {
+      "bytes": 3595,
+      "git_blob": "395de7b9f4b3f3b5e3b2c875c61f2ebcb011dfdd",
+      "path": "coppertop/clef_cache.py",
+      "sha256": "4f1cf3ea5fb3a5dd1a8c7e32827137db02acf91be9bca0393733ba2159d9ea74"
+    },
+    {
+      "bytes": 4762,
+      "git_blob": "6a3d071e50e1f9837c7885eeba77ae929511af40",
+      "path": "coppertop/mechanism_policy.py",
+      "sha256": "d1e5fde2685121f55c2b69139b4cad91dc5d546922c1409db1f5a7c32be9e5fa"
+    },
+    {
+      "bytes": 23166,
+      "git_blob": "d08d0fa343270a902de9a813bf537f2a3d659b21",
+      "path": "coppertop/evaluation_episode.py",
+      "sha256": "ac3d9f23e0c82e931ec73bc0a2e2ae6c61d577321f8eade4e8f394d26b3e347b"
+    },
+    {
+      "bytes": 24335,
+      "git_blob": "c3199074b89a407063871432c101745d1518ac6f",
+      "path": "coppertop/evaluation_readiness.py",
+      "sha256": "278ed86900e33460d347cc86449e0342e0f1e55fa30642bfe8f8828cb9f67a55"
+    },
+    {
+      "bytes": 11165,
+      "git_blob": "1fe17c3954384c3704e6a7bb4824dad272ce22fc",
+      "path": "coppertop/decision_runner.py",
+      "sha256": "360bf60d2555e0b97323be2eaa19751006e9725bc2a695a00e40e1bcab7c3476"
+    },
+    {
+      "bytes": 5641,
+      "git_blob": "532ba34321fd5d4901be86e9dc3270e953a83727",
+      "path": "coppertop/decision_gate.py",
+      "sha256": "c7eb7409542ba52635665a5ced53ea4753bccebf3980dfd06d5e11d92ee23c67"
+    },
+    {
+      "bytes": 22693,
+      "git_blob": "82f6fc283b63ce7609695f8438a70baaa51f92b0",
+      "path": "coppertop/performance_runtime.py",
+      "sha256": "cbbb8d78751c61594802e68be39fd80604dba9f8e74145cdcf11f386bdae566a"
+    },
+    {
+      "bytes": 10551,
+      "git_blob": "71177a65d9da7c997dc12fd78ee30268931110a7",
+      "path": "coppertop/performance_eval.py",
+      "sha256": "f9834c1c1cc28f0c3c560c4d7a5408c412e119da4c2581105f6b63788724377a"
+    },
+    {
+      "bytes": 6777,
+      "git_blob": "fca4edbc0bea991360501e794cc7bfcdeff50f5e",
+      "path": "coppertop/image_check.py",
+      "sha256": "6a2f77dd4cba8f55d8977ce9867508b6972ab66c0ea14d051fb0fdf39b4b15f5"
+    },
+    {
+      "bytes": 14135,
+      "git_blob": "ab2ab75d85a52ab80f7302665783130345721119",
+      "path": "coppertop/smoke_runtime.py",
+      "sha256": "27d5dd69cec9ce3c9abd8a9cb4a1b6edcd36c4e7d3376b60041b2c88dff77d54"
+    },
+    {
+      "bytes": 8714,
+      "git_blob": "a290d0bddf17af3920707a0116a8f49ee30e58c5",
+      "path": "coppertop/mechanism.py",
+      "sha256": "d9c99739b571da618d22a3faa96160fda52c2098282c3c606215d6d839e925e7"
+    },
+    {
+      "bytes": 13386,
+      "git_blob": "c43b6fc209bcba9c0cc1608a732b9a72bfa82bfd",
+      "path": "containers/clef-runtime.lock",
+      "sha256": "8f7dd61474e3b4a0f8b40eb014cd04a46fe14263835b9f7fa7d8a9b7b5634019"
+    },
+    {
+      "bytes": 2486,
+      "git_blob": "97c2288a8373f3fbe5a3920f90f850a1f69f669f",
+      "path": "manifests/clef-review-derivatives.json",
+      "sha256": "e83b86540ef019aae2bd35950f4d0d3a1d245e566ef830b900b05016228b1808"
+    },
+    {
+      "bytes": 2832,
+      "git_blob": "aff766f2ab6e0e48b6aa297265689b981bdd2042",
+      "path": "manifests/clef-recovery/config.json",
+      "sha256": "66f87f6fb2616b46604daf2a9c67ddc87938296d07156efa34d59b5be49e3238"
+    },
+    {
+      "bytes": 119,
+      "git_blob": "52467b6c7f7d1a7e628b518eb7a6cd7e9bdb9a57",
+      "path": "manifests/clef-recovery/joint_head_config.json",
+      "sha256": "77efe959a38b5b17b241543e129e695f3c77465ece55a25985279bd8176279a0"
+    },
+    {
+      "bytes": 3020,
+      "git_blob": "be5757a942637f354e9854ca23e27a8b17f6a097",
+      "path": "manifests/clef-recovery/model-release.json",
+      "sha256": "04f2b73887a050974eb57924978ad157deb837c692d82c3390821d55d961a386"
+    },
+    {
+      "bytes": 1861,
+      "git_blob": "746404be1130f3506dcfbe75d5ecf39d14de5531",
+      "path": "manifests/clef-recovery/dev-archive-identities.json",
+      "sha256": "0b18bdc50073e78508b1363440eb08cc3314a15bef00775d30315ef4da935d30"
+    },
+    {
+      "bytes": 3901,
+      "git_blob": "4694f1b60d7b2e992f16c8e3af7044f1839b19d7",
+      "path": "containers/gpu-smoke-pins.json",
+      "sha256": "27ecb852e4fca74d0ec43eaf0329ec338afc37ccc786a2083900524016615c3f"
+    },
+    {
+      "bytes": 407,
+      "git_blob": "348ad9b736501caaa79d9c4503ad15a23ccce0a4",
+      "path": "requirements-gpu-smoke.lock",
+      "sha256": "7601f2d9c84ebccc0d24341b026ad902ccd5dcb2f0e61fad9e14a7cf8a3b909e"
+    },
+    {
+      "bytes": 202,
+      "git_blob": "33575689443e67f65423c56180a49c3f463dc7e1",
+      "path": "requirements-r2.txt",
+      "sha256": "b105c717d26af4b80d9e4a011a98d79b854a4f463c57fdb5b792fd0fdbb91c01"
+    },
+    {
+      "bytes": 2507,
+      "git_blob": "582c0be89f9e640301e632dde9671ed2e78809e8",
+      "path": "requirements-simulator.lock",
+      "sha256": "48ff13150e0d58436db3f6ad28d565519e78ad49c99e1bd1c126c4edc4a4f4d3"
+    },
+    {
+      "bytes": 17701,
+      "git_blob": "03202dbd056110ea1087a4cf4e9d76fcd9848913",
+      "path": "official/eval_robocasa365/entry.py",
+      "sha256": "18d70fade4c990210dc5b9c34285c8030eac142d9c332066c73335e1c0aaa28e",
+      "source_ref": "0dd7aef8dc87296246aae812a1f59ccb708e5546"
+    },
+    {
+      "bytes": 2572,
+      "git_blob": "1944e320b1d03fdab6280cd89677e820fee4e477",
+      "path": "official/deploy/client.py",
+      "sha256": "5e50b3a110fa7ac08f171a8c226ceb45bccf5881c1a589beab4679c8a68239b3",
+      "source_ref": "0dd7aef8dc87296246aae812a1f59ccb708e5546"
+    },
+    {
+      "bytes": 3569,
+      "git_blob": "b1794c342cc90a451a10ca2cd12acf2ce200b021",
+      "path": "official/deploy/server.py",
+      "sha256": "648eb93680c530d7f6cd3056f98e69339e021fb0e91cee06f135e91c461d37d4",
+      "source_ref": "0dd7aef8dc87296246aae812a1f59ccb708e5546"
+    },
+    {
+      "bytes": 4529,
+      "git_blob": "989f5ca8efbe94abea9fc984477b9d911984e9a9",
+      "path": "coppertop/episode.py",
+      "sha256": "f4f5a0f34cb452be391f8a394e1df31a7c5d49462cfae3671498e16d641fa35d",
+      "source_ref": "9b842bdf181b13019407bc5f798b74e874ee7e28"
+    },
+    {
+      "path": "coppertop/chords.py",
+      "bytes": 4826,
+      "sha256": "7d4f3f42b56d9e101437b959abffbe405acaac58cf6d440fbdf4cfe92da73aa9",
+      "git_blob": "638449e7322c711d4ae1f7b6fd953b4b783599f6"
+    },
+    {
+      "path": "coppertop/dependency_gate.py",
+      "bytes": 1466,
+      "sha256": "2621bf09c352f00eb155a6f791c745c4d67caa6d93ef0ffb82363f40671d18d2",
+      "git_blob": "c9e7e38605cbb0029e11efbb39a7cd4441f2dedf"
+    },
+    {
+      "path": "coppertop/diagnostics.py",
+      "bytes": 1739,
+      "sha256": "f4c2a62074e383a494919cc3f843324d14ea9ca1ded279eb9c172ee2193120f7",
+      "git_blob": "a48a4208a37fe9fc3de03ab083ec1ce12a97745b"
+    },
+    {
+      "path": "coppertop/gpu_smoke.py",
+      "bytes": 7705,
+      "sha256": "fb19f56b6eb407a39e783822979bd317c11d796578e2e73e2bf8b7de22634499",
+      "git_blob": "3c8fbce68fec56306f3dcb61d5133dcb729e5fa8"
+    },
+    {
+      "path": "coppertop/official_recording.py",
+      "bytes": 20436,
+      "sha256": "4a83d249908664f88ae52e46692f2d52563c18f93bdf10142e423c78da78a418",
+      "git_blob": "70800f569cf43ca84945781d96789dffdc6aabd0"
+    },
+    {
+      "path": "coppertop/reload_launch.py",
+      "bytes": 27457,
+      "sha256": "ffdc13bfefa1119c15ef0c692829bed0a87203903e702b8c1bd900c3064d1b00",
+      "git_blob": "6bf69d86ffbb5a9fa9279042183cc5f403a468c9"
+    },
+    {
+      "path": "coppertop/smoke_reload.py",
+      "bytes": 8627,
+      "sha256": "436f0d22d7f0a6548aaa4aed027ff6d1d865aae2e97e930524aaf2e14ba78f94",
+      "git_blob": "e17fa1e2b5a609cbe4aad727fab06e7598d46e55"
+    },
+    {
+      "path": "coppertop/cloud_stage.py",
+      "bytes": 9365,
+      "sha256": "8d93a4c5d15ab31764f887f8ec709cfe89a641f66559666494591b4157129708",
+      "git_blob": "236a48268e5f2c1896619fe50a079412eb3bc8a6"
+    },
+    {
+      "path": "coppertop/gpu_launch.py",
+      "bytes": 20312,
+      "sha256": "1cdef591d023bf1fba0d29913e47c5eec93e4657706d021f84bb958183f58f08",
+      "git_blob": "85ae90f69089f64cdc58f0011f20a1c5a51f8ce9"
+    },
+    {
+      "path": "coppertop/modal_image.py",
+      "bytes": 14312,
+      "sha256": "5d9b661df30ac6455e620e53b8b4c7cdeb4873d7e5e4547084ec8902fcd23925",
+      "git_blob": "16928d5fa0d1da775e9a1ddc2dbb71313921f09c"
+    },
+    {
+      "path": "coppertop/modal_reload.py",
+      "bytes": 14793,
+      "sha256": "f36a6e5dbe1e5ff70924469c247a614d3d45cc449d9eaf5847a933df446e55c7",
+      "git_blob": "dfe27180362c3e32160624b681ac544fd54114ac"
+    },
+    {
+      "path": "coppertop/modal_staging.py",
+      "bytes": 15450,
+      "sha256": "5abf52a06653b8be4f2222d2355db31017a75caed04ec77a379e33a7b9e6fd9a",
+      "git_blob": "aef250c345815c3302ef39f60ffde978cf475820"
+    },
+    {
+      "path": "coppertop/publication.py",
+      "bytes": 3405,
+      "sha256": "acf53b9d13abbc931094631607fd7a51b006271adc934af84e07a3cd7631d245",
+      "git_blob": "b3c3b09392dfc9871e3efebf8f150b512d6eede1"
+    },
+    {
+      "path": "coppertop/r2_session.py",
+      "bytes": 16031,
+      "sha256": "7d5fbe467931d29527a8f5af9e41f41391de8661dfa2daf6e7c0eac24474b12a",
+      "git_blob": "a0c58930f5a82020e137fabbd9b597adff3ef016"
+    },
+    {
+      "path": "coppertop/streams.py",
+      "bytes": 1981,
+      "sha256": "23841eb1af2b81e8fc9981665b1918f32938f50b2d3aaabf8935e08fd0c01fae",
+      "git_blob": "3b22f3d0170cd0411b1970ead5af06858256b5e5"
+    },
+    {
+      "path": "coppertop/xiaomi.py",
+      "bytes": 832,
+      "sha256": "01482758b8261186a8ce91d20372a13b12bb5a7393aad735fdc6128fbb8ed19e",
+      "git_blob": "b9f337cb279b0d306c2ec9b2adaf54537aea7a6c"
+    },
+    {
+      "path": "coppertop/cloud_roundtrip.py",
+      "bytes": 8360,
+      "sha256": "2872921259fd11b668491f92a713091d187200ab1fff9bb3780b79d094bc7e69",
+      "git_blob": "d0da021e2346f1a74e35da19e80ff5c98dd861c9"
+    },
+    {
+      "path": "coppertop/cloud_smoke.py",
+      "bytes": 4801,
+      "sha256": "9269b7aab4e331134f83777dc261f405e0e743adfc3b3ea44c952b184fcfd2f8",
+      "git_blob": "ea4c91178b222a1602ea42b3150dc5664bc37a24"
+    },
+    {
+      "path": "coppertop/s3.py",
+      "bytes": 18421,
+      "sha256": "7524200358a58c6e69e75442ed5f68b81df11553e5581775d4136f6870021268",
+      "git_blob": "fe6bcd4c893ce53e9f67a78367fe592c66a86f2c"
+    },
+    {
+      "path": "coppertop/smoke_artifacts.py",
+      "bytes": 3995,
+      "sha256": "d44dcb4db68cf6bcd3e80a7edf70c8c8fc04a65b3d3f18330e0a7a76e7ccec8b",
+      "git_blob": "a28bcbda217de3c685582d4b04db59e05508a676"
+    },
+    {
+      "path": "coppertop/multipart.py",
+      "bytes": 2019,
+      "sha256": "62b472fd2e86e341a057b9f8db55fff2c9a1bb0180c0108ed9f4a480e641c7b4",
+      "git_blob": "1b07ffeed2f15fd6a592cf12214a382d1d62706a"
+    },
+    {
+      "path": "coppertop/publication_trace.py",
+      "bytes": 1758,
+      "sha256": "e9a3ea237a617f96f4da490fddf032aecae243ee5569854c426fe55081a9710b",
+      "git_blob": "fe9c249561dd104f218bdd4a01d3730cd73dad16"
+    },
+    {
+      "path": "coppertop/__init__.py",
+      "bytes": 0,
+      "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "repository": "vu1n/coppertop",
+  "source_ref": "9b842bdf181b13019407bc5f798b74e874ee7e28"
+}

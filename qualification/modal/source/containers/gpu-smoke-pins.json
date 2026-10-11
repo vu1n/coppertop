@@ -1,0 +1,122 @@
+{
+  "model": {
+    "repo": "XiaomiRobotics/Xiaomi-Robotics-1-RoboCasa365",
+    "revision": "3a6d0293bfa90759d34a7fc48c2c62413cd7bcf4",
+    "files": [
+      {
+        "name": ".gitattributes",
+        "bytes": 101,
+        "git_blob": "0fd17d2f7c330afce8bc2b472393143fa66f68a1"
+      },
+      {
+        "name": "LICENSE",
+        "bytes": 11347,
+        "git_blob": "d56e75ebe7c98409c7b490d2eb068e65feab8001"
+      },
+      {
+        "name": "README.md",
+        "bytes": 1820,
+        "git_blob": "5cb36358586f6553c8268458b14bec09fce63056"
+      },
+      {
+        "name": "added_tokens.json",
+        "bytes": 707,
+        "git_blob": "b54f9135e44c1e81047e8d05cb027af8bc039eed"
+      },
+      {
+        "name": "chat_template.jinja",
+        "bytes": 5292,
+        "git_blob": "124386803f142761528f710e77ae483f5f8c4fc4"
+      },
+      {
+        "name": "config.json",
+        "bytes": 5580,
+        "git_blob": "42fbed1c382da0aa2136a6ac3fd7747a344f6250"
+      },
+      {
+        "name": "configuration_mibot.py",
+        "bytes": 17645,
+        "git_blob": "01259250bdc00950cd819e0073caee26c5b77f1c"
+      },
+      {
+        "name": "merges.txt",
+        "bytes": 1671853,
+        "git_blob": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"
+      },
+      {
+        "name": "model-00001-of-00003.safetensors",
+        "bytes": 4990499880,
+        "sha256": "5c9412f29facda098d5dcf1a58c06830edeeba7c0c59799480dd28b35c3fcc53"
+      },
+      {
+        "name": "model-00002-of-00003.safetensors",
+        "bytes": 4999627848,
+        "sha256": "72884ec9b026794df9e3b5c1eb75341e503ae94f0e2555d1178157e3290b7f7d"
+      },
+      {
+        "name": "model-00003-of-00003.safetensors",
+        "bytes": 116305608,
+        "sha256": "5859c4408351a0b894c6175cf6f7a41e5e431637517a1d45587ad94f03d29cac"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "bytes": 98622,
+        "git_blob": "1c4431e06fc781c3195b389dcff5593cb10628a9"
+      },
+      {
+        "name": "modeling_mibot.py",
+        "bytes": 82384,
+        "git_blob": "97c67990149b78594c2f74094157b59e82df57e7"
+      },
+      {
+        "name": "preprocessor_config.json",
+        "bytes": 30430,
+        "git_blob": "6b69bbb60bc6999f413b9ff64c80ef81fc98097c"
+      },
+      {
+        "name": "processing_mibot.py",
+        "bytes": 19815,
+        "git_blob": "4205e028312e08eb77118f77fc79be792065e5ee"
+      },
+      {
+        "name": "processor_config.json",
+        "bytes": 118,
+        "git_blob": "5ddb3c3926ede08c54880aa4d9179ef642749036"
+      },
+      {
+        "name": "special_tokens_map.json",
+        "bytes": 613,
+        "git_blob": "ac23c0aaa2434523c494330aeb79c58395378103"
+      },
+      {
+        "name": "tokenizer.json",
+        "bytes": 11422654,
+        "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+      },
+      {
+        "name": "tokenizer_config.json",
+        "bytes": 5519,
+        "git_blob": "c3221c4b0b7bc61def178bcbb0b7e17df4734807"
+      },
+      {
+        "name": "video_preprocessor_config.json",
+        "bytes": 892,
+        "git_blob": "0fad1491f1c2448959e63a7180756e99f9f55322"
+      },
+      {
+        "name": "vocab.json",
+        "bytes": 2776833,
+        "git_blob": "4783fe10ac3adce15ac8f358ef5462739852c569"
+      }
+    ]
+  },
+  "evaluator_commit": "0dd7aef8dc87296246aae812a1f59ccb708e5546",
+  "evaluator_git_blob": "03202dbd056110ea1087a4cf4e9d76fcd9848913",
+  "base_image": "pytorch/pytorch@sha256:417bd75df6365104c283ea4c1651fb3530d9eb5a4c2fafa51943cff2a94e6385",
+  "flash_attention_wheel": {
+    "name": "flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl",
+    "url": "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3%2Bcu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl",
+    "size": 256043372,
+    "digest": "sha256:3d41b2fc55753faa7f45d6568ea73a96b96afb48b82994ab9b49bcbcb6c87588"
+  }
+}
