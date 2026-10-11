@@ -239,6 +239,73 @@ Include synchronous pauses in per-episode/total timeout and all billing bounds.
 Old paid approvals cannot authorize this new experiment. No paid action is
 authorized by this preparation.
 
+### Smallest quote variant and independent readiness work
+
+One minimal functional variant proposes **one predeclared decision opportunity at
+completed control 8 in each Clef episode**, if the episode has not stopped. Keep
+p≥.8/margin≥.2, permit at most one score and one extra actor query per Clef episode,
+and never retry or add opportunities because a judgment did not replan. This is
+a proposal requiring selection, not a frozen experiment config. Across four
+episodes it bounds stock actor calls at 4×38=152, additional actor calls at 2,
+and Clef scores at 2: **actor≤154, scorer≤2**, including failed/timed-out calls.
+Zero attributable changes remain a valid measured result but fail to demonstrate
+intervention; do not tune the gate to force them. At each queue boundary, the
+outer controller performs a separately bounded normal actor query or marks an
+infrastructure failure; it never replays expired controls. Clef-off follows stock
+execution, without scoring pauses.
+
+For a defensible quote, use fresh rates with bounded resource time for **every**
+CPU build/qualification/staging/readback/cleanup job and all four GPU episodes:
+
+```
+episode_time_bound = startup + actor_load + optional_Clef_load + reset
+                   + 600 * qualified_max_step_wall_time
+                   + actor_call_cap * actor_end_to_end_deadline
+                   + scorer_call_cap * scorer_end_to_end_deadline
+                   + archive_commit + cleanup
+quote = sum(job_time_bound * (GPU_rate + CPU_cores * CPU_rate
+                             + RAM_GiB * RAM_rate))
+      + storage_GB_months * storage_rate + object_request_cost
+      + readback_and_egress_cost + declared_margin
+```
+
+All rates must use compatible units and the selected region/resource type.
+End-to-end deadlines include fresh observation preparation/IPC, processor,
+forward and decoding; the saved-input medians exclude some of that work.
+Outer process deadlines must cover these component bounds and cleanup. Full 600
+controls are not 30 seconds of wall time: paused functional execution does not
+enforce a nominal 50ms wall budget per simulator step, and all scoring/actor waits
+are counted. The continuous mode retains its separate pacing checks. Select
+resource sizes from qualified peak model/activation/KV and host-memory evidence,
+not the historical 29,355MiB post-load snapshot. Prices, bounds and the ledger are
+not presently sufficient for a numeric all-in quote.
+
+The historical image `im-0ZJ0cSfNXwzFEUZjAdRiSF` may avoid a rebuild only after
+current availability, immutable identity, weight/source hashes, exact isolated
+locks and CPU processor/input qualification pass. Its ID alone proves none of
+those current gates. If unavailable or mismatched, include a CPU-only rebuild
+and cache transfer in the quote before reserving GPU time. New integrated source
+must be bound to the actual runtime payload even when reusing weights.
+
+Storage preparation is required in either case: select durable destination and
+retention, freeze object/byte bounds, commit a small source fixture, reload its
+complete closure and compare archive/restored-byte hashes **before GPU**. The
+existing local/fake storage tests do not prove the actual remote storage boundary.
+Do not make provider/storage calls under this offline authorization.
+
+Independent no-cost work can freeze the proposed config and quote worksheet,
+audit source/config/wheel-lock identities, check the acquired ledger/receipt
+handoff for unused 1152/1153 and archive closure, and generate/round-trip a bounded
+local storage fixture. Finish the existing recorder's full-episode scheduler and
+journal glue with 600-control CPU fixtures for budgets, queue boundaries, stop
+flags and failures; the single-boundary helper is not a four-episode launcher.
+Complete local official-loader checks only if their
+already-acquired source/fixtures are supplied. Those inputs are not fabricated
+when absent. The exact remaining decision is functional pause versus a separate
+async latency/freshness experiment, plus opportunity/query/fallback bounds; paid
+approval must name the resulting complete CPU/storage/four-episode plan and its
+fresh all-in monetary cap. No statistical superiority claim follows from two pairs.
+
 The later full comparison is **2,500 episodes per arm**, 5,000 for two arms,
 on RoboCasa1.0.1 target50 in the pretrain kitchen/object split, 50 trials per task.
 Retain every original target50 index and `num_trials=50` even for subsets:

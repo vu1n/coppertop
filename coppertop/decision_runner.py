@@ -100,7 +100,8 @@ def gated_rollout(env, scorer, query, inputs, old_chunk, *, observed_frame, boun
             now = time.monotonic_ns()
             if now >= deadline:
                 raise TimeoutError('Scorer/actor branch deadline expired')
-            if now >= controls_started + (tick + 1) * control_ns:
+            if (clock_mode == 'continuous_async'
+                    and now >= controls_started + (tick + 1) * control_ns):
                 raise RuntimeError('Scheduled control boundary missed')
             if ready.is_set() and 'chunk' in outcome and committed is None and arrival is None:
                 required = (0 if clock_mode == 'paused_synchronous' else
@@ -123,7 +124,9 @@ def gated_rollout(env, scorer, query, inputs, old_chunk, *, observed_frame, boun
             finished = time.monotonic_ns()
             with lock:
                 current_control += 1
-            if finished >= deadline or finished - began > control_ns:
+            if finished >= deadline:
+                raise TimeoutError('Control/audit branch deadline expired')
+            if clock_mode == 'continuous_async' and finished - began > control_ns:
                 raise RuntimeError('Control/audit exceeded branch pacing bound')
             actions.append(action)
             frames.append(frame)

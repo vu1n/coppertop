@@ -48,12 +48,13 @@ class InlineThread:
 
 
 class Environment:
-    def __init__(self, clock, stop_after=None):
+    def __init__(self, clock, stop_after=None, step_ms=1):
         self.clock, self.actions, self.stop_after = clock, [], stop_after
+        self.step_ms = step_ms
 
     def step(self, action):
         self.actions.append(action)
-        self.clock.advance(1)
+        self.clock.advance(self.step_ms)
         return SimpleNamespace(stopped=len(self.actions) == self.stop_after)
 
 
@@ -63,9 +64,10 @@ class InterventionTests(unittest.TestCase):
             **dict({'current_frame': 8, 'queued_until': 16, 'remaining_queries': 1}, **kwargs))
 
     def run_paused(self, value=None, *, enabled=True, query_error=None, score_ms=895,
-                   actor_ms=399, stop_after=None, remaining_queries=1, timeout_seconds=5):
+                   actor_ms=399, stop_after=None, remaining_queries=1, timeout_seconds=5,
+                   step_ms=1):
         clock = Clock()
-        env = Environment(clock, stop_after)
+        env = Environment(clock, stop_after, step_ms)
         old = np.arange(16*12, dtype=np.float32).reshape(16, 12)
         candidate = np.full((16, 12), -1, dtype=np.float32)
         calls = []
@@ -188,6 +190,21 @@ class InterventionTests(unittest.TestCase):
     def test_paused_deadline_is_infrastructure_failure_without_controls(self):
         with self.assertRaises(TimeoutError):
             self.run_paused(timeout_seconds=1)
+
+    def test_paused_functional_steps_need_no_fifty_ms_wall_pacing_but_keep_deadline(self):
+        _, candidate, env, _, result = self.run_paused(step_ms=80)
+        self.assertEqual(env.actions, list(native_actions(candidate, chunk=True)[:4]))
+        self.assertEqual(result['wall_ns'], 1_614_000_000)
+        self.assertEqual(result['candidate_admission']['age_controls'], 0)
+        with self.assertRaisesRegex(TimeoutError, 'Control/audit branch deadline'):
+            self.run_paused(step_ms=2000)
+        clock = Clock()
+        env = Environment(clock, step_ms=80)
+        old = np.zeros((16, 12), dtype=np.float32)
+        with patch('coppertop.decision_runner.time', clock):
+            with self.assertRaisesRegex(RuntimeError, 'Control/audit exceeded branch pacing'):
+                gated_rollout(env, None, None, {}, old, observed_frame=8, boundary=8,
+                    seed=20261006, steps=4, remaining_queries=0, enabled=False)
 
     def test_episode_stop_prevents_extra_controls(self):
         _, _, env, _, result = self.run_paused(stop_after=1)
