@@ -7,29 +7,94 @@ import json
 import os
 from pathlib import Path
 import select
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
+from types import ModuleType
+from uuid import uuid4
 
 ROOT = Path('/tmp/colocation')
 CLEF_ROOT = Path(os.environ.get('COPPERTOP_CLEF_ROOT', '/tmp'))
 CLEF_MODEL = CLEF_ROOT/'clef-model'
 CLEF_PYTHON = str(CLEF_ROOT/'clef-env/bin/python')
+REFERENCE_BYTES = 23263
+REFERENCE_SHA256 = '0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3'
 
 
-def worker_environment(parent):
+def require_reference_code(model_directory):
+    """Return bounded, authenticated reference bytes without executing them."""
+    with (Path(model_directory)/'joint_schema_model.py').open('rb') as source:
+        raw = source.read(REFERENCE_BYTES + 1)
+    if len(raw) != REFERENCE_BYTES or hashlib.sha256(raw).hexdigest() != REFERENCE_SHA256:
+        raise ValueError('Pinned Clef reference bytes required')
+    return raw
+
+
+def load_reference_code(model_directory):
+    """Execute the authenticated bytes directly, bypassing path and bytecode caches."""
+    raw = require_reference_code(model_directory)
+    source_path = Path(model_directory)/'joint_schema_model.py'
+    name = '_coppertop_clef_reference_' + uuid4().hex
+    module = ModuleType(name)
+    module.__file__ = str(source_path)
+    module.__package__ = ''
+    # Dataclasses resolve annotations through their defining module's identity.
+    sys.modules[name] = module
+    try:
+        exec(compile(raw, str(source_path), 'exec'), module.__dict__)
+    except BaseException:
+        if sys.modules.get(name) is module:
+            del sys.modules[name]
+        raise
+    return module
+
+
+@contextlib.contextmanager
+def worker_environment(parent, *, processes=()):
+    """Own isolated defaults; retain HOME if registered children have not exited."""
     # Modal injects helper packages through PYTHONPATH. Installing against that
     # path can hide missing venv dependencies when the worker later drops it.
     # Runtime imports execute pinned third-party code. Keep only the same native
     # interpreter/CUDA settings as the evaluator, plus the explicit Clef location;
     # arbitrary controller credentials must never enter these child processes.
-    keep = ('PATH', 'HOME', 'LD_LIBRARY_PATH', 'NVIDIA_VISIBLE_DEVICES',
+    keep = ('PATH', 'LD_LIBRARY_PATH', 'NVIDIA_VISIBLE_DEVICES',
             'CUDA_VISIBLE_DEVICES', 'LANG', 'LC_ALL', 'COPPERTOP_CLEF_ROOT')
     env = {key: parent[key] for key in keep if key in parent}
     env.update(PYTHONPATH='/app', PYTHONNOUSERSITE='1', HF_HUB_OFFLINE='1',
                TRANSFORMERS_OFFLINE='1', MUJOCO_GL='egl')
-    return env
+    # Third-party libraries also discover credentials through HOME and cache
+    # defaults. Own fresh directories until all synchronous/worker children exit.
+    home = Path(tempfile.mkdtemp(prefix='coppertop-worker-'))
+    primary = None
+    try:
+        locations = {'HOME': home, 'XDG_CONFIG_HOME': home/'config',
+            'XDG_CACHE_HOME': home/'cache', 'XDG_DATA_HOME': home/'data',
+            'HF_HOME': home/'huggingface', 'HF_HUB_CACHE': home/'huggingface/hub',
+            'TRANSFORMERS_CACHE': home/'huggingface/transformers',
+            'TORCH_HOME': home/'torch', 'PIP_CACHE_DIR': home/'pip'}
+        for path in locations.values():
+            path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        env.update({key: str(path) for key, path in locations.items()})
+        env['HF_TOKEN_PATH'] = str(home/'huggingface/token')
+        yield env
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        try:
+            if any(process.poll() is None for process in processes):
+                raise RuntimeError('Registered child has not exited')
+            shutil.rmtree(home)
+        except BaseException as cleanup_error:
+            note = ('Owned runtime HOME retained after incomplete cleanup at '
+                    f'{home}: {type(cleanup_error).__name__}: {cleanup_error}')
+            if primary is None:
+                cleanup_error.add_note(note)
+                raise
+            primary.add_note(note)
 
 
 def emit(value):
@@ -37,14 +102,16 @@ def emit(value):
 
 
 def serve_worker(kind):
+    if kind == 'clef':
+        with contextlib.redirect_stdout(sys.stderr):
+            reference = load_reference_code(CLEF_MODEL)
     import numpy as np
     import torch
     torch.set_grad_enabled(False)
     with contextlib.redirect_stdout(sys.stderr):
         if kind == 'clef':
             from PIL import Image
-            sys.path.insert(0, str(CLEF_MODEL))
-            from joint_schema_model import load_release_model, systemone
+            load_release_model, systemone = reference.load_release_model, reference.systemone
             (ROOT/'clef-startup.json').write_text(json.dumps({'torch':torch.__version__,
                 'cuda':torch.version.cuda,'device':torch.cuda.get_device_name(),
                 'free_total_bytes':torch.cuda.mem_get_info()}))
@@ -108,14 +175,20 @@ def send(process, index):
 
 
 def benchmark():
+    with contextlib.ExitStack() as environments:
+        return _benchmark(environments)
+
+
+def _benchmark(environments):
     ROOT.mkdir(exist_ok=True)
     processes = []
     logs = []
     rows = []
     def start(command, name):
         log = (ROOT/(name+'.log')).open('w'); logs.append(log)
+        env = environments.enter_context(worker_environment(os.environ, processes=processes))
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=log, text=True, bufsize=1, env=worker_environment(os.environ))
+            stderr=log, text=True, bufsize=1, env=env)
         processes.append(process)
         return process
     def memory():

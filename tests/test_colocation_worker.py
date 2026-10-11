@@ -28,13 +28,13 @@ class EnvironmentTests(unittest.TestCase):
         original={'PYTHONPATH':'/__modal/deps:/other','PYTHONHOME':'/system',
                   'PYTHONUSERBASE':'/user','VIRTUAL_ENV':'/wrong',
                   'LD_LIBRARY_PATH':'/cuda','CUDA_VISIBLE_DEVICES':'0'}
-        env=worker_environment(original)
-        self.assertEqual(env['PYTHONPATH'],'/app')
-        self.assertEqual(env['PYTHONNOUSERSITE'],'1')
-        self.assertEqual(env['LD_LIBRARY_PATH'],'/cuda')
-        self.assertEqual(env['CUDA_VISIBLE_DEVICES'],'0')
-        for key in ('PYTHONHOME','PYTHONUSERBASE','VIRTUAL_ENV'):
-            self.assertNotIn(key,env)
+        with worker_environment(original) as env:
+            self.assertEqual(env['PYTHONPATH'],'/app')
+            self.assertEqual(env['PYTHONNOUSERSITE'],'1')
+            self.assertEqual(env['LD_LIBRARY_PATH'],'/cuda')
+            self.assertEqual(env['CUDA_VISIBLE_DEVICES'],'0')
+            for key in ('PYTHONHOME','PYTHONUSERBASE','VIRTUAL_ENV'):
+                self.assertNotIn(key,env)
         self.assertEqual(original['PYTHONPATH'],'/__modal/deps:/other')
 
     def test_injected_dependency_cannot_mask_missing_worker_package(self):
@@ -45,11 +45,12 @@ class EnvironmentTests(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as folder:
             Path(folder,'colocation_injected_probe.py').write_text('available=True\n')
-            parent=dict(os.environ,PYTHONPATH=folder)
+            parent={'PATH':'/usr/bin:/bin','PYTHONPATH':folder}
             command=[sys.executable,'-c','import colocation_injected_probe']
             self.assertEqual(subprocess.run(command,env=parent,capture_output=True,timeout=5).returncode,0)
-            self.assertNotEqual(subprocess.run(command,env=worker_environment(parent),
-                capture_output=True,timeout=5).returncode,0)
+            with worker_environment(parent) as env:
+                self.assertNotEqual(subprocess.run(command,env=env,
+                    capture_output=True,timeout=5).returncode,0)
 
 
 class RoundedProbabilityTests(unittest.TestCase):
