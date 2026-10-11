@@ -329,6 +329,14 @@ parity and attributable fake action changes. Failed/uncertain/unchanged results
 never force retries. This is an injected CPU adapter; real simulator recording
 plumbing and outer hard process deadlines remain runtime work.
 
+Selected action source and native-change attribution are bound before each
+control and retained with its valid audited Frame. A valid late Frame therefore
+keeps its candidate/old-queue source even when the control or handoff deadline
+then fails; an invalid or missing Frame does not claim execution. Runner cleanup
+reports secondary cancellation/join failures while preserving the primary
+failure, including cancellation exceptions. The regressions cover both deadline
+paths, identical admitted actions and failed cleanup.
+
 `evaluation_roundtrip` uses the existing LocalStore/Tape/archive/stage machinery
 to seal, locally fsync, independently reload and hash the complete ten-object
 fixture closure. Raw closure is capped at 16MiB and total retained local copies at

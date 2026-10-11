@@ -24,7 +24,7 @@ def candidate_admission(*, observed_frame, current_frame, candidate_controls=16,
 def gated_rollout(env, scorer, query, inputs, old_chunk, *, observed_frame, boundary,
                   seed, steps, remaining_queries, control_ns=50_000_000,
                   policy=GatePolicy(), timeout_seconds=5, clock_mode='continuous_async',
-                  enabled=True):
+                  enabled=True, on_action_selected=None):
     """Scorer and candidate query run while old controls advance, with no physics pause.
 
     An explicit paused_synchronous mode freezes controls during scorer/actor work
@@ -33,6 +33,9 @@ def gated_rollout(env, scorer, query, inputs, old_chunk, *, observed_frame, boun
     must interrupt their owned transports. The caller supplies detached current inputs
     and authenticates scorer input/receipt bindings. This owns a SINGLE gate/query;
     admission/billing authorization and episode-wide budgets belong to the caller.
+    on_action_selected receives source/offset/change attribution before env.step;
+    it reports a selection, not execution. The caller retains it only with a valid
+    audited post-control Frame, including a late Frame that precedes a timeout.
     """
     old = native_actions(old_chunk, chunk=True)
     if (type(observed_frame) is not int or observed_frame < boundary
@@ -42,7 +45,8 @@ def gated_rollout(env, scorer, query, inputs, old_chunk, *, observed_frame, boun
             or type(control_ns) is not int or control_ns <= 0
             or type(timeout_seconds) not in (int, float) or not 0 < timeout_seconds <= 30
             or clock_mode not in ('continuous_async', 'paused_synchronous')
-            or type(enabled) is not bool):
+            or type(enabled) is not bool
+            or on_action_selected is not None and not callable(on_action_selected)):
         raise ValueError('Bounded native handoff required')
     submitted = time.monotonic_ns()
     deadline = submitted + int(timeout_seconds * 1e9)
@@ -88,6 +92,7 @@ def gated_rollout(env, scorer, query, inputs, old_chunk, *, observed_frame, boun
     committed = None
     arrival = None
     pause_ns = 0
+    primary_error = None
     try:
         if clock_mode == 'paused_synchronous' and enabled:
             if not ready.wait(timeout_seconds):
@@ -115,10 +120,12 @@ def gated_rollout(env, scorer, query, inputs, old_chunk, *, observed_frame, boun
                     if arrival['apply']:
                         committed = tick
             action = old[boundary + tick] if committed is None else outcome['chunk'][tick]
-            changed_controls += action != old[boundary + tick]
-            action_sources.append({'control': observed_frame + tick,
+            changed_action = action != old[boundary + tick]
+            source = {'control': observed_frame + tick,
                 'source': 'old_queue' if committed is None else 'candidate',
-                'chunk_offset': boundary + tick if committed is None else tick})
+                'chunk_offset': boundary + tick if committed is None else tick}
+            if on_action_selected is not None:
+                on_action_selected({**source, 'changed_action': changed_action})
             began = time.monotonic_ns()
             frame = env.step(action)
             finished = time.monotonic_ns()
@@ -130,26 +137,62 @@ def gated_rollout(env, scorer, query, inputs, old_chunk, *, observed_frame, boun
                 raise RuntimeError('Control/audit exceeded branch pacing bound')
             actions.append(action)
             frames.append(frame)
+            action_sources.append(source)
+            changed_controls += changed_action
             timings.append({'control': observed_frame + tick, 'started_ns': began, 'finished_ns': finished})
             if frame.stopped:
                 break
             delay = (controls_started + (tick + 1) * control_ns - time.monotonic_ns()) / 1e9
             if delay > 0 and clock_mode == 'continuous_async':
                 time.sleep(min(delay, max(0, (deadline - time.monotonic_ns()) / 1e9)))
+    except BaseException as error:
+        primary_error = error
+        raise
     finally:
         with lock:
             closed.set()
-        cancel_failed = False
-        if worker is not None and worker.is_alive():
-            for owned in (scorer, query):
+        cleanup_errors = []
+        first_cleanup_error = None
+
+        def cleanup_failure(operation, error):
+            nonlocal first_cleanup_error
+            if first_cleanup_error is None:
+                first_cleanup_error = error
+            cleanup_errors.append({'operation': operation,
+                'error_type': type(error).__name__, 'message': str(error)[:1000]})
+
+        alive = False
+        if worker is not None:
+            try:
+                alive = worker.is_alive()
+            except BaseException as error:
+                alive = True
+                cleanup_failure('worker_status', error)
+        if alive:
+            for name, owned in (('scorer', scorer), ('actor', query)):
                 try:
                     owned.cancel()
-                except Exception:
-                    cancel_failed = True
+                except BaseException as error:
+                    cleanup_failure('cancel_' + name, error)
         if worker is not None:
-            worker.join(timeout=1)
-        if (worker is not None and worker.is_alive()) or cancel_failed:
-            raise RuntimeError('Owned scorer/actor cancellation failed; stop worker process')
+            try:
+                worker.join(timeout=1)
+            except BaseException as error:
+                cleanup_failure('worker_join', error)
+            try:
+                if worker.is_alive():
+                    cleanup_failure('worker_alive', RuntimeError('Owned worker still alive'))
+            except BaseException as error:
+                cleanup_failure('worker_status', error)
+        if cleanup_errors:
+            error = primary_error if primary_error is not None else RuntimeError(
+                'Owned scorer/actor cancellation failed; stop worker process')
+            error.runner_cleanup_errors = cleanup_errors
+            for failure in cleanup_errors:
+                error.add_note('Owned scorer/actor cleanup failed; stop worker process: '
+                    + failure['operation'] + ': ' + failure['error_type'] + ': ' + failure['message'])
+            if primary_error is None:
+                raise error from first_cleanup_error
     return {'actions': tuple(actions), 'frames': tuple(frames), 'control_timing': timings,
             'action_sources': action_sources, 'changed_controls': changed_controls,
             'attributable_action_change': changed_controls > 0,

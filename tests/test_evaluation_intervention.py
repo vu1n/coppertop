@@ -1,4 +1,5 @@
 """Actual migrated gate/runner with CPU doubles; no model or simulator claims."""
+import asyncio
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -45,6 +46,19 @@ class InlineThread:
 
     def join(self, timeout):
         pass
+
+
+class CleanupThread(InlineThread):
+    """Completed inline work with a synthetic owned lifecycle pending join."""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.alive = True
+
+    def is_alive(self):
+        return self.alive
+
+    def join(self, timeout):
+        self.alive = False
 
 
 class Environment:
@@ -210,6 +224,96 @@ class InterventionTests(unittest.TestCase):
         _, _, env, _, result = self.run_paused(stop_after=1)
         self.assertEqual(len(env.actions), 1)
         self.assertEqual(len(result['frames']), 1)
+
+    def test_cleanup_failures_preserve_active_control_exception_identity(self):
+        for primary, secondary in ((TimeoutError('native control timeout'), RuntimeError),
+                (ValueError('invalid control'), RuntimeError),
+                (TimeoutError('native control timeout'), asyncio.CancelledError)):
+            with self.subTest(primary=type(primary).__name__, secondary=secondary.__name__):
+                clock = Clock()
+                env = Environment(clock)
+                cancellations = []
+                def scorer():
+                    return answers()
+                def query(inputs, seed):
+                    return np.ones((16, 12), dtype=np.float32)
+                def cancel(name):
+                    cancellations.append(name)
+                    raise secondary(name + ' cancellation failed')
+                scorer.cancel = lambda: cancel('scorer')
+                query.cancel = lambda: cancel('actor')
+                with patch('coppertop.decision_runner.time', clock), \
+                     patch('coppertop.decision_runner.threading.Thread', CleanupThread), \
+                     patch.object(env, 'step', side_effect=primary):
+                    with self.assertRaises(type(primary)) as caught:
+                        gated_rollout(env, scorer, query, {}, np.zeros((16, 12)),
+                            observed_frame=8, boundary=8, seed=20261006, steps=4,
+                            remaining_queries=1, clock_mode='paused_synchronous')
+                self.assertIs(caught.exception, primary)
+                self.assertEqual(cancellations, ['scorer', 'actor'])
+                self.assertEqual([row['operation'] for row in primary.runner_cleanup_errors],
+                                 ['cancel_scorer', 'cancel_actor'])
+                self.assertTrue(any('scorer cancellation failed' in note for note in primary.__notes__))
+
+    def test_runner_deadline_and_pacing_errors_survive_cancellation_failure(self):
+        for mode, step_ms, error_type, message in (
+                ('paused_synchronous', 2000, TimeoutError, 'Control/audit branch deadline'),
+                ('continuous_async', 80, RuntimeError, 'Control/audit exceeded branch pacing')):
+            with self.subTest(mode=mode):
+                clock = Clock()
+                env = Environment(clock, step_ms=step_ms)
+                def scorer():
+                    return answers()
+                def query(inputs, seed):
+                    return np.ones((16, 12), dtype=np.float32)
+                def cancel():
+                    raise ValueError('secondary cancel error')
+                scorer.cancel = query.cancel = cancel
+                with patch('coppertop.decision_runner.time', clock), \
+                     patch('coppertop.decision_runner.threading.Thread', CleanupThread):
+                    with self.assertRaisesRegex(error_type, message) as caught:
+                        gated_rollout(env, scorer, query, {}, np.zeros((16, 12)),
+                            observed_frame=8, boundary=8, seed=20261006, steps=4,
+                            remaining_queries=1, clock_mode=mode, timeout_seconds=1)
+                self.assertEqual(len(env.actions), 1)
+                self.assertEqual(len(caught.exception.runner_cleanup_errors), 2)
+
+    def test_cancellation_failure_after_valid_controls_still_fails(self):
+        clock = Clock()
+        env = Environment(clock)
+        def scorer():
+            return answers()
+        def query(inputs, seed):
+            return np.ones((16, 12), dtype=np.float32)
+        def cancel():
+            raise ValueError('secondary cancel error')
+        scorer.cancel = query.cancel = cancel
+        with patch('coppertop.decision_runner.time', clock), \
+             patch('coppertop.decision_runner.threading.Thread', CleanupThread):
+            with self.assertRaisesRegex(RuntimeError, 'Owned scorer/actor cancellation failed') as caught:
+                gated_rollout(env, scorer, query, {}, np.zeros((16, 12)),
+                    observed_frame=8, boundary=8, seed=20261006, steps=4,
+                    remaining_queries=1, clock_mode='paused_synchronous')
+        self.assertEqual(len(env.actions), 4)
+        self.assertIsInstance(caught.exception.__cause__, ValueError)
+        self.assertEqual(len(caught.exception.runner_cleanup_errors), 2)
+
+    def test_worker_join_failure_does_not_mask_active_error(self):
+        primary = ValueError('invalid control')
+        class BrokenJoinThread(InlineThread):
+            def join(self, timeout):
+                raise RuntimeError('join failed')
+        clock = Clock()
+        env = Environment(clock)
+        with patch('coppertop.decision_runner.time', clock), \
+             patch('coppertop.decision_runner.threading.Thread', BrokenJoinThread), \
+             patch.object(env, 'step', side_effect=primary):
+            with self.assertRaises(ValueError) as caught:
+                gated_rollout(env, lambda: answers(), lambda inputs, seed: np.ones((16, 12)),
+                    {}, np.zeros((16, 12)), observed_frame=8, boundary=8, seed=20261006,
+                    steps=4, remaining_queries=1, clock_mode='paused_synchronous')
+        self.assertIs(caught.exception, primary)
+        self.assertEqual(primary.runner_cleanup_errors[0]['operation'], 'worker_join')
 
     def test_actual_control_index_not_wall_time_defines_candidate_freshness(self):
         for elapsed in (0, 1, 2, 3, 15, 16, 19, 23):

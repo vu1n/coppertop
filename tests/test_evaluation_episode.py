@@ -1,4 +1,5 @@
 """Full-horizon injected CPU checks; no model, simulator, provider or real sleeps."""
+import asyncio
 from dataclasses import FrozenInstanceError, replace
 import json
 import unittest
@@ -228,6 +229,113 @@ class EpisodeFixtureTests(unittest.TestCase):
         row = next(row for row in result['accounting']['journal'] if row['kind'] == 'step')
         self.assertTrue(row['retained_in_tape'])
         self.assertFalse(result['accounting']['infrastructure_valid'])
+        self.assert_closed()
+
+    def test_late_handoff_frames_retain_selected_source_offset_and_only_actual_changes(self):
+        for mode, late_control, source, offset, changed in (
+                ('candidate', 8, 'candidate', 0, 1),
+                ('candidate', 9, 'candidate', 1, 2),
+                ('old', 8, 'old_queue', 8, 0),
+                ('identical', 8, 'candidate', 0, 0)):
+            with self.subTest(mode=mode, late_control=late_control):
+                self.setUp()
+                original_step = self.env.step
+                original_actor = type(self.actor).__call__
+                def late(action):
+                    if self.env.control == late_control:
+                        self.clock.advance(121)
+                    return original_step(action)
+                def ask(actor, inputs, seed):
+                    if mode == 'identical' and int(inputs[0][0, 1]) == 8:
+                        self.clock.advance(3)
+                        return episode._fixture_chunk(1152, 0)[8:] + episode._fixture_chunk(1152, 16)[:8]
+                    return original_actor(actor, inputs, seed)
+                with patch.object(self.env, 'step', late), patch.object(type(self.actor), '__call__', ask):
+                    result = self.run_episode(budget=0 if mode == 'old' else 1)
+                accounting = result['accounting']
+                self.assertEqual(len(result['tape'].actions), late_control + 1)
+                self.assertEqual(accounting['action_sources'][-1],
+                                 {'control': late_control, 'source': source, 'chunk_offset': offset})
+                self.assertEqual(accounting['changed_controls_at_handoff'], changed)
+                self.assertEqual(accounting['attributable_action_change'], changed > 0)
+                self.assertEqual(accounting['counts']['step']['timeout'], 1)
+                self.assertFalse(accounting['infrastructure_valid'])
+                row = next(row for row in accounting['journal']
+                           if row['kind'] == 'step' and row['control'] == late_control)
+                self.assertTrue(row['retained_in_tape'])
+                self.assertEqual((row['source'], row['chunk_offset']), (source, offset))
+                self.assertEqual(row['changed_action'], mode == 'candidate')
+                self.assert_closed()
+
+    def test_invalid_handoff_frame_does_not_retain_selected_candidate_or_change(self):
+        original = self.env.step
+        def invalid(action):
+            frame = original(action)
+            return Frame(99, frame.time_ns, frame.components) if frame.step == 9 else frame
+        with patch.object(self.env, 'step', invalid):
+            result = self.run_episode()
+        accounting = result['accounting']
+        self.assertEqual(len(result['tape'].actions), 8)
+        self.assertEqual(len(accounting['action_sources']), 8)
+        self.assertEqual(accounting['changed_controls_at_handoff'], 0)
+        row = next(row for row in accounting['journal'] if row['kind'] == 'step' and row['control'] == 8)
+        self.assertEqual(row['source'], 'candidate')
+        self.assertTrue(row['changed_action'])  # Selected change was never validly retained.
+        self.assertFalse(row['retained_in_tape'])
+        self.assertEqual(accounting['counts']['step']['failed'], 1)
+        self.assert_closed()
+
+    def test_runner_branch_deadline_keeps_completed_late_frame_attribution(self):
+        # Score+actor consume8ms, then a valid80ms step crosses this branch's
+        # 80ms deadline while remaining within the separate200ms step bound.
+        result = self.run_episode(bounds=replace(self.bounds, handoff_seconds=.08))
+        accounting = result['accounting']
+        self.assertEqual(len(result['tape'].actions), 9)
+        self.assertEqual(accounting['action_sources'][-1],
+                         {'control': 8, 'source': 'candidate', 'chunk_offset': 0})
+        self.assertEqual(accounting['changed_controls_at_handoff'], 1)
+        self.assertEqual(accounting['counts']['step']['completed'], 9)
+        self.assertEqual(accounting['counts']['step']['timeout'], 0)
+        self.assertEqual(accounting['errors'][0]['error_type'], 'TimeoutError')
+        self.assertIn('Control/audit branch deadline', accounting['errors'][0]['message'])
+        self.assertFalse(accounting['infrastructure_valid'])
+        self.assert_closed()
+
+    def test_handoff_timeout_keeps_primary_journal_and_secondary_worker_cleanup_errors(self):
+        class HeldThread:
+            """Inline scorer/actor with a synthetic unclosed worker lifecycle."""
+            def __init__(self, *, target, **kwargs):
+                self.target = target
+            def start(self):
+                self.target()
+            def is_alive(self):
+                return True
+            def join(self, timeout):
+                pass
+        original = self.env.step
+        def late(action):
+            if self.env.control == 8:
+                self.clock.advance(121)
+            return original(action)
+        with patch.object(self.env, 'step', late), \
+             patch.object(self.scorer, 'cancel', side_effect=asyncio.CancelledError('score cancel failed')), \
+             patch.object(self.actor, 'cancel', side_effect=RuntimeError('actor cancel failed')), \
+             patch('coppertop.decision_runner.threading.Thread', HeldThread):
+            result = self.run_episode()
+        accounting = result['accounting']
+        self.assertEqual(accounting['errors'][0]['error_type'], 'TimeoutError')
+        self.assertEqual(accounting['errors'][0]['operation'], 'step')
+        self.assertEqual(accounting['counts']['step']['timeout'], 1)
+        self.assertEqual(accounting['counts']['cancel']['failed'], 2)
+        self.assertTrue(any(row['operation'] == 'cancel' and row['error_type'] == 'CancelledError'
+                            for row in accounting['errors']))
+        secondary = [row for row in accounting['errors'] if row['operation'] == 'runner_cleanup']
+        self.assertEqual([row['phase'] for row in secondary], ['cancel_scorer', 'cancel_actor', 'worker_alive'])
+        self.assertEqual(secondary[-1]['message'], 'Owned worker still alive')
+        self.assertEqual(accounting['action_sources'][-1]['source'], 'candidate')
+        self.assertEqual(accounting['changed_controls_at_handoff'], 1)
+        self.assertFalse(accounting['infrastructure_valid'])
+        json.dumps(accounting, allow_nan=False)
         self.assert_closed()
 
     def test_episode_deadline_includes_controls_and_cleanup(self):

@@ -121,7 +121,9 @@ def run_episode(env, actor, scorer, *, episode_id, seed, clef_enabled,
             value = function()
             if cleanup_exhausted or clock.monotonic_ns() >= began + limit:
                 raise TimeoutError(kind + ' cooperative deadline expired')
-        except Exception as error:
+        except BaseException as error:
+            if not cleanup and not isinstance(error, Exception):
+                raise
             row.update(status='timeout' if isinstance(error, TimeoutError) else 'failed',
                        completed_ns=clock.monotonic_ns(), error_type=type(error).__name__)
             note(row, error)
@@ -179,10 +181,11 @@ def run_episode(env, actor, scorer, *, episode_id, seed, clef_enabled,
             candidate = chunk
         return chunk
 
-    def execute(action, source, offset):
+    def execute(action, source, offset, *, changed_action=False):
         native = native_actions(action)
         row_index = len(journal)
         def step():
+            nonlocal changed
             frame = env.step(native)
             if (not isinstance(frame, Frame) or frame.step != len(actions) + 1
                     or frame.time_ns <= frames[-1].time_ns or frames[-1].stopped):
@@ -190,10 +193,13 @@ def run_episode(env, actor, scorer, *, episode_id, seed, clef_enabled,
             actions.append(native)
             frames.append(frame)
             sources.append({'control': len(actions)-1, 'source': source, 'chunk_offset': offset})
+            changed += changed_action
             journal[row_index]['retained_in_tape'] = True
             return frame
         return invoke('step', step, bounds.step_seconds, owner=env,
                       metadata={'control': len(actions), 'action': native,
+                                'source': source, 'chunk_offset': offset,
+                                'changed_action': changed_action,
                                 'retained_in_tape': False})
 
     try:
@@ -224,21 +230,27 @@ def run_episode(env, actor, scorer, *, episode_id, seed, clef_enabled,
                         invoke('cancel', actor.cancel, bounds.cleanup_seconds, phase='actor', cleanup=True)
 
                 class AuditedEnvironment:
+                    selection = None
+                    def select(self, selection):
+                        self.selection = selection
                     def step(self, action):
-                        return execute(action, 'gate_unresolved', len(actions)-8)
+                        selection, self.selection = self.selection, None
+                        if selection is None or selection['control'] != len(actions):
+                            raise ValueError('Actual selected control attribution required')
+                        return execute(action, selection['source'], selection['chunk_offset'],
+                                       changed_action=selection['changed_action'])
 
+                audited = AuditedEnvironment()
                 before = len(actions)
                 remaining = (deadline - clock.monotonic_ns()) / 1e9
                 if remaining <= 0:
                     raise TimeoutError('Episode deadline expired before handoff')
-                decision = gated_rollout(AuditedEnvironment(), LoggedScorer(), LoggedActor(), snapshot,
+                decision = gated_rollout(audited, LoggedScorer(), LoggedActor(), snapshot,
                     queue, observed_frame=8, boundary=8, seed=actor_seed, steps=8,
                     remaining_queries=extra_actor_budget, policy=GatePolicy(probability_decimals=4),
-                    timeout_seconds=min(bounds.handoff_seconds, remaining), clock_mode='paused_synchronous')
+                    timeout_seconds=min(bounds.handoff_seconds, remaining), clock_mode='paused_synchronous',
+                    on_action_selected=audited.select)
                 opportunity = decision['gate']['reason'] if decision['gate'] else 'failed'
-                for index, source in enumerate(decision['action_sources'], before):
-                    sources[index] = source
-                changed += decision['changed_controls']
                 if decision['error_type'] or errors:
                     raise _OperationError('Scorer/actor infrastructure failure; no retry')
                 if decision['committed_steps'] is not None:
@@ -254,6 +266,9 @@ def run_episode(env, actor, scorer, *, episode_id, seed, clef_enabled,
         if not isinstance(error, _OperationError) or not errors:
             errors.append({'operation': 'episode', 'error_type': type(error).__name__,
                            'message': str(error)[:1000]})
+        for failure in getattr(error, 'runner_cleanup_errors', ()):
+            errors.append({'operation': 'runner_cleanup', 'phase': failure['operation'],
+                           'error_type': failure['error_type'], 'message': failure['message']})
     finally:
         cleanup_started = clock.monotonic_ns()
         cleanup_deadline = cleanup_started + max(0, int(bounds.cleanup_seconds * 1e9)-cleanup_used_ns)
