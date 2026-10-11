@@ -8,7 +8,7 @@ generation fencing, GPU science or durable R2 publication.
 The user approved one CPU-only attempt and a **$0.25 operational allowance** after
 disclosure that the provider invoice ceiling is unverified. Every executable
 approval must bind the reviewed source and fresh plan, the actual configured
-workspace, existing image ID, that allowance/risk acceptance and exact cleanup
+workspace, existing image ID or exact standard prebuilt recipe, that allowance/risk acceptance and exact cleanup
 scope. The transcript belongs with the local execution authority. A prior
 Cloudflare credit approval supplies no Modal authority.
 
@@ -39,6 +39,35 @@ That closes connectivity for its tested executor/bootstrap; the CPU probe,
 compatible image identity and paid execution remain pending.
 
 Offline preparation leaves unknown workspace/image fields null and creates no approval document.
+For the approved standard base, use:
+
+```sh
+.venv/bin/python tools/run_modal_seam.py prepare --workspace vuluan --prebuilt-base --output .local/modal-seam-prebuilt-plan
+```
+
+This binds only bare SDK `Image.debian_slim(python_version="3.12.10",
+force_build=False)`, builder `2025.06` and the global namespace. It refuses
+cache bypass, force build, global-publication flag presence and another builder.
+The actual `ImageGetOrCreate` request must exactly match the pinned SDK's bare
+global recipe, without user layers, registry credentials, secrets, GPU, mounts
+or build functions. It makes one lookup with retries disabled and a ten-second
+RPC timeout. The response must already report success and Python 3.12.10; a
+pending, failed or missing image is rejected before the SDK can wait for a build.
+Global publication requires separate provider privilege and an explicit flag;
+the guarded request never sets that flag. No custom build or fallback is allowed.
+Preventing global image creation relies on Modal enforcing that publication
+restriction. Offline fixtures verify the outgoing guard and refusal to join a
+pending image; they do not independently prove service-side enforcement.
+
+The image resolves inside the one approved ephemeral App. A hook on that App's
+pinned `_set_local_app` lifecycle journals its exact ID immediately after
+`AppCreate`, before the SDK loads image dependencies. The cache-hit image ID is
+saved before the resolver continues, then matched to the mounted Function image
+and independently checked with read-only `ImageFromId` before either input.
+Resolution denial, timeout, pending response or metadata mismatch therefore
+retains exact-App cleanup authority. This uses version-bound SDK internals;
+offline tests exercise the actual SDK loader and lifecycle without authentication.
+
 After the configured workspace and an existing immutable image have been
 verified, preparation accepts `--workspace` and `--image-id`. The SDK is pinned to
 `modal==1.6.1`; the remote image must run Python 3.12 and the standard library.
@@ -48,14 +77,15 @@ the pinned SDK does not support its on-demand hydration. This single internal
 lookup is version-bound and never calls `ImageGetOrCreate` or requests a build.
 The old GPU/model seed image is not selected or used as a fallback.
 
-The remote image recipe requests no build commands, dependency installs,
+The probe adds no build commands, dependency installs,
 secrets or project-tree uploads. Only the empty package initializer and the exact standalone probe are
 mounted at startup with `add_local_file(copy=False)`. In the pinned SDK this
-preserves the existing base image ID. The mounted probe hashes its own bytes
+preserves the base image ID. The mounted probe hashes its own bytes
 against the approved request before executing. Unknown image identity or
 mandatory construction of a new base image remains a prerequisite requiring
 cost review inside the approved total allowance; this implementation refuses an
-implicit build. [Modal image documentation](https://modal.com/docs/sdk/py/latest/Image)
+implicit build. The fixed prebuilt path above resolves the standard global image
+without a separate App. [Modal image documentation](https://modal.com/docs/sdk/py/latest/Image)
 
 ## Fixed scope and observed gates
 
@@ -114,7 +144,7 @@ also checks that claim, exact approval, fixed supervisor deadline and exclusive
 worker-start marker before importing Modal. It requires the normal injected
 `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` pair, verifies the service-returned workspace,
 looks up existing `main` without creation, rejects a conflicting App name and
-validates the existing image. It never reads token values or backups itself.
+validates the existing image or the exact prebuilt mode. It never reads token values or backups itself.
 
 The parent supervisor retains the plan and nonsecret ownership journal, ignores
 raw worker stdout/stderr, kills a stuck worker process group and stops only the
@@ -128,7 +158,8 @@ Known identity discovered during failed context entry is retained for cleanup.
 `cleanup --plan ... --output ...` uses the original validated ownership and
 cleanup authority after plan expiry or source repair. Its plan, approval and
 execution claim must match the original saved receipts; current source hashes
-are a launch-only gate. It cannot relaunch or build.
+are a launch-only gate. Original immutable-image plans without the recipe field
+remain cleanup-only. It cannot relaunch or build.
 The original pre-TLS source manifest is accepted for cleanup only, preserving
 the same saved approval/claim/ownership binding after this controller update.
 Append-only sanitized history retains both failed and successful containment attempts;

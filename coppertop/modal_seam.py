@@ -4,7 +4,7 @@ Provider imports and client authentication belong only to an approved worker.
 The separate supervisor retains exact-App cleanup authority on worker failure.
 """
 import base64
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 import hashlib
 import json
 import os
@@ -18,6 +18,10 @@ import time
 from . import modal_seam_probe as body
 
 SDK_VERSION = '1.6.1'
+PREBUILT_BASE = {'name': 'debian_slim', 'pythonVersion': '3.12.10',
+                 'builderVersion': '2025.06', 'namespace': 'global',
+                 'forceBuild': False, 'ignoreCache': False,
+                 'allowGlobalDeployment': False, 'customBuildAuthorized': False}
 APP_ID = r'ap-[A-Za-z0-9]{22}'
 SOURCE_FILES = ('coppertop/__init__.py', 'coppertop/modal_seam_probe.py',
                 'coppertop/modal_seam.py', 'coppertop/modal_seam_tls.py',
@@ -51,17 +55,20 @@ def sources(root):
     return result
 
 
-def fixed_plan(suite, workspace, image_id, source_hashes, *, now):
+def fixed_plan(suite, workspace, image_id, source_hashes, *, now, prebuilt_base=False):
     if not isinstance(suite, str) or not re.fullmatch(r'ct-modal-[a-z0-9-]{1,32}', suite):
         raise ValueError('Fresh bounded suite identity required')
     if workspace is not None and (not isinstance(workspace, str) or not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,63}', workspace)):
         raise ValueError('Exact existing workspace name required')
     if image_id is not None and (not isinstance(image_id, str) or not re.fullmatch(r'im-[A-Za-z0-9]+', image_id)):
         raise ValueError('Existing immutable Modal image ID required')
+    if type(prebuilt_base) is not bool or (prebuilt_base and image_id is not None):
+        raise ValueError('Choose one immutable image or the fixed prebuilt global base')
     if type(now) is not int:
         raise ValueError('Integer plan clock required')
     return {'schemaVersion': 1, 'suiteId': suite, 'provider': 'modal',
             'workspace': workspace, 'environment': 'main', 'imageId': image_id,
+            'imageRecipe': PREBUILT_BASE.copy() if prebuilt_base else None,
             'sdkVersion': SDK_VERSION, 'createdAt': now, 'expiresAt': now+1800,
             'sourceSha256': source_hashes, 'functionOptions': json.loads(canonical(OPTIONS)),
             'executionSeconds': 180, 'cleanupSeconds': 60,
@@ -72,9 +79,9 @@ def fixed_plan(suite, workspace, image_id, source_hashes, *, now):
             'realOrchestratorIntegration': False}
 
 
-def prepare(root, suite, workspace=None, image_id=None, *, now=None):
+def prepare(root, suite, workspace=None, image_id=None, *, now=None, prebuilt_base=False):
     now = int(time.time()) if now is None else now
-    return fixed_plan(suite, workspace, image_id, sources(root), now=now)
+    return fixed_plan(suite, workspace, image_id, sources(root), now=now, prebuilt_base=prebuilt_base)
 
 
 def validate_plan(root, plan, *, check_current_sources=True):
@@ -86,7 +93,10 @@ def validate_plan(root, plan, *, check_current_sources=True):
         or any(not isinstance(value, str) or not re.fullmatch(r'[a-f0-9]{64}', value) for value in hashes.values())):
         raise ValueError('Exact reviewed source manifest required')
     expected = fixed_plan(plan.get('suiteId'), plan.get('workspace'), plan.get('imageId'),
-                          sources(root) if check_current_sources else hashes, now=plan.get('createdAt'))
+                          sources(root) if check_current_sources else hashes, now=plan.get('createdAt'),
+                          prebuilt_base=plan.get('imageRecipe') is not None)
+    if not check_current_sources and 'imageRecipe' not in plan:
+        expected.pop('imageRecipe')  # Older immutable-image plans remain cleanup-only.
     if not check_current_sources and plan.get('functionOptions') == json.loads(canonical(LEGACY_OPTIONS)):
         expected['functionOptions'] = json.loads(canonical(LEGACY_OPTIONS))
     if canonical(plan) != canonical(expected):
@@ -96,7 +106,7 @@ def validate_plan(root, plan, *, check_current_sources=True):
 def require_approval(root, plan, approval, *, now=None, recovery=False):
     validate_plan(root, plan, check_current_sources=not recovery)
     now = time.time() if now is None else now
-    if plan['workspace'] is None or plan['imageId'] is None:
+    if plan['workspace'] is None or (plan['imageId'] is None and plan.get('imageRecipe') is None):
         raise ValueError('Workspace and existing image prerequisites unresolved')
     expected = {'approved': True, 'planSha256': sha(canonical(plan)),
                 'workspace': plan['workspace'], 'environment': 'main',
@@ -216,10 +226,87 @@ def create_probe(sdk, image, root, suite):
         image = image.add_local_file(Path(root)/name, '/root/'+name, copy=False)
     app = sdk.App(suite, secrets=[], volumes={}, include_source=False)
     function = app.function(name='coppertop-modal-cpu-probe', image=image, **OPTIONS)(body.probe)
-    return app, function
+    return app, function, image
 
 
-def verify_image(image_id):
+def prebuilt_image(sdk, environment):
+    from modal.config import config
+    from modal._image import _get_image_builder_version
+    from modal._utils.async_utils import synchronizer
+    environment = synchronizer._translate_in(environment)
+    if (config.get('force_build') or config.get('ignore_cache')
+        or 'MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT' in os.environ
+        or _get_image_builder_version(environment._settings.image_builder_version) != PREBUILT_BASE['builderVersion']):
+        raise ValueError('Pinned cache-only global image settings required')
+    return sdk.Image.debian_slim(python_version=PREBUILT_BASE['pythonVersion'], force_build=False)
+
+
+def global_image_request(app_id):
+    """Exact bare SDK 1.6.1 base request; no user layers or build resources."""
+    from modal_proto import api_pb2
+    image = api_pb2.Image(dockerfile_commands=[
+        'FROM python:3.12.10-slim-bookworm', 'RUN apt-get update',
+        'RUN apt-get install -y gcc gfortran build-essential', 'RUN pip install --upgrade pip wheel uv',
+        "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
+        'CMD ["sleep", "172800"]'], gpu_config=api_pb2.GPUConfig(),
+        image_registry_config=api_pb2.ImageRegistryConfig())
+    return api_pb2.ImageGetOrCreateRequest(app_id=app_id, image=image,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL, builder_version='2025.06',
+        force_build=False, ignore_cache=False, allow_global_deployment=False)
+
+
+def journal_app(app, ownership, output, *, prebuilt=False):
+    # Pinned SDK _run_app enters this instance context before _create_all_objects.
+    # Journal immediately after AppCreate returns, before image lookup can hang.
+    from modal._utils.async_utils import synchronizer
+    from modal_proto import api_pb2
+    raw_app = synchronizer._translate_in(app)
+    original_context = raw_app._set_local_app
+    @asynccontextmanager
+    async def owned_context(client, running_app):
+        async with original_context(client, running_app):
+            identity = raw_app.app_id
+            if identity != running_app.app_id or not isinstance(identity, str) or not re.fullmatch(APP_ID, identity):
+                raise ValueError('Exact newly allocated App identity required')
+            ownership['appId'] = identity
+            save(Path(output)/'ownership.json', ownership)
+            stub = client._stub if prebuilt else None
+            original_lookup = stub.ImageGetOrCreate if prebuilt else None
+            lookup_count = 0
+            async def cached_global(req, **_options):
+                nonlocal lookup_count
+                lookup_count += 1
+                if lookup_count != 1 or req != global_image_request(identity):
+                    raise ValueError('Only one exact cache-only global image lookup is allowed')
+                response = await original_lookup(req, retry=None, timeout=10)
+                if (response.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+                    or not re.fullmatch(r'im-[A-Za-z0-9]{1,64}', response.image_id)
+                    or not re.match(r'^Python 3\.12\.10(?:\s|$)', response.metadata.python_version_info)):
+                    raise ValueError('Verified prebuilt cache hit required; no build wait is allowed')
+                save(Path(output)/'resolved-image.json', {'appId': identity,
+                    'imageId': response.image_id, 'recipe': PREBUILT_BASE,
+                    'cacheHit': True, 'customBuildRequested': False})
+                return response
+            if prebuilt:
+                stub.ImageGetOrCreate = cached_global
+            try:
+                yield
+            finally:
+                if prebuilt:
+                    stub.ImageGetOrCreate = original_lookup
+    raw_app._set_local_app = owned_context
+
+
+def admit_prebuilt(image, app_id, output):
+    resolved = json.loads((Path(output)/'resolved-image.json').read_bytes())
+    expected = {'appId': app_id, 'imageId': image.object_id, 'recipe': PREBUILT_BASE,
+                'cacheHit': True, 'customBuildRequested': False}
+    if resolved != expected:
+        raise ValueError('Resolved image is not the verified owned Function image')
+    return {**verify_image(image.object_id, python_version=PREBUILT_BASE['pythonVersion']), 'recipe': PREBUILT_BASE}
+
+
+def verify_image(image_id, *, python_version='3.12'):
     # SDK 1.6.1 Image.from_id is lazy and cannot hydrate on demand. Use only
     # its read-only lookup RPC here, never ImageGetOrCreate or a build path.
     from modal.client import _Client
@@ -230,10 +317,11 @@ def verify_image(image_id):
         return await client._stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id), retry=None, timeout=10)
     with deadline(15):
         response = synchronizer.create_blocking(lookup)()
+    version = re.escape(python_version)+(r'\.[0-9]+' if python_version == '3.12' else '')
     if (response.image_id != image_id
-        or not re.match(r'^Python 3\.12\.[0-9]+(?:\s|$)', response.metadata.python_version_info)):
+        or not re.match(r'^Python '+version+r'(?:\s|$)', response.metadata.python_version_info)):
         raise ValueError('Existing image identity or Python 3.12 metadata differs')
-    return {'imageId': image_id, 'pythonVersion': '3.12', 'buildRequested': False}
+    return {'imageId': image_id, 'pythonVersion': python_version, 'buildRequested': False}
 
 
 def request(plan, mode, deadline_ms):
@@ -382,10 +470,13 @@ def worker(root, plan, approval, output):
             apps = environment.apps.list()
             if len(apps) > 64 or any(row.name == plan['suiteId'] or row.description == plan['suiteId'] for row in apps):
                 raise ValueError('Dedicated App name conflict or unsupported listing')
-            verified_image = verify_image(plan['imageId'])
+            prebuilt = plan['imageRecipe'] is not None
+            verified_image = ({'recipe': plan['imageRecipe'], 'resolutionPending': True}
+                              if prebuilt else verify_image(plan['imageId']))
             save(Path(output)/'preflight.json', {'workspace': workspace.name, 'environment': 'main', 'image': verified_image})
-            image = sdk.Image.from_id(plan['imageId'])
-            app, function = create_probe(sdk, image, root, plan['suiteId'])
+            image = prebuilt_image(sdk, environment) if prebuilt else sdk.Image.from_id(plan['imageId'])
+            app, function, image = create_probe(sdk, image, root, plan['suiteId'])
+            journal_app(app, ownership, output, prebuilt=prebuilt)
             ownership['creationAttempted'] = True
             save(Path(output)/'ownership.json', ownership)
             stage = 'app-create'
@@ -394,6 +485,11 @@ def worker(root, plan, approval, output):
                     raise ValueError('Owned App identity missing')
                 ownership['appId'] = app.app_id
                 save(Path(output)/'ownership.json', ownership)
+                if prebuilt:
+                    stage = 'prebuilt-image-verify'
+                    verified_image = admit_prebuilt(image, app.app_id, output)
+                    save(Path(output)/'preflight.json', {'workspace': workspace.name,
+                        'environment': 'main', 'image': verified_image})
                 stage = 'two-call-probe'
                 execute_calls(function, plan, app.app_id, output, execution_deadline=authority['deadline'])
         save(Path(output)/'worker-result.json', {'passed': True})

@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import hashlib
 import inspect
@@ -105,6 +106,22 @@ class SeamTests(unittest.TestCase):
         self.assertEqual(launched, [])
         self.assertFalse((self.root/'.local').exists())
 
+    def test_fixed_prebuilt_plan_binds_recipe_and_rejects_changes_before_any_process(self):
+        plan = seam.prepare(self.root, 'ct-modal-base', 'fixture-workspace', prebuilt_base=True)
+        self.assertIsNone(plan['imageId'])
+        self.assertEqual(plan['imageRecipe'], seam.PREBUILT_BASE)
+        seam.require_approval(self.root, plan, self.approval(plan))
+        for key, value in [('pythonVersion','3.11.12'),('builderVersion','PREVIEW'),
+                           ('namespace','workspace'),('forceBuild',True),('ignoreCache',True),
+                           ('allowGlobalDeployment',True),('customBuildAuthorized',True)]:
+            changed = copy.deepcopy(plan)
+            changed['imageRecipe'][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                seam.require_approval(self.root, changed, self.approval(changed))
+        with self.assertRaises(ValueError):
+            seam.prepare(self.root, 'ct-modal-base', 'fixture-workspace', 'im-Fixture', prebuilt_base=True)
+        self.assertFalse((self.root/'.local').exists())
+
     def test_approval_rejections_and_expanded_scope_precede_claim_and_process(self):
         changes = {'approved': False, 'planSha256': '0'*64, 'workspace': 'other', 'environment': 'prod',
                    'operationalAllowanceUsd': '1', 'invoiceCapVerified': True, 'boundedExposureAccepted': False,
@@ -153,7 +170,7 @@ class SeamTests(unittest.TestCase):
                 calls.append(('function', options))
                 return lambda function: function
         sdk = SimpleNamespace(__version__='1.6.1', App=App)
-        _, function = seam.create_probe(sdk, Image(), self.root, self.plan['suiteId'])
+        _, function, _ = seam.create_probe(sdk, Image(), self.root, self.plan['suiteId'])
         self.assertIs(function, probe.probe)
         self.assertEqual([call[0][1] for call in calls[:2]], ['/root/coppertop/__init__.py', '/root/coppertop/modal_seam_probe.py'])
         self.assertTrue(all(call[1] == {'copy':False} for call in calls[:2]))
@@ -175,9 +192,161 @@ class SeamTests(unittest.TestCase):
         inspect.signature(modal.App.function).bind(None, **seam.OPTIONS)
         with patch.object(modal.Client, 'from_env', side_effect=AssertionError('No authentication in definition')):
             image = modal.Image.from_id('imFixture'.replace('im','im-',1))
-            app, function = seam.create_probe(modal, image, self.root, self.plan['suiteId'])
+            app, function, _ = seam.create_probe(modal, image, self.root, self.plan['suiteId'])
         self.assertIsNone(app.app_id)
         self.assertIsInstance(function, modal.Function)
+
+    def global_response(self, *, status=None, version='Python 3.12.10 (fixture)', identity='im-Fixture'):
+        from modal_proto import api_pb2
+        return api_pb2.ImageGetOrCreateResponse(image_id=identity,
+            result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS if status is None else status),
+            metadata=api_pb2.ImageMetadata(python_version_info=version))
+
+    def test_prebuilt_selector_refuses_builder_and_bypass_settings_without_authentication(self):
+        import modal
+        from modal.config import config
+        from modal._utils.async_utils import synchronizer
+        from modal_proto import api_pb2
+        environment = modal.Environment.from_name('main',create_if_missing=False)
+        raw_environment = synchronizer._translate_in(environment)
+        metadata = api_pb2.EnvironmentMetadata(name='main')
+        metadata.settings.image_builder_version = '2025.06'
+        raw_environment._hydrate_metadata(metadata)
+        self.assertFalse(hasattr(environment,'_settings'))
+        def values(key):
+            return False if key in ('force_build','ignore_cache') else None
+        with patch.object(config,'get',side_effect=values), patch.dict(seam.os.environ,{},clear=True):
+            image = seam.prebuilt_image(modal, environment)
+            self.assertIsInstance(image,modal.Image)
+            for key in ('force_build','ignore_cache'):
+                with patch.object(config,'get',side_effect=lambda name: True if name==key else values(name)), self.assertRaises(ValueError):
+                    seam.prebuilt_image(modal,environment)
+            raw_environment._settings = SimpleNamespace(image_builder_version='2024.10')
+            with self.assertRaises(ValueError):
+                seam.prebuilt_image(modal,environment)
+            raw_environment._settings = SimpleNamespace(image_builder_version='2025.06')
+            with patch.dict(seam.os.environ,{'MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT':'0'}), self.assertRaises(ValueError):
+                seam.prebuilt_image(modal,environment)
+
+    def test_actual_pinned_sdk_loader_hits_only_exact_global_cache_after_app_journal(self):
+        import modal
+        from modal._utils.async_utils import synchronizer
+        from modal.config import config
+        self.output.mkdir()
+        environment = SimpleNamespace(_settings=SimpleNamespace(image_builder_version='2025.06'))
+        response = self.global_response()
+        async def lookup(req, **options):
+            self.assertEqual(req,seam.global_image_request(APP))
+            self.assertEqual(options,{'retry':None,'timeout':10})
+            self.assertEqual(json.loads((self.output/'ownership.json').read_bytes())['appId'],APP)
+            return response
+        original = AsyncMock(side_effect=lookup)
+        client = SimpleNamespace(_stub=SimpleNamespace(ImageGetOrCreate=original))
+        values = lambda key: False if key in ('force_build','ignore_cache','function_runtime_debug') else None
+        with patch.object(config,'get',side_effect=values), patch.dict(seam.os.environ,{},clear=True):
+            image = seam.prebuilt_image(modal,environment)
+            app = modal.App('ct-modal-fixture')
+            seam.journal_app(app,self.owner(),self.output,prebuilt=True)
+            raw_app, raw_image = synchronizer._translate_in(app), synchronizer._translate_in(image)
+            async def resolve():
+                async with raw_app._set_local_app(client,SimpleNamespace(app_id=APP)):
+                    context = SimpleNamespace(app_id=APP,environment_name='main',client=client)
+                    with patch('modal._image._get_environment_cached',AsyncMock(return_value=environment)):
+                        await raw_image._load(raw_image,SimpleNamespace(),context,None)
+                    self.assertEqual(raw_image.object_id,'im-Fixture')
+            asyncio.run(resolve())
+        self.assertIs(client._stub.ImageGetOrCreate,original)
+        self.assertEqual(original.await_count,1)
+        resolved = json.loads((self.output/'resolved-image.json').read_bytes())
+        self.assertEqual(resolved,{'appId':APP,'imageId':'im-Fixture','recipe':seam.PREBUILT_BASE,
+                                   'cacheHit':True,'customBuildRequested':False})
+
+    def test_global_request_guard_denies_custom_scope_and_pending_or_unverified_results(self):
+        import modal
+        from modal._utils.async_utils import synchronizer
+        from modal_proto import api_pb2
+        cases = [('namespace',api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE),('force_build',True),
+                 ('ignore_cache',True),('allow_global_deployment',True),('app_id',FOREIGN_APP),
+                 ('builder_version','PREVIEW'),('commands','RUN touch custom')]
+        for field,value in cases:
+            output = self.root/field;output.mkdir()
+            original = AsyncMock(return_value=self.global_response())
+            client = SimpleNamespace(_stub=SimpleNamespace(ImageGetOrCreate=original))
+            app = modal.App('ct-modal-fixture');seam.journal_app(app,self.owner(),output,prebuilt=True)
+            request = seam.global_image_request(APP)
+            if field=='commands':
+                request.image.dockerfile_commands.append(value)
+            else:
+                setattr(request,field,value)
+            async def denied():
+                async with synchronizer._translate_in(app)._set_local_app(client,SimpleNamespace(app_id=APP)):
+                    with self.assertRaises(ValueError):
+                        await client._stub.ImageGetOrCreate(request)
+            asyncio.run(denied())
+            original.assert_not_awaited()
+            self.assertIs(client._stub.ImageGetOrCreate,original)
+            self.assertFalse((output/'resolved-image.json').exists())
+        for label,response in [('pending',self.global_response(status=0)),
+                               ('failure',self.global_response(status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE)),
+                               ('wrong-version',self.global_response(version='Python 3.12.11')),
+                               ('missing-id',self.global_response(identity=''))]:
+            output = self.root/label;output.mkdir()
+            original = AsyncMock(return_value=response)
+            client = SimpleNamespace(_stub=SimpleNamespace(ImageGetOrCreate=original))
+            app = modal.App('ct-modal-fixture');seam.journal_app(app,self.owner(),output,prebuilt=True)
+            async def denied_reply():
+                async with synchronizer._translate_in(app)._set_local_app(client,SimpleNamespace(app_id=APP)):
+                    with self.assertRaises(ValueError):
+                        await client._stub.ImageGetOrCreate(seam.global_image_request(APP))
+            asyncio.run(denied_reply())
+            self.assertEqual(original.await_count,1)
+            self.assertFalse((output/'resolved-image.json').exists())
+
+    def test_image_resolution_failure_or_hang_retains_original_exact_app_cleanup(self):
+        import modal
+        from modal._utils.async_utils import synchronizer
+        for hangs in (False,True):
+            self.plan = seam.prepare(self.root,'ct-modal-basehang' if hangs else 'ct-modal-basedeny',
+                                     'fixture-workspace',prebuilt_base=True)
+            self.output = self.root/('basehang' if hangs else 'basedeny');self.output.mkdir()
+            seam.claim_execution(self.root,self.plan,self.output)
+            seam.save(self.output/'plan.json',self.plan);seam.save(self.output/'approval.json',self.approval())
+            async def broken(*args,**kwargs):
+                if hangs:
+                    await asyncio.Event().wait()
+                raise PermissionError('DO-NOT-RECORD')
+            original = AsyncMock(side_effect=broken)
+            client = SimpleNamespace(_stub=SimpleNamespace(ImageGetOrCreate=original))
+            app = modal.App(self.plan['suiteId']);seam.journal_app(app,self.owner(),self.output,prebuilt=True)
+            async def resolve():
+                async with synchronizer._translate_in(app)._set_local_app(client,SimpleNamespace(app_id=APP)):
+                    await client._stub.ImageGetOrCreate(seam.global_image_request(APP))
+            with self.assertRaises(asyncio.TimeoutError if hangs else PermissionError):
+                asyncio.run(asyncio.wait_for(resolve(),timeout=0.01))
+            _,cleanup,_,calls,_ = self.fake_process()
+            result = seam.cleanup_receipt(self.root,self.plan,self.output,cleanup=cleanup)
+            self.assertTrue(result['confirmed']);self.assertEqual(calls,[APP])
+            self.assertIs(client._stub.ImageGetOrCreate,original)
+            self.assertNotIn('DO-NOT-RECORD',(self.output/'ownership.json').read_text())
+
+    def test_prebuilt_admission_requires_exact_cached_identity_and_independent_metadata(self):
+        self.output.mkdir()
+        image = SimpleNamespace(object_id='im-Fixture')
+        original = {'appId':APP,'imageId':'im-Fixture','recipe':seam.PREBUILT_BASE,
+                    'cacheHit':True,'customBuildRequested':False}
+        for key,value in [('appId',FOREIGN_APP),('imageId','im-Other'),('recipe',{}),
+                          ('cacheHit',False),('customBuildRequested',True)]:
+            changed = {**original,key:value};seam.save(self.output/'resolved-image.json',changed)
+            with patch.object(seam,'verify_image') as verify, self.assertRaises(ValueError):
+                seam.admit_prebuilt(image,APP,self.output)
+            verify.assert_not_called()
+        seam.save(self.output/'resolved-image.json',original)
+        with patch.object(seam,'verify_image',side_effect=ValueError('Metadata mismatch')) as verify, self.assertRaises(ValueError):
+            seam.admit_prebuilt(image,APP,self.output)
+        verify.assert_called_once_with('im-Fixture',python_version='3.12.10')
+        with patch.object(seam,'verify_image',return_value={'imageId':'im-Fixture','pythonVersion':'3.12.10','buildRequested':False}) as verify:
+            self.assertEqual(seam.admit_prebuilt(image,APP,self.output)['recipe'],seam.PREBUILT_BASE)
+        verify.assert_called_once_with('im-Fixture',python_version='3.12.10')
 
     def test_tls_bootstrap_is_application_local_preserves_verification_and_precedes_sdk(self):
         script = '''
@@ -482,6 +651,7 @@ else:
         self.assertEqual(calls,[])
 
     def test_pre_tls_original_manifest_remains_cleanup_only_after_controller_upgrade(self):
+        self.plan.pop('imageRecipe')
         self.plan['sourceSha256'] = {name:self.plan['sourceSha256'][name] for name in seam.LEGACY_SOURCE_FILES}
         self.plan['functionOptions'] = json.loads(seam.canonical(seam.LEGACY_OPTIONS))
         with self.assertRaises(ValueError):

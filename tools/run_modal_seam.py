@@ -16,19 +16,21 @@ def main(argv=None):
     parser.add_argument('--suite', default=None)
     parser.add_argument('--workspace')
     parser.add_argument('--image-id')
+    parser.add_argument('--prebuilt-base', action='store_true', help='Resolve only the fixed global Python 3.12 base inside the one owned App')
     parser.add_argument('--plan', type=Path)
     parser.add_argument('--approval', type=Path)
     parser.add_argument('--output', type=Path, default=ROOT/'.local/modal-seam-preparation')
     args = parser.parse_args(argv)
     if args.command == 'prepare':
         suite = args.suite or 'ct-modal-'+uuid.uuid4().hex[:20]
-        plan = seam.prepare(ROOT, suite, args.workspace, args.image_id)
+        plan = seam.prepare(ROOT, suite, args.workspace, args.image_id, prebuilt_base=args.prebuilt_base)
         args.output.mkdir(parents=True, exist_ok=True)
         path = args.output/'plan.json'
         with path.open('xb') as handle:
             handle.write(seam.canonical(plan))
         print(json.dumps({'plan': str(path), 'planSha256': seam.sha(seam.canonical(plan)),
                           'workspace': plan['workspace'], 'imageId': plan['imageId'],
+                          'imageRecipe': plan['imageRecipe'],
                           'launchReady': False, 'cloudActionsPerformed': False}))
         return 0
     if args.plan is None:
