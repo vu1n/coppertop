@@ -105,6 +105,30 @@ class CachedStageTests(unittest.TestCase):
         response['files']['result.json'] = json.dumps(result)
         with self.assertRaises(ValueError):require_complete(response)
 
+    def test_boolean_timing_rejected_for_every_scheduled_row(self):
+        import json
+        from coppertop.colocation_stage import require_complete
+        for index in range(24):
+            for value in (True, False):
+                response = self.response()
+                result = json.loads(response['files']['result.json'])
+                row = result['rows'][index]
+                with self.subTest(kind=row['kind'], phase=row['phase'], case=row['index'], value=value):
+                    row['seconds'] = value
+                    response['files']['result.json'] = json.dumps(result)
+                    with self.assertRaisesRegex(ValueError, 'Invalid benchmark timing'):
+                        require_complete(response)
+
+    def test_positive_integer_seconds_remain_valid_json_numbers(self):
+        import json
+        from coppertop.colocation_stage import require_complete
+        response = self.response()
+        result = json.loads(response['files']['result.json'])
+        for row in result['rows']:
+            row['seconds'] = 1
+        response['files']['result.json'] = json.dumps(result)
+        self.assertEqual(require_complete(response), result)
+
     def test_valid_case_hashes_preserve_unmodified_result_in_any_row_order(self):
         import json
         from coppertop.colocation_stage import require_complete
