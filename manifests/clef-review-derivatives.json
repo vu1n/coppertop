@@ -3,14 +3,14 @@
   "original_recovery_commit": "c381330c16dd43d75226af845555c795558cd78b",
   "original_provenance_sha256": "372adbebebfdfbca7cef293963c279dbf5edd702dc707d29bd3d602aad8b0364",
   "review_finding": "https://github.com/vu1n/coppertop/pull/16#discussion_r4240335094",
-  "change": "Explicit runtime allowlist and owned temporary HOME/XDG/Hugging Face/Torch/pip locations prevent default discovery of controller credentials. All subprocess owners retain these directories through child completion and cleanup. If registered child status remains live or unknown, HOME is retained and the primary error receives a cleanup note; no new process supervisor or hard-stop qualification is claimed. Clef cache validation, CPU gate and worker compile only the exact pinned authenticated reference bytes, bypassing package and bytecode caches. Original source and recovery metadata remain preserved; this file binds the reviewed derivatives.",
+  "change": "Explicit runtime allowlist and owned temporary HOME/XDG/Hugging Face/Torch/pip locations prevent default discovery of controller credentials. All subprocess owners retain these directories through child completion and cleanup. If registered child status remains live or unknown, HOME is retained and the primary error receives a cleanup note; no new process supervisor or hard-stop qualification is claimed. Clef cache validation, CPU gate and worker compile only the exact pinned authenticated reference bytes, bypassing package and bytecode caches. Original source and recovery metadata remain preserved; this file binds the reviewed derivatives. The final benchmark receipt additionally requires a strict lowercase SHA256 actor chunk hash for every scheduled actor row and identical hashes per case across all five phases; mismatches fail parity rather than passing on timings alone. Clef output hashes are not required by this correction.",
   "files": {
     "coppertop/colocation_worker.py": "03834a739cf8434e7b89eb3dc5a55474bde4365b8b94976f5a95bf109dd82168",
     "coppertop/clef_cache.py": "4f1cf3ea5fb3a5dd1a8c7e32827137db02acf91be9bca0393733ba2159d9ea74",
-    "coppertop/colocation_stage.py": "f0a561062afee00b9f50a293e1b8b0c2b9ea678602889a758ad68b92e991e4b4",
+    "coppertop/colocation_stage.py": "fc3375a5f8fff3a3ce0e1c4afdac4ccb4aeda999e5ac53bb76c82a6a2822253c",
     "tests/test_clef_identity.py": "58d00dc3f531b8f68357164e19153b81855cc9fbbc5cf53c3c5b8ee704febad3",
     "tests/test_evaluation_environment.py": "fad0925e1b1027047b286882b468a97a795990158c2f78be5fb083caafad7123",
-    "tests/test_colocation_worker.py": "4dde037cbf5906dfdca37a088b19e341a4f31dc846e6eadbe2431dbaec0975da"
+    "tests/test_colocation_worker.py": "4a1981d95be1db13634810d80c8335a476250740462a9f1002ba61a56269da17"
   },
   "model_runtime_verified": false,
   "provider_calls": false,
@@ -18,6 +18,7 @@
   "review_findings": [
     "https://github.com/vu1n/coppertop/pull/16#discussion_r4240335094",
     "https://github.com/vu1n/coppertop/pull/16#discussion_r4240373872",
-    "https://github.com/vu1n/coppertop/pull/16#discussion_r4240373873"
+    "https://github.com/vu1n/coppertop/pull/16#discussion_r4240373873",
+    "https://github.com/vu1n/coppertop/pull/16#discussion_r4240411924"
   ]
 }

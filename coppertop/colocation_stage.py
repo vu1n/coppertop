@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import sys
@@ -71,6 +72,15 @@ def require_complete(response):
     if any(not isinstance(r['seconds'], (int,float)) or not math.isfinite(r['seconds']) or r['seconds'] <= 0
            for r in rows):
         raise ValueError('Invalid benchmark timing')
+    actor_hashes = {}
+    for row in rows:
+        if row['kind'] != 'actor':
+            continue
+        chunk_hash = row.get('chunk_sha256')
+        if not isinstance(chunk_hash, str) or re.fullmatch(r'[0-9a-f]{64}', chunk_hash) is None:
+            raise ValueError('Missing or malformed actor chunk SHA256')
+        if actor_hashes.setdefault(row['index'], chunk_hash) != chunk_hash:
+            raise ValueError(f"Actor chunk parity failed for case {row['index']}")
     return result
 
 
