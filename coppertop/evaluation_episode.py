@@ -122,8 +122,6 @@ def run_episode(env, actor, scorer, *, episode_id, seed, clef_enabled,
             if cleanup_exhausted or clock.monotonic_ns() >= began + limit:
                 raise TimeoutError(kind + ' cooperative deadline expired')
         except BaseException as error:
-            if not cleanup and not isinstance(error, Exception):
-                raise
             row.update(status='timeout' if isinstance(error, TimeoutError) else 'failed',
                        completed_ns=clock.monotonic_ns(), error_type=type(error).__name__)
             note(row, error)
@@ -136,6 +134,10 @@ def run_episode(env, actor, scorer, *, episode_id, seed, clef_enabled,
                 except Exception:
                     # The cancellation row retains the secondary failure separately.
                     pass
+            if not cleanup and not isinstance(error, Exception):
+                # Journal first; main-thread interrupts keep their original identity.
+                # The owned gate worker records its failures instead of escaping.
+                raise
             raise _OperationError(kind + ' failed') from error
         row.update(status='completed', completed_ns=clock.monotonic_ns())
         if cleanup:

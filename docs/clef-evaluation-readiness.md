@@ -337,6 +337,9 @@ then fails; an invalid or missing Frame does not claim execution. Runner cleanup
 reports secondary cancellation/join failures while preserving the primary
 failure, including cancellation exceptions. The regressions cover both deadline
 paths, identical admitted actions and failed cleanup.
+Worker scorer/extra-actor cancellation is recorded as a failed submitted operation
+and makes the episode infrastructure-invalid. A worker readiness signal alone
+cannot qualify an operation that raised a cancellation exception.
 
 `evaluation_roundtrip` uses the existing LocalStore/Tape/archive/stage machinery
 to seal, locally fsync, independently reload and hash the complete ten-object

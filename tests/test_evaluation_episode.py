@@ -171,6 +171,63 @@ class EpisodeFixtureTests(unittest.TestCase):
         self.assertFalse(result['accounting']['infrastructure_valid'])
         self.assert_closed()
 
+    def test_canceled_scorer_is_failed_and_keeps_partial_old_queue_without_retry(self):
+        with patch.object(type(self.scorer), '__call__', side_effect=asyncio.CancelledError('score canceled')):
+            result = self.run_episode()
+        accounting = result['accounting']
+        self.assertEqual(result['tape'].actions, episode._fixture_chunk(1152, 0))
+        self.assertEqual(accounting['counts']['scorer'],
+                         {'submitted': 1, 'completed': 0, 'failed': 1, 'timeout': 0})
+        self.assertEqual(accounting['counts']['actor']['submitted'], 1)
+        self.assertEqual(accounting['counts']['actor_extra']['submitted'], 0)
+        self.assertEqual(accounting['counts']['actor_normal']['submitted'], 0)
+        self.assertEqual(accounting['gate']['error_type'], 'CancelledError')
+        self.assertEqual(accounting['gate']['query_calls'], 0)
+        self.assertEqual(accounting['errors'][0]['error_type'], 'CancelledError')
+        self.assertTrue(all(row['status'] != 'submitted' for row in accounting['journal']))
+        self.assertTrue(all(row['source'] == 'old_queue' for row in accounting['action_sources'][8:]))
+        self.assertFalse(accounting['infrastructure_valid'])
+        self.assertFalse(accounting['success'])
+        self.assertFalse(accounting['attributable_action_change'])
+        self.assert_closed()
+
+    def test_canceled_extra_actor_is_failed_and_keeps_partial_old_queue_without_retry(self):
+        original = type(self.actor).__call__
+        def cancel_extra(actor, inputs, seed):
+            if int(inputs[0][0, 1]) == 8:
+                raise asyncio.CancelledError('extra canceled')
+            return original(actor, inputs, seed)
+        with patch.object(type(self.actor), '__call__', cancel_extra):
+            result = self.run_episode()
+        accounting = result['accounting']
+        self.assertEqual(result['tape'].actions, episode._fixture_chunk(1152, 0))
+        self.assertEqual(accounting['counts']['actor_extra'],
+                         {'submitted': 1, 'completed': 0, 'failed': 1, 'timeout': 0})
+        self.assertEqual(accounting['counts']['actor']['submitted'], 2)
+        self.assertEqual(accounting['counts']['actor_normal']['submitted'], 0)
+        self.assertEqual(accounting['counts']['scorer']['completed'], 1)
+        self.assertEqual(accounting['gate']['error_type'], 'CancelledError')
+        self.assertEqual(accounting['gate']['query_calls'], 1)
+        self.assertEqual(accounting['errors'][0]['phase'], 'extra')
+        self.assertEqual(accounting['errors'][0]['error_type'], 'CancelledError')
+        self.assertTrue(all(row['status'] != 'submitted' for row in accounting['journal']))
+        self.assertTrue(all(row['source'] == 'old_queue' for row in accounting['action_sources'][8:]))
+        self.assertFalse(accounting['infrastructure_valid'])
+        self.assertFalse(accounting['success'])
+        self.assertFalse(accounting['attributable_action_change'])
+        self.assert_closed()
+
+    def test_main_thread_interrupt_propagates_original_identity_after_cleanup(self):
+        for primary in (KeyboardInterrupt('initial actor interrupted'), asyncio.CancelledError('initial canceled')):
+            with self.subTest(primary=type(primary).__name__):
+                self.setUp()
+                with patch.object(type(self.actor), '__call__', side_effect=primary), \
+                     patch.object(self.actor, 'cancel', side_effect=asyncio.CancelledError('secondary cancellation')):
+                    with self.assertRaises(type(primary)) as caught:
+                        self.run_episode()
+                self.assertIs(caught.exception, primary)
+                self.assert_closed()
+
     def test_actor_timeout_and_cancel_failure_do_not_mask_primary_error(self):
         original = type(self.actor).__call__
         def late(actor, inputs, seed):

@@ -77,7 +77,7 @@ def gated_rollout(env, scorer, query, inputs, old_chunk, *, observed_frame, boun
                     outcome['chunk'] = native_actions(query(inputs, seed), chunk=True)
                 finally:
                     outcome['actor_latency_ns'] = time.monotonic_ns() - actor_started
-        except Exception as error:
+        except BaseException as error:
             outcome['error_type'] = type(error).__name__
         finally:
             outcome['finished_ns'] = time.monotonic_ns()

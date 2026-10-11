@@ -77,7 +77,7 @@ class InterventionTests(unittest.TestCase):
         return (policy or GatePolicy(probability_decimals=4)).decide(value, observed_frame=8,
             **dict({'current_frame': 8, 'queued_until': 16, 'remaining_queries': 1}, **kwargs))
 
-    def run_paused(self, value=None, *, enabled=True, query_error=None, score_ms=895,
+    def run_paused(self, value=None, *, enabled=True, query_error=None, score_error=None, score_ms=895,
                    actor_ms=399, stop_after=None, remaining_queries=1, timeout_seconds=5,
                    step_ms=1):
         clock = Clock()
@@ -89,6 +89,8 @@ class InterventionTests(unittest.TestCase):
         def scorer():
             calls.append(('score', len(env.actions)))
             clock.advance(score_ms)
+            if score_error:
+                raise score_error
             return value if value is not None else answers(.8, .1, .0999)
 
         def query(inputs, seed):
@@ -204,6 +206,19 @@ class InterventionTests(unittest.TestCase):
     def test_paused_deadline_is_infrastructure_failure_without_controls(self):
         with self.assertRaises(TimeoutError):
             self.run_paused(timeout_seconds=1)
+
+    def test_canceled_worker_score_or_actor_is_recorded_and_keeps_old_queue(self):
+        for phase in ('score', 'actor'):
+            with self.subTest(phase=phase):
+                key = 'score_error' if phase == 'score' else 'query_error'
+                old, _, env, calls, result = self.run_paused(**{key: asyncio.CancelledError(phase + ' canceled')})
+                self.assertEqual(result['error_type'], 'CancelledError')
+                self.assertEqual(result['scorer_calls'], 1)
+                self.assertEqual(result['query_calls'], 0 if phase == 'score' else 1)
+                self.assertEqual(len(calls), 1 if phase == 'score' else 2)
+                self.assertEqual(env.actions, list(native_actions(old, chunk=True)[8:12]))
+                self.assertIsNone(result['committed_steps'])
+                self.assertFalse(result['attributable_action_change'])
 
     def test_paused_functional_steps_need_no_fifty_ms_wall_pacing_but_keep_deadline(self):
         _, candidate, env, _, result = self.run_paused(step_ms=80)
