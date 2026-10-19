@@ -199,6 +199,12 @@ class SnapshotTests(FixtureStore, unittest.TestCase):
         empty = snapshot.query('SELECT CAST(frame_index AS VARCHAR) AS x FROM frames WHERE frame_index < 0')
         self.assertEqual(empty.num_rows, 0)
         self.assertEqual(empty.column_names, ['x'])
+        branches = ["SELECT repeat('x', 3) AS x FROM frames", 'SELECT outcome_scope AS x FROM frames']
+        expected = sorted(['xxx'] * 4 + ['bounded prefix'] * 4)
+        for order in (branches, branches[::-1]):
+            result = snapshot.query(' UNION ALL '.join(order))
+            self.assertEqual(sorted(result['x'].to_pylist()), expected)
+            self.assertTrue(result.schema.field('x').nullable)
         with patch('coppertop.analysis.MAX_TABLE_BYTES', 1):
             with self.assertRaisesRegex(ValueError, 'Decoded analysis table byte bound'):
                 snapshot.query('SELECT CAST(frame_index AS VARCHAR) AS x FROM frames')
