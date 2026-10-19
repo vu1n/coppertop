@@ -2,4 +2,4 @@
 pyarrow==20.0.0
 numpy==2.4.6
 pylance==13.0.0
-datafusion==55.0.0
+datafusion==54.0.0

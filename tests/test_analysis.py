@@ -152,6 +152,14 @@ class FrameTests(FixtureStore, unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'metadata byte bound'):
                 from_release(self.store, key)
 
+    def test_repeated_metadata_is_bounded_before_row_expansion(self):
+        _, _, record = fixture(self.store)
+        record['official_result']['outcome_scope'] = 'x' * 4000
+        key = release(self.store, [self.store.put(canonical(record))])
+        with patch('coppertop.analysis.MAX_TABLE_BYTES', 10000):
+            with self.assertRaisesRegex(ValueError, 'Repeated episode metadata'):
+                from_release(self.store, key)
+
 
 @unittest.skipUnless(HAS_ANALYSIS, 'Install requirements-analysis.txt for Lance/DataFusion integration')
 class SnapshotTests(FixtureStore, unittest.TestCase):
@@ -183,10 +191,46 @@ class SnapshotTests(FixtureStore, unittest.TestCase):
 
     def test_sql_cannot_write_or_create_tables(self):
         _, _, snapshot = self.snapshot()
+        before = {p: digest(p.read_bytes()) for p in (self.root / 'analysis').rglob('*') if p.is_file()}
         for statement in ['DELETE FROM frames', 'CREATE TABLE bad AS SELECT * FROM frames',
                           f"COPY frames TO '{self.root}/forbidden.parquet' STORED AS PARQUET"]:
             with self.assertRaises(Exception): snapshot.query(statement)
         self.assertFalse((self.root / 'forbidden.parquet').exists())
+        snapshot.query('SELECT COUNT(*) FROM frames')
+        self.assertEqual(before, {p: digest(p.read_bytes()) for p in (self.root / 'analysis').rglob('*') if p.is_file()})
+
+    def test_official_ffi_provider_queries_without_python_table_materialization(self):
+        import lance
+        _, _, snapshot = self.snapshot()
+        with patch('lance.FFILanceTableProvider', wraps=lance.FFILanceTableProvider) as provider:
+            with patch.object(lance.LanceDataset, 'to_table', side_effect=AssertionError('No Python Arrow bridge')):
+                result = snapshot.query('SELECT frame_index FROM frames WHERE time_ns >= 100000000 ORDER BY frame_index')
+        self.assertEqual(provider.call_count, 2)
+        self.assertEqual(result.to_pylist(), [{'frame_index': 2}, {'frame_index': 3}])
+
+    def test_provider_mismatch_fails_without_silent_arrow_fallback(self):
+        _, _, snapshot = self.snapshot()
+        with patch('lance.FFILanceTableProvider', side_effect=ImportError('Provider ABI mismatch')):
+            with patch.object(snapshot, 'table', side_effect=AssertionError('No fallback allowed')):
+                with self.assertRaisesRegex(ImportError, 'ABI mismatch'):
+                    snapshot.query('SELECT COUNT(*) FROM frames')
+
+    def test_snapshot_row_bound_fails_before_provider_open(self):
+        _, checksum, _ = self.snapshot()
+        with patch('coppertop.analysis.MAX_ROWS', 3), patch('lance.dataset', side_effect=AssertionError('Oversized snapshot must not open')):
+            with self.assertRaisesRegex(ValueError, 'row limit'):
+                Snapshot(self.root / 'analysis', checksum)
+
+    def test_snapshot_byte_bounds_reject_before_query_registration(self):
+        _, checksum, snapshot = self.snapshot()
+        with patch('coppertop.analysis.MAX_SNAPSHOT_BYTES', 1), patch('lance.dataset', side_effect=AssertionError('No provider open')):
+            with self.assertRaisesRegex(ValueError, 'Physical snapshot byte bound'):
+                Snapshot(self.root / 'analysis', checksum)
+        with patch('coppertop.analysis.MAX_TABLE_BYTES', 1):
+            with self.assertRaisesRegex(ValueError, 'Decoded analysis table byte bound'):
+                Snapshot(self.root / 'analysis', checksum)
+            with self.assertRaisesRegex(ValueError, 'Decoded analysis table byte bound'):
+                snapshot.query('SELECT frame_id FROM frames')
 
     def test_snapshot_identity_tampering_and_overwrite_refused(self):
         data, checksum, snapshot = self.snapshot()
@@ -203,7 +247,10 @@ class SnapshotTests(FixtureStore, unittest.TestCase):
         changed = data.table.set_column(data.table.schema.get_field_index('outcome_scope'), 'outcome_scope', pa.array(['newer'] * 4))
         newer = lance.write_dataset(changed, self.root / 'analysis/frames.lance', mode='overwrite')
         self.assertGreater(newer.version, snapshot.manifest['lance_versions']['frames'])
-        self.assertEqual(Snapshot(self.root / 'analysis', checksum).table().to_pylist(), data.table.to_pylist())
+        pinned = Snapshot(self.root / 'analysis', checksum)
+        self.assertEqual(pinned.table().to_pylist(), data.table.to_pylist())
+        self.assertEqual(pinned.query('SELECT outcome_scope FROM frames ORDER BY frame_index').to_pylist(),
+                         data.table.select(['outcome_scope']).to_pylist())
 
     def test_logical_content_identity_reproduces_despite_physical_lance_ids(self):
         data, _, a = self.snapshot()

@@ -12,7 +12,7 @@ Install the core project normally, then the hash-locked optional dependencies:
 ```
 
 The tested combination is Python 3.12.14, PyArrow 20.0.0, NumPy 2.4.6,
-`pylance` 13.0.0 (import `lance`, the open format), and DataFusion 55.0.0.
+`pylance` 13.0.0 (import `lance`, the open format), and DataFusion 54.0.0.
 The existing core pins are unchanged; `.[analysis]` also declares the direct
 optional dependencies. No LanceDB service is required.
 
@@ -71,16 +71,32 @@ immutability; external tools can still alter or delete files, causing verificati
 or reads to fail.
 
 The current limit is 10,000 total frames, 100 episodes per release, 8MiB of
-release metadata, 64 history positions and 64MiB of decoded signal Parquet per
-episode. DataFusion registers bounded Arrow tables
-read from pinned Lance datasets. Direct `register_dataset(LanceDataset)` fails
-with a fragment-scanner signature mismatch in this exact dependency combination.
-The Arrow bridge therefore materializes each table, with one DataFusion target
-partition; no cross-engine zero-copy or
-scan-pushdown performance claim is made. SQL DDL, DML and other statements,
+release metadata, 64 history positions, 64MiB of decoded signal Parquet per
+release, 64MiB per derived table/query result and 256MiB of physical snapshot
+files. Repeated episode metadata is checked before row expansion. Snapshot
+audits and query results are read in batches with cumulative byte/row checks;
+these are application bounds, not a sandbox against hostile codecs or SQL
+expressions that allocate oversized individual batches. DataFusion registers the
+official `lance.FFILanceTableProvider` against
+each pinned Lance dataset, with one target partition. Queries use the native
+streaming provider, including basic filter and column projection pushdown. SQL
+DDL, DML and other statements,
 including COPY, are disabled. This is a local query API, not an untrusted SQL
-service or process sandbox. Larger datasets need a separately validated streaming
-or native table-provider integration.
+service or process sandbox. Snapshot construction/opening still performs bounded
+content-hash validation, and `table()` explicitly materializes a bounded table.
+The presence of a streaming query provider does not lift any source/snapshot bound.
+
+The first prototype tried DataFusion55's generic PyArrow dataset adapter, which
+calls Lance fragment methods with incompatible arguments (`scanner` positional
+schema / `get_fragments(filter=...)`). That is not the documented native integration.
+The official FFI provider instead rejected DataFusion55 with `Incompatible DataFusion
+table provider major version 54; expected 55`. Lance13's package test metadata
+also declares DataFusion>=54,<55. Pinning DataFusion54 resolves that ABI mismatch
+without changing PyArrow or Lance. A native probe returned the expected filtered
+rows and an FFI `FilteredReadExec` plan. There is no silent Arrow fallback: an
+unsupported provider/runtime combination fails registration explicitly. This is
+a resolved integration/configuration issue, not a verified upstream limitation
+of the supported combination or a whole-system performance result.
 
 ## Verification
 
@@ -92,7 +108,9 @@ or native table-provider integration.
 Unit fixtures compare SQL filtering/grouping with PyArrow, exact Lance neighbors
 with NumPy, and verify native values, unknown outcomes, DEV grouping, history
 boundaries, immutable-version reads, repeatable content identity and corruption
-rejection. Lance/DataFusion integration tests skip when optional dependencies are
+rejection. Native-provider regression tests forbid the Python `to_table` query
+bridge, check registration failure stays closed and verify queries do not change
+snapshot files. Lance/DataFusion integration tests skip when optional dependencies are
 absent. `tests/test_analysis_prefix.py` is an opt-in smoke test using existing
 preserved local archives; `COPPERTOP_PREFIX_ARCHIVES` is a JSON array of
 `{"path": "/existing/evidence.tar", "sha256": "<verified digest>"}` entries.
@@ -102,6 +120,7 @@ zero completed outcome labels and no predictive-performance claim. They are not
 committed as a dataset or made eligible for training.
 
 Official API references: [Lance read/write and snapshots](https://lance.org/guide/read_and_write/),
+[official Lance/DataFusion FFI integration](https://lance.org/integrations/datafusion/),
 [DataFusion Arrow registration](https://datafusion.apache.org/python/user-guide/data-sources.html),
 [DataFusion SQL options](https://datafusion.apache.org/python/autoapi/datafusion/context/index.html).
 

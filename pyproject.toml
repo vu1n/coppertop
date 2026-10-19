@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = ["pyarrow==20.0.0", "numpy==2.4.6", "av==15.1.0"]
 
 [project.optional-dependencies]
-analysis = ["pylance==13.0.0", "datafusion==55.0.0"]
+analysis = ["pylance==13.0.0", "datafusion==54.0.0"]
 
 [tool.setuptools.packages.find]
 include = ["coppertop*"]
