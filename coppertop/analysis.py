@@ -48,12 +48,12 @@ def _table_hash(table):
 def _bounded_batches(source, schema):
     batches, total, rows = [], 0, 0
     for batch in source:
-        total += batch.nbytes
+        total += batch.get_total_buffer_size()
         rows += batch.num_rows
         if total > MAX_TABLE_BYTES or rows > MAX_ROWS:
             raise ValueError('Decoded analysis table byte bound exceeded')
         batches.append(batch)
-    return pa.Table.from_batches(batches, schema=schema)
+    return pa.Table.from_batches(batches, schema=None if batches else schema)
 
 
 def _bounded_table(dataset):

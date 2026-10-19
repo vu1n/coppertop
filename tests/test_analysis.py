@@ -189,6 +189,20 @@ class SnapshotTests(FixtureStore, unittest.TestCase):
         for k in (0, True, 10001):
             with self.assertRaises(ValueError): snapshot.nearest(query, k=k)
 
+    def test_native_sql_expression_schemas_and_view_buffers(self):
+        _, _, snapshot = self.snapshot()
+        result = snapshot.query('SELECT CAST(frame_index AS VARCHAR) AS x FROM frames ORDER BY frame_index')
+        self.assertEqual(result.to_pylist(), [{'x': str(i)} for i in range(4)])
+        for expression, value in [("repeat('x', 3)", 'xxx'), ("concat('x', 'y')", 'xy')]:
+            result = snapshot.query(f'SELECT {expression} AS x FROM frames')
+            self.assertEqual(result.to_pylist(), [{'x': value}] * 4)
+        empty = snapshot.query('SELECT CAST(frame_index AS VARCHAR) AS x FROM frames WHERE frame_index < 0')
+        self.assertEqual(empty.num_rows, 0)
+        self.assertEqual(empty.column_names, ['x'])
+        with patch('coppertop.analysis.MAX_TABLE_BYTES', 1):
+            with self.assertRaisesRegex(ValueError, 'Decoded analysis table byte bound'):
+                snapshot.query('SELECT CAST(frame_index AS VARCHAR) AS x FROM frames')
+
     def test_sql_cannot_write_or_create_tables(self):
         _, _, snapshot = self.snapshot()
         before = {p: digest(p.read_bytes()) for p in (self.root / 'analysis').rglob('*') if p.is_file()}

@@ -74,7 +74,10 @@ The current limit is 10,000 total frames, 100 episodes per release, 8MiB of
 release metadata, 64 history positions, 64MiB of decoded signal Parquet per
 release, 64MiB per derived table/query result and 256MiB of physical snapshot
 files. Repeated episode metadata is checked before row expansion. Snapshot
-audits and query results are read in batches with cumulative byte/row checks;
+audits and query results are read in batches with cumulative buffer-byte/row checks
+(including Arrow string-view buffers); nonempty SQL results use the emitted schema,
+which can have stricter nullability than the logical plan. Empty results retain the
+planned schema. These checks are conservative for batches sharing backing buffers;
 these are application bounds, not a sandbox against hostile codecs or SQL
 expressions that allocate oversized individual batches. DataFusion registers the
 official `lance.FFILanceTableProvider` against
