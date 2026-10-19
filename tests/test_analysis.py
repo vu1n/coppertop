@@ -209,6 +209,16 @@ class SnapshotTests(FixtureStore, unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Decoded analysis table byte bound'):
                 snapshot.query('SELECT CAST(frame_index AS VARCHAR) AS x FROM frames')
 
+    def test_native_sql_join_preserves_duplicate_column_names(self):
+        _, _, snapshot = self.snapshot()
+        result = snapshot.query('SELECT a.frame_index, b.frame_index FROM frames a JOIN frames b '
+                                'ON a.frame_index=b.frame_index ORDER BY a.frame_index')
+        self.assertEqual(result.column_names, ['frame_index', 'frame_index'])
+        self.assertEqual([column.to_pylist() for column in result.columns], [list(range(4))] * 2)
+        result = snapshot.query('SELECT * FROM frames a JOIN windows b ON a.frame_id=b.frame_id')
+        self.assertEqual(result.num_rows, 4)
+        self.assertEqual(result.column_names.count('frame_id'), 2)
+
     def test_sql_cannot_write_or_create_tables(self):
         _, _, snapshot = self.snapshot()
         before = {p: digest(p.read_bytes()) for p in (self.root / 'analysis').rglob('*') if p.is_file()}

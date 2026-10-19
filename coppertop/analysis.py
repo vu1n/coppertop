@@ -53,9 +53,12 @@ def _bounded_batches(source, schema):
         if total > MAX_TABLE_BYTES or rows > MAX_ROWS:
             raise ValueError('Decoded analysis table byte bound exceeded')
         batches.append(batch)
-    emitted_schema = pa.unify_schemas([batch.schema for batch in batches]) if batches else schema
-    normalized = [pa.RecordBatch.from_arrays(batch.columns, schema=emitted_schema) for batch in batches]
-    return pa.Table.from_batches(normalized, schema=emitted_schema)
+    if batches:
+        first = batches[0].schema
+        schema = pa.schema([field.with_nullable(any(batch.schema[i].nullable for batch in batches))
+                            for i, field in enumerate(first)], metadata=first.metadata)
+    normalized = [pa.RecordBatch.from_arrays(batch.columns, schema=schema) for batch in batches]
+    return pa.Table.from_batches(normalized, schema=schema)
 
 
 def _bounded_table(dataset):
