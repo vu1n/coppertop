@@ -36,6 +36,11 @@ separate explicit cost, storage and temporary-access approval.
 CPU CI uses fixtures without model or dataset downloads. To include the acquired
 real episode locally, set `COPPERTOP_SOURCE` when running the tests above.
 
+The optional [local analysis foundation](docs/analysis.md) registers bounded
+read-only frame/window tables with DataFusion and creates pinned derived Lance
+snapshots for exact state-vector lookup. Canonical Chords artifacts remain
+unchanged; unfinished prefixes retain unknown final outcomes.
+
 The [reload-only launcher](docs/reload-only.md) reuses the saved checkpoint with
 one disposable input Volume. Preparation is offline; execution requires the
 exact approved plan and current code hashes.
