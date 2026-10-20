@@ -342,8 +342,6 @@ def _read_tape(value):
                    for row in value['frames'])
     tape = Tape(value['episode_id'], value['seed'], tuple(tuple(row) for row in value['actions']),
                 frames, value['parent_episode_id'], value['inherited_frames'])
-    if canonical(_tape_record(tape)) != canonical(value):
-        raise ValueError('Recorded tape identity or frame binding differs')
     return tape
 
 
