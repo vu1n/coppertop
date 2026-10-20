@@ -16,6 +16,8 @@ from .streams import read_small
 
 MAX_PAIRS = 1000
 MAX_EVIDENCE_BYTES = 8 * 1024**2
+MAX_PROCESSING_BYTES = 32 * 1024**2
+MAX_IDENTIFIER_BYTES = 1024
 UTILITY_WEIGHTS = ('success', 'wall_second', 'actor_query', 'scorer_query', 'cost_unit', 'task_failure')
 
 
@@ -118,9 +120,17 @@ class ReplayEvidence:
     scope: str
 
 
+def _bounded_tape_ids(episode_id, parent_episode_id):
+    # Frame identities hash these strings per observation, including inherited frames.
+    for value in (episode_id, parent_episode_id):
+        if value is not None and (not isinstance(value, str) or not value or len(value.encode()) > MAX_IDENTIFIER_BYTES):
+            raise ValueError('Bounded native tape identifier required')
+
+
 def _tape_record(tape):
     if not isinstance(tape, Tape) or len(tape.actions) > 600:
         raise ValueError('Bounded audited native Tape required')
+    _bounded_tape_ids(tape.episode_id, tape.parent_episode_id)
     return tape.record({})
 
 
@@ -337,6 +347,7 @@ def _read_tape(value):
             or len(value['actions']) > 600 or not isinstance(value.get('frames'), list)
             or len(value['frames']) != len(value['actions']) + 1):
         raise ValueError('Bounded recorded native tape required')
+    _bounded_tape_ids(value.get('episode_id'), value.get('parent_episode_id'))
     frames = tuple(Frame(step=row['step'], time_ns=row['time_ns'], components=tuple(row['components'].items()),
                          success=row['success'], terminated=row['terminated'], truncated=row['truncated'])
                    for row in value['frames'])
@@ -351,18 +362,22 @@ def evaluate_plan(store, plan_ref):
     Missing scheduled artifacts remain listed separately from evaluated pairs.
     Corruption and malformed artifacts fail rather than becoming task failures.
     """
-    cache, total = {}, 0
+    cache, total, processed = {}, 0, 0
 
     def read(key):
-        nonlocal total
+        nonlocal total, processed
         object_path(key)
         if key not in cache:
             raw = read_small(store, key, limit=MAX_EVIDENCE_BYTES)
             total += len(raw)
             if total > MAX_EVIDENCE_BYTES:
                 raise ValueError('Evaluation closure metadata byte bound exceeded')
-            cache[key] = json.loads(raw)
-        return cache[key]
+            cache[key] = (json.loads(raw), len(raw))
+        # Cached metadata still incurs tape reconstruction/normalization per comparison.
+        processed += cache[key][1]
+        if processed > MAX_PROCESSING_BYTES:
+            raise ValueError('Evaluation processing byte bound exceeded')
+        return cache[key][0]
 
     def continuation(key):
         value = read(key)

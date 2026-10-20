@@ -177,8 +177,11 @@ outcomes/labels; saved model judgments or saved labels are never input labels:
 An empty plan returns zero counts and missing-evidence declarations. Missing
 branch objects remain scheduled in the report. Corrupt present objects are not
 treated as missing. Bounds are 1,000 scheduled comparisons, 8MiB of consumed
-plan/evidence metadata, 600 controls per tape, 128 actor queries and 256 submitted
-queries per continuation. Outputs refuse overwrites.
+plan/evidence metadata, 32MiB of cumulatively referenced metadata processing
+(including cache hits), 1,024 UTF-8 bytes per episode/parent identifier, 600 controls
+per tape, 128 actor queries and 256 submitted queries per continuation. Identifier
+limits apply before tape construction/serialization; canonical source bytes are
+preserved. Outputs refuse overwrites.
 
 ## Evidence and next experiment
 

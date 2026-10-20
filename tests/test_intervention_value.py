@@ -1,6 +1,7 @@
 """Synthetic matched outcomes exercise the reducer; they are no robotics evidence."""
 from dataclasses import replace
 import unittest
+from unittest.mock import patch
 
 from coppertop.chords import canonical, digest
 from coppertop.intervention_value import (Continuation, PairProtocol, ReplayEvidence,
@@ -57,6 +58,17 @@ def replay():
 
 
 class ValueTests(unittest.TestCase):
+    def test_identifiers_are_bounded_before_serializing_direct_library_evidence(self):
+        proto = protocol()
+        original = branch(proto, 'continue')
+        for field in ('episode_id', 'parent_episode_id'):
+            oversized = replace(original, tape=replace(original.tape, **{field: 'ø'*513}))
+            with self.subTest(field=field), patch.object(Tape, 'record', side_effect=AssertionError('serialized early')):
+                with self.assertRaisesRegex(ValueError, 'identifier'):
+                    continuation_record(oversized)
+        maximum = replace(original, tape=replace(original.tape, episode_id='x'*1024))
+        self.assertEqual(continuation_record(maximum)['tape']['episode_id'], 'x'*1024)
+
     def test_contract_paired_value_keeps_vectors_costs_and_provisional_help_harm(self):
         proto = protocol()
         continuing = branch(proto, 'continue')

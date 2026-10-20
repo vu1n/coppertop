@@ -102,3 +102,27 @@ class LocalWorkflowTests(unittest.TestCase):
             evaluate_plan(self.store, key)
         with patch('coppertop.intervention_value.MAX_EVIDENCE_BYTES', 1), self.assertRaises(ValueError):
             evaluate_plan(self.store, self.example['evaluation_plan'])
+
+    def test_oversized_utf8_identifiers_fail_before_tape_construction(self):
+        plan = json.loads(self.store.get(self.example['evaluation_plan']))
+        spec = plan['comparisons'][0]
+        for field, value in [('episode_id', 'x'*1025), ('parent_episode_id', 'x'*1025),
+                             ('episode_id', 'ø'*513), ('parent_episode_id', 'ø'*513)]:
+            evidence = json.loads(self.store.get(spec['replan']))
+            evidence['tape'][field] = value
+            key = self.store.put(canonical(evidence))
+            modified = self.store.put(canonical(dict(plan, comparisons=[dict(spec, replan=key)])))
+            with self.subTest(field=field), patch('coppertop.intervention_value.Frame', side_effect=AssertionError('constructed early')):
+                with self.assertRaisesRegex(ValueError, 'identifier'):
+                    evaluate_plan(self.store, modified)
+
+    def test_cached_evidence_still_consumes_cumulative_processing_budget(self):
+        plan = json.loads(self.store.get(self.example['evaluation_plan']))
+        first = plan['comparisons'][0]
+        second = dict(first, comparison_id='same-evidence-ineligible', eligible=False, ineligible_reason='fixture_exclusion')
+        key = self.store.put(canonical(dict(plan, comparisons=[first, second])))
+        first_pass_bytes = len(self.store.get(key)) + sum(len(self.store.get(first[field])) for field in ('continue', 'replan', 'replay'))
+        self.assertEqual(evaluate_plan(self.store, key)['evaluated_pairs'], 2)
+        with patch('coppertop.intervention_value.MAX_PROCESSING_BYTES', first_pass_bytes):
+            with self.assertRaisesRegex(ValueError, 'processing byte bound'):
+                evaluate_plan(self.store, key)
