@@ -1,5 +1,9 @@
 # Local frame and window analysis
 
+Observed interval sidecars and offline matched-outcome reduction are documented
+in [semantic effects](semantic-effects.md). They use separate derived tables;
+native frame/window snapshots and state-vector retrieval retain their semantics.
+
 This optional foundation reads an existing Chords release, creates fresh local
 Lance snapshots, and queries them through DataFusion. Canonical release, signal,
 raw image/video and annotation objects are never rewritten. There is no service,

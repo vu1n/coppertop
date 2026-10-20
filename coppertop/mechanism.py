@@ -101,15 +101,18 @@ class Tape:
         episode = self.parent_episode_id if index < self.inherited_frames else self.episode_id
         return frame_id(episode, index)
 
-    def publish(self, store: ObjectStore, provenance: dict) -> str:
-        """Small immutable audit sidecar; camera/signal objects stay external."""
-        return store.put(canonical({'schema_version': 1, 'kind': 'mechanism_replay_tape',
+    def record(self, provenance: dict) -> dict:
+        """Canonical native audit payload; camera/signal objects stay external."""
+        return {'schema_version': 1, 'kind': 'mechanism_replay_tape',
             'episode_id': self.episode_id, 'seed': self.seed,
             'parent_episode_id': self.parent_episode_id, 'inherited_frames': self.inherited_frames,
             'action_order': ACTION_ORDER, 'actions': self.actions,
             'frames': [dict(frame.record(self.episode_id), frame_id=self.identity(index))
                        for index, frame in enumerate(self.frames)],
-            'provenance': provenance}))
+            'provenance': provenance}
+
+    def publish(self, store: ObjectStore, provenance: dict) -> str:
+        return store.put(canonical(self.record(provenance)))
 
 
 def replay(factory, tape: Tape, *, prefix_steps: int, continuation_steps: int):

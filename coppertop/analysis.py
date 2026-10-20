@@ -168,7 +168,9 @@ def from_release(store, release_id):
             raise ValueError('Signal decode/row bound exceeded')
         annotation = {}
         for item in overlays:
-            if item.get('episode_id') == record['episode_id']:
+            # Legacy split/quality overlays are untyped. Typed semantic and
+            # outcome sidecars must never alter dataset assignment.
+            if item.get('kind') is None and item.get('episode_id') == record['episode_id']:
                 annotation.update(item)
         split = annotation.get('split', record['provenance'].get('split'))
         if split != 'development' and (record['provenance'].get('split') == 'development'
