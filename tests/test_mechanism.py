@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-from coppertop.chords import LocalStore, canonical, digest
+from coppertop.chords import LocalStore, canonical, digest, frame_id
 from coppertop.mechanism import (COMPONENTS, Frame, Tape, candidate_diagnostics,
                                 delayed_branches, native_actions, replay)
 
@@ -126,6 +126,12 @@ class MechanismTests(unittest.TestCase):
             data = json.loads(store.get(key))
             self.assertEqual(len({f['frame_id'] for f in data['frames']}), 11)
             self.assertEqual(data['action_order'][-1], 'mode')
+            child = replace(original, episode_id='child', parent_episode_id=original.episode_id,
+                            inherited_frames=5)
+            inherited = json.loads(store.get(child.publish(store, {'coverage': 'toy'})))
+            self.assertEqual([row['frame_id'] for row in inherited['frames'][:5]],
+                             [row['frame_id'] for row in data['frames'][:5]])
+            self.assertEqual(inherited['frames'][5]['frame_id'], frame_id('child', 5))
 
     def test_latency_commits_same_controls_then_discards_stale_candidate(self):
         old = np.arange(192, dtype=np.float32).reshape(16, 12)
