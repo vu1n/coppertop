@@ -210,14 +210,10 @@ def _outcome(branch, protocol):
 def _match(continuing, replanning, replay, protocol):
     if replay is None:
         return ['missing_replay_verification'], None
-    if not isinstance(replay, ReplayEvidence):
-        raise ValueError('Explicit replay evidence required')
-    object_path(replay.coverage_sha256)
-    records = [_tape_record(tape) for tape in (replay.uninterrupted, replay.restored)]
+    record = replay_record(replay)
+    records = [record['uninterrupted'], record['restored']]
     reference, restored = replay.uninterrupted, replay.restored
     reasons = []
-    if replay.scope not in ('synthetic_fixture', 'recorded_replay'):
-        raise ValueError('Explicit synthetic or recorded replay evidence scope required')
     # A second observation alone does not test restoration: compare an actual
     # no-intervention suffix as well as every audited prefix component/action.
     if (len(reference.actions) <= protocol.boundary or reference.seed != restored.seed
@@ -336,6 +332,11 @@ def summarize(pairs):
 
 
 def replay_record(replay):
+    if not isinstance(replay, ReplayEvidence):
+        raise ValueError('Explicit replay evidence required')
+    object_path(replay.coverage_sha256)
+    if replay.scope not in ('synthetic_fixture', 'recorded_replay'):
+        raise ValueError('Explicit synthetic or recorded replay evidence scope required')
     return {'kind': 'continuation_replay_verification', 'schema_version': 1,
             'uninterrupted': _tape_record(replay.uninterrupted),
             'restored': _tape_record(replay.restored),
@@ -390,6 +391,17 @@ def evaluate_plan(store, plan_ref):
             raise ValueError('Continuation artifact normalization differs')
         return result
 
+    def replay(key):
+        value = read(key)
+        if (value.get('kind') != 'continuation_replay_verification'
+                or type(value.get('schema_version')) is not int or value['schema_version'] != 1):
+            raise ValueError('Versioned replay verification required')
+        evidence = ReplayEvidence(_read_tape(value['uninterrupted']), _read_tape(value['restored']),
+                                  value['coverage_sha256'], value['scope'])
+        if canonical(replay_record(evidence)) != canonical(value):
+            raise ValueError('Replay evidence binding differs')
+        return evidence
+
     plan = read(plan_ref)
     if (not isinstance(plan, dict) or set(plan) != {'kind', 'schema_version', 'recipe', 'comparisons'}
             or plan['kind'] != 'intervention_evaluation_plan' or type(plan['schema_version']) is not int
@@ -408,26 +420,27 @@ def evaluate_plan(store, plan_ref):
         protocol = PairProtocol(**fields)
         if groups.setdefault(protocol.initialization_group, protocol.split) != protocol.split:
             raise ValueError('Initialization siblings cannot cross splits, including missing cases')
+        artifacts, missing_object = {}, False
+        for name in ('continue', 'replan', 'replay'):
+            if spec[name] is None:
+                continue
+            try:
+                artifacts[name] = replay(spec[name]) if name == 'replay' else continuation(spec[name])
+            except FileNotFoundError:
+                missing_object = True
         absent = [arm for arm in ('continue', 'replan') if spec[arm] is None]
+        if absent or missing_object:
+            for arm in ('continue', 'replan'):
+                if arm in artifacts:
+                    _outcome(artifacts[arm], protocol)
         if absent:
             missing.append({'comparison_id': spec['comparison_id'], 'reason': 'missing_branch', 'arms': absent})
             continue
-        try:
-            continuing, replanning = continuation(spec['continue']), continuation(spec['replan'])
-            evidence = None
-            if spec['replay'] is not None:
-                value = read(spec['replay'])
-                if (value.get('kind') != 'continuation_replay_verification'
-                        or type(value.get('schema_version')) is not int or value['schema_version'] != 1):
-                    raise ValueError('Versioned replay verification required')
-                evidence = ReplayEvidence(_read_tape(value['uninterrupted']), _read_tape(value['restored']),
-                                          value['coverage_sha256'], value['scope'])
-                if canonical(replay_record(evidence)) != canonical(value):
-                    raise ValueError('Replay evidence binding differs')
-            pairs.append(evaluate_pair(continuing, replanning, protocol=protocol, recipe=recipe,
-                                       replay=evidence, eligible=spec['eligible'], ineligible_reason=spec['ineligible_reason']))
-        except FileNotFoundError:
+        if missing_object:
             missing.append({'comparison_id': spec['comparison_id'], 'reason': 'missing_object'})
+            continue
+        pairs.append(evaluate_pair(artifacts['continue'], artifacts['replan'], protocol=protocol, recipe=recipe,
+                                   replay=artifacts.get('replay'), eligible=spec['eligible'], ineligible_reason=spec['ineligible_reason']))
     report = summarize(pairs)
     report.update(plan_sha256=plan_ref, scheduled_pairs=len(plan['comparisons']),
                   evaluated_pairs=len(pairs), initialization_groups=len(groups), missing_comparisons=missing)

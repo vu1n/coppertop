@@ -93,6 +93,59 @@ class LocalWorkflowTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises((ValueError, TypeError)):
                 evaluate_plan(self.store, key)
 
+    def test_missing_branch_cannot_hide_corrupt_present_artifacts(self):
+        plan = json.loads(self.store.get(self.example['evaluation_plan']))
+        spec = plan['comparisons'][0]
+        for missing_arm in ('continue', 'replan'):
+            for missing_ref in (None, digest(b'unavailable object')):
+                for present in ('continue', 'replan', 'replay'):
+                    if present == missing_arm:
+                        continue
+                    path = self.store.path(spec[present])
+                    original = path.read_bytes()
+                    key = self.store.put(canonical(dict(plan, comparisons=[dict(spec, **{missing_arm: missing_ref})])))
+                    try:
+                        path.write_bytes(b'corrupt')
+                        with self.subTest(missing_arm=missing_arm, missing_ref=missing_ref, present=present):
+                            with self.assertRaisesRegex(ValueError, 'mismatch'):
+                                evaluate_plan(self.store, key)
+                    finally:
+                        path.write_bytes(original)
+
+    def test_missing_branch_cannot_hide_malformed_present_artifacts(self):
+        plan = json.loads(self.store.get(self.example['evaluation_plan']))
+        spec = plan['comparisons'][0]
+        for missing_arm in ('continue', 'replan'):
+            for missing_ref in (None, digest(b'unavailable object')):
+                for present in ('continue', 'replan', 'replay'):
+                    if present == missing_arm:
+                        continue
+                    value = json.loads(self.store.get(spec[present]))
+                    tape = value['uninterrupted'] if present == 'replay' else value['tape']
+                    tape['frames'][0]['frame_id'] = digest(b'foreign frame')
+                    changed = dict(spec, **{missing_arm: missing_ref, present: self.store.put(canonical(value))})
+                    key = self.store.put(canonical(dict(plan, comparisons=[changed])))
+                    with self.subTest(missing_arm=missing_arm, missing_ref=missing_ref, present=present):
+                        with self.assertRaisesRegex(ValueError, 'normalization|binding'):
+                            evaluate_plan(self.store, key)
+
+    def test_missing_branch_cannot_hide_invalid_accounting_or_replay_scope(self):
+        plan = json.loads(self.store.get(self.example['evaluation_plan']))
+        spec = plan['comparisons'][0]
+        for missing_ref in (None, digest(b'unavailable object')):
+            for present, mutation in (('replan', 'protocol'), ('replan', 'wall'), ('replay', 'scope')):
+                value = json.loads(self.store.get(spec[present]))
+                if mutation == 'protocol':
+                    value['protocol_sha256'] = digest(b'different protocol')
+                elif mutation == 'wall':
+                    value['wall_ns'] = -1
+                else:
+                    value['scope'] = 'unqualified_override'
+                changed = dict(spec, **{'continue': missing_ref, present: self.store.put(canonical(value))})
+                key = self.store.put(canonical(dict(plan, comparisons=[changed])))
+                with self.subTest(missing_ref=missing_ref, mutation=mutation), self.assertRaises(ValueError):
+                    evaluate_plan(self.store, key)
+
     def test_missing_comparisons_are_still_grouped_and_all_metadata_is_bounded(self):
         plan = json.loads(self.store.get(self.example['evaluation_plan']))
         spec = plan['comparisons'][-1]
