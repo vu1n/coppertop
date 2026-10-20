@@ -1,0 +1,25 @@
+{
+  "kind": "clef_source_review_derivatives",
+  "original_recovery_commit": "c381330c16dd43d75226af845555c795558cd78b",
+  "original_provenance_sha256": "372adbebebfdfbca7cef293963c279dbf5edd702dc707d29bd3d602aad8b0364",
+  "review_finding": "https://github.com/vu1n/coppertop/pull/16#discussion_r4240335094",
+  "change": "Explicit runtime allowlist and owned temporary HOME/XDG/Hugging Face/Torch/pip locations prevent default discovery of controller credentials. All subprocess owners retain these directories through child completion and cleanup. If registered child status remains live or unknown, HOME is retained and the primary error receives a cleanup note; no new process supervisor or hard-stop qualification is claimed. Clef cache validation, CPU gate and worker compile only the exact pinned authenticated reference bytes, bypassing package and bytecode caches. Original source and recovery metadata remain preserved; this file binds the reviewed derivatives. The final benchmark receipt additionally requires a strict lowercase SHA256 actor chunk hash for every scheduled actor row and identical hashes per case across all five phases; mismatches fail parity rather than passing on timings alone. Clef output hashes are not required by this correction. Benchmark timing values must be JSON numbers (integer or float); JSON booleans are rejected.",
+  "files": {
+    "coppertop/colocation_worker.py": "03834a739cf8434e7b89eb3dc5a55474bde4365b8b94976f5a95bf109dd82168",
+    "coppertop/clef_cache.py": "4f1cf3ea5fb3a5dd1a8c7e32827137db02acf91be9bca0393733ba2159d9ea74",
+    "coppertop/colocation_stage.py": "0d02eb70e5222ed3a77d63e5e8855136ee268e4c1b92bff565a8f0c39bd22002",
+    "tests/test_clef_identity.py": "58d00dc3f531b8f68357164e19153b81855cc9fbbc5cf53c3c5b8ee704febad3",
+    "tests/test_evaluation_environment.py": "fad0925e1b1027047b286882b468a97a795990158c2f78be5fb083caafad7123",
+    "tests/test_colocation_worker.py": "eb341425687ce6f446935abaabf928fac22cb32023d18249f53ea83e4ebb6be5"
+  },
+  "model_runtime_verified": false,
+  "provider_calls": false,
+  "paid_authorized": false,
+  "review_findings": [
+    "https://github.com/vu1n/coppertop/pull/16#discussion_r4240335094",
+    "https://github.com/vu1n/coppertop/pull/16#discussion_r4240373872",
+    "https://github.com/vu1n/coppertop/pull/16#discussion_r4240373873",
+    "https://github.com/vu1n/coppertop/pull/16#discussion_r4240411924",
+    "https://github.com/vu1n/coppertop/pull/16#discussion_r4240442146"
+  ]
+}

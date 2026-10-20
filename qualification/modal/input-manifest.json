@@ -1,0 +1,86 @@
+{
+  "actor_query_seed": 20261006,
+  "camera_dtype": "uint8",
+  "camera_history_shape": [
+    4,
+    256,
+    256,
+    3
+  ],
+  "camera_mapping": {
+    "robot0_agentview_left": "video.robot0_agentview_left",
+    "robot0_agentview_right": "video.robot0_agentview_right",
+    "robot0_eye_in_hand": "video.robot0_eye_in_hand"
+  },
+  "camera_names": [
+    "video.robot0_agentview_left",
+    "video.robot0_agentview_right",
+    "video.robot0_eye_in_hand"
+  ],
+  "canonical_camera_names": [
+    "robot0_agentview_left",
+    "robot0_agentview_right",
+    "robot0_eye_in_hand"
+  ],
+  "decoded_array_and_png_bytes": 2949344,
+  "files": [
+    {
+      "bytes": 786560,
+      "path": "camera-0.npy",
+      "sha256": "b3ec25e145625d22e5320a6d682ca240cc3918c3c3ec2490e2e7f2c5bf4d0955"
+    },
+    {
+      "bytes": 786560,
+      "path": "camera-1.npy",
+      "sha256": "ea484b147b164f002f8abc313ae7e1d1fb8c9028745aa8ed30732a9592c252b2"
+    },
+    {
+      "bytes": 786560,
+      "path": "camera-2.npy",
+      "sha256": "b28587abd1e6f6f89065b70724e4196371cfd3e28da094676fdfa53091f0cd10"
+    },
+    {
+      "bytes": 547,
+      "path": "case.json",
+      "sha256": "6c256481a82680b1ccb25bfeb31feddd0889ff388c3cdbcb7b90a71ea0b9fdbb"
+    },
+    {
+      "bytes": 732,
+      "path": "clef-camera-0.png",
+      "sha256": "2bcfac21126a10405fbc290bb087a0a8250299ba774b0b55dd5b3deab05f73c7"
+    },
+    {
+      "bytes": 732,
+      "path": "clef-camera-1.png",
+      "sha256": "5c1b28317181d9554c09f357986a3ba67a77eb5529fdd883ecf4a7b3a80e51d1"
+    },
+    {
+      "bytes": 730,
+      "path": "clef-camera-2.png",
+      "sha256": "95d9329623e67ec7f5a1bda7221c64f99c20932ced7579bc9f68fd5e360bc2ea"
+    },
+    {
+      "bytes": 1310,
+      "path": "clef-record.json",
+      "sha256": "49d86c91192bc0a8cc32410cfb65ec4fe45251a8fa41ceadcf7697c0586c659a"
+    },
+    {
+      "bytes": 352,
+      "path": "state.npy",
+      "sha256": "eea97d741f98ab7dc31bd0bbeddb25c2abde13e9d7005ab4d18ce7d600f5e801"
+    }
+  ],
+  "historical_data_required": false,
+  "input_bytes": 2364083,
+  "kind": "synthetic_native_runtime_qualification",
+  "model_execution": false,
+  "native_processor_execution": false,
+  "provider_calls": false,
+  "question_schema_sha256": "483128fa9b2568d5443ef9f1e4c58a7dfc4e7cbed044020bd67999870e08c131",
+  "schema_version": 1,
+  "state_dtype": "<f4",
+  "state_shape": [
+    4,
+    14
+  ]
+}
