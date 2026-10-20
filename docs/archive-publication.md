@@ -205,6 +205,11 @@ needed. From the repository root, offline preparation is:
 /Users/vuln/Documents/Codex/2026-10-05/task/gpu-smoke-check/controller-venv/bin/python -m coppertop.archive_validation --prepare .local/archive-validation-new
 ```
 
+Preparation accepts `--execution-seconds` and `--publication-requests-max` to
+reduce the original 600-second and 32-request ceilings. Only positive integers
+within those ceilings are accepted. Both limits are bound to the fresh plan's
+approval hash and enforced during execution; cleanup retains its separate bounds.
+
 After direct approval of the exact plan, copy `approval.example.json` to
 `approval.json` in that directory and set its five explicit boolean approvals
 to true. These cover execution, session derivation, failure cleanup and unresolved

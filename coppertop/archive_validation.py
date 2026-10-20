@@ -72,7 +72,15 @@ class DurableTrace:
             save(self.path,{'events':self.events})
 
 
-def prepare(directory):
+def lower_limit(value, ceiling):
+    if type(value) is not int or not 1 <= value <= ceiling:
+        raise ValueError('Validation limit must be a positive integer within the original ceiling')
+    return value
+
+
+def prepare(directory, *, execution_seconds=EXECUTION_SECONDS, publication_requests_max=32):
+    execution_seconds = lower_limit(execution_seconds, EXECUTION_SECONDS)
+    publication_requests_max = lower_limit(publication_requests_max, 32)
     directory = Path(directory).resolve()
     directory.parent.mkdir(parents=True,exist_ok=True)
     directory.mkdir(mode=0o700)  # Never adopt an existing run or its objects.
@@ -89,9 +97,9 @@ def prepare(directory):
         'implementation_sha256':implementation_sha256(),'python':sys.executable,
         'bucket':'coppertop', 'prefix':prefix, 'directory':str(directory),
         'files':FILES, 'raw_bytes':RAW_BYTES, 'descriptor':descriptor,
-        'execution_seconds':EXECUTION_SECONDS, 'cleanup_seconds':CLEANUP_SECONDS,
+        'execution_seconds':execution_seconds, 'cleanup_seconds':CLEANUP_SECONDS,
         'publisher_session_seconds':SESSION_SECONDS, 'cleanup_session_seconds':SESSION_SECONDS,
-        'publication_requests_max':32, 'cleanup_requests_max':16,
+        'publication_requests_max':publication_requests_max, 'cleanup_requests_max':16,
         'storage_class':'STANDARD',
         'single_put_threshold_bytes':STREAMED_PUT_BYTES,
         'remote_bytes_max':REMOTE_BYTES, 'cloud_compute_usd_max':'0',
@@ -112,9 +120,11 @@ def validate_plan(plan, directory):
         or plan.get('bucket')!='coppertop' or plan.get('directory')!=str(Path(directory).resolve())
         or not re.fullmatch(r'chords/mechanism/mechanism-[0-9a-f]{16}',plan.get('prefix',''))):
         raise ValueError('Validation ownership differs')
-    expected = {'files':FILES,'raw_bytes':RAW_BYTES,'execution_seconds':EXECUTION_SECONDS,
+    expected = {'files':FILES,'raw_bytes':RAW_BYTES,
+        'execution_seconds':lower_limit(plan.get('execution_seconds'), EXECUTION_SECONDS),
         'cleanup_seconds':CLEANUP_SECONDS,'publisher_session_seconds':SESSION_SECONDS,
-        'cleanup_session_seconds':SESSION_SECONDS,'publication_requests_max':32,
+        'cleanup_session_seconds':SESSION_SECONDS,
+        'publication_requests_max':lower_limit(plan.get('publication_requests_max'), 32),
         'cleanup_requests_max':16,'remote_bytes_max':REMOTE_BYTES,'cloud_compute_usd_max':'0',
         'storage_class':'STANDARD',
         'single_put_threshold_bytes':STREAMED_PUT_BYTES,
@@ -336,10 +346,11 @@ def cleanup_owned(client,plan,keys,state,*,multipart_expected=True):
             'source_preserved':True,'remote_bytes_max':plan['remote_bytes_max']}
 
 
-def run_publisher(command,environment,*,runner=subprocess.run):
+def run_publisher(command,environment,*,runner=subprocess.run,execution_seconds=EXECUTION_SECONDS):
     """subprocess.run kills and waits on timeout before cleanup may start."""
+    execution_seconds = lower_limit(execution_seconds, EXECUTION_SECONDS)
     try:
-        process=runner(command,env=environment,timeout=EXECUTION_SECONDS,
+        process=runner(command,env=environment,timeout=execution_seconds,
                        cwd=str(Path(__file__).resolve().parent.parent),
                        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         return {'exit_code':process.returncode,'timed_out':False}
@@ -364,7 +375,8 @@ def execute(directory,approval_path,env_file):
     environment={key:value for key,value in os.environ.items() if not any(x in key.upper() for x in ('TOKEN','SECRET','ACCESS_KEY','API_KEY'))}
     environment.update(credentials.environment())
     outcome=run_publisher([sys.executable,'-m','coppertop.archive_validation','--child',str(directory),
-                          '--endpoint',endpoint,'--approval',str(Path(approval_path).resolve())],environment)
+                          '--endpoint',endpoint,'--approval',str(Path(approval_path).resolve())],environment,
+                          execution_seconds=plan['execution_seconds'])
     ownership=load(directory/'owned-keys.json') if (directory/'owned-keys.json').exists() else {'keys':[],'multipart_keys':[]}
     keys=ownership['keys']
     if not isinstance(keys,list) or len(keys)>2 or len(set(keys))!=len(keys) or any(not scope.allows(key) for key in keys):
@@ -405,8 +417,15 @@ def main():
     mode.add_argument('--child',type=Path,help=argparse.SUPPRESS)
     parser.add_argument('--approval',type=Path);parser.add_argument('--env-file',type=Path)
     parser.add_argument('--endpoint')
+    parser.add_argument('--execution-seconds',type=int)
+    parser.add_argument('--publication-requests-max',type=int)
     args=parser.parse_args()
-    if args.prepare: print(json.dumps({'plan_sha256':prepare(args.prepare)}))
+    if not args.prepare and (args.execution_seconds is not None or args.publication_requests_max is not None):
+        parser.error('Reduced limits belong to --prepare and are enforced by the approved plan')
+    if args.prepare:
+        print(json.dumps({'plan_sha256':prepare(args.prepare,
+            execution_seconds=EXECUTION_SECONDS if args.execution_seconds is None else args.execution_seconds,
+            publication_requests_max=32 if args.publication_requests_max is None else args.publication_requests_max)}))
     elif args.child:
         if not args.approval or not args.endpoint: parser.error('Internal child requires approval and endpoint')
         publish_child(args.child,args.endpoint,args.approval)

@@ -1,0 +1,161 @@
+{
+  "approvalLineage": {
+    "approvedScope": "same-scope retry with lower bounds",
+    "executedPlanSha256": "b8e4a3081f4b79ce37f607a25350ae7bec636737ce23a907d025080af95a7f1e",
+    "oldPlanReused": false,
+    "originalPlanSha256": "cac76796ec80789393050ec5fc69a5dfa22f7794e3413eeda8cbe71ecc2b5046",
+    "priorAttemptConsumed": true
+  },
+  "archive": {
+    "bytes": 156098560,
+    "files": 1939,
+    "manifestSha256": "791839cf48d9a3b8b9a885b64e9cc79d3d1d01be4eac0ee3792bb8635262fea8",
+    "rawBytes": 154493961,
+    "sha256": "973e055acb9f5680c90447c3b501a5b161399079622cb52aa88bfd583c04379e"
+  },
+  "billing": {
+    "actualCostUsd": null,
+    "providerEnforcedInvoiceCapVerified": false
+  },
+  "cleanup": {
+    "deleteHttpStatuses": [
+      204,
+      204
+    ],
+    "errors": [],
+    "localSourcePreserved": true,
+    "multipartUploadCreated": false,
+    "ownedObjectsDeleted": 2,
+    "postDeleteHeadHttpStatuses": [
+      404,
+      404
+    ],
+    "verified": true
+  },
+  "dateUtc": "2026-10-11",
+  "limitations": [
+    "Observed object absence does not prove that a late accepted write can never appear.",
+    "Actual billed cost and a provider-enforced invoice ceiling were not verified.",
+    "This single-PUT test does not qualify large multipart completion or cloud compute.",
+    "Independent static review grants no merge or additional execution authority."
+  ],
+  "limits": {
+    "automaticRetries": 0,
+    "cleanupRequests": 16,
+    "cleanupSeconds": 300,
+    "cloudComputeUsd": "0",
+    "operationalR2AllowanceUsd": "5",
+    "publicationRequests": 28,
+    "publicationSeconds": 596,
+    "remoteWriteBytes": 157351936
+  },
+  "originalPrivateEvidenceSha256": {
+    "approval.json": "b1f5dc33da7830b84444aab72af03c75a4ee3f6d14e3862f4db16b07a2f9caf7",
+    "cleanup-telemetry.json": "9f4e1699930ee1a93a14ba4c52bf671408466138d1755028805eafdffe68c619",
+    "closeout.json": "d878978bc364a08f884606752e27a724d9438dc80c635d2e6465f2b0db4ec71e",
+    "handoff-provenance.json": "4b20e5fe2bdd37e86fb5baee764d921d74f96b78ebe59828b745cb693553e707",
+    "independent-verification.json": "afc0ca2e54b5d4d9e4234aa491062fc0b494dcb425527a726862afff3f9b31e8",
+    "invocation.json": "37892b160120235099d56dd496924ab2c812c93b91e5adf928b9e07e9f8c010f",
+    "parameterization.patch": "e93edba4c07d937903fa60f5b169036db8c0338028fc0cd456844802f3ee6c97",
+    "plan.json": "b8e4a3081f4b79ce37f607a25350ae7bec636737ce23a907d025080af95a7f1e",
+    "publisher-telemetry.json": "d0698164d94dde3b4cdefdd89b76599710e96dca179be434800b02879cbf0829",
+    "result.json": "69007659033d7b7d820aceb7ce2150c00ac3f1dca523f5bd3c0d61a008abfece"
+  },
+  "result": "passed",
+  "runtime": {
+    "packages": {
+      "boto3": "1.43.108",
+      "botocore": "1.43.108",
+      "jmespath": "1.1.0",
+      "python-dateutil": "2.9.0.post0",
+      "s3transfer": "0.19.2",
+      "six": "1.17.0",
+      "urllib3": "2.8.0"
+    },
+    "pythonVersion": "3.12.14"
+  },
+  "schemaVersion": 1,
+  "scope": "single-synthetic-r2-archive-qualification",
+  "security": {
+    "credentialsPersisted": false,
+    "rawInputsPublished": false,
+    "tlsSettingsChanged": false
+  },
+  "source": {
+    "capturedCommitContainsExactExecutedRuntime": true,
+    "capturedHarnessCommit": "75361c1d49d6d89de2ff315f57b3d1ffdc09e00c",
+    "capturedHarnessTree": "8885ddc33e732db5301d8361a7da1a1911a4d5d2",
+    "executedBaseCommit": "9b842bdf181b13019407bc5f798b74e874ee7e28",
+    "implementationSha256": "ca1fa4f6af7d2ed0eea20c5247112a8ef524708a70748a619cdb0c761b11b7ec",
+    "repository": "vu1n/coppertop",
+    "runtimeFilesSha256": {
+      "archive_validation.py": "03251a2892cbc7e0fe6791e763ef15da3ddb93fb300ffd96ebe6be2c0342de76",
+      "publication_trace.py": "e9a3ea237a617f96f4da490fddf032aecae243ee5569854c426fe55081a9710b",
+      "r2_session.py": "7d5fbe467931d29527a8f5af9e41f41391de8661dfa2daf6e7c0eac24474b12a",
+      "record_archive.py": "7f5cf51c180253b8e33e64606ab4484f1f963c1ebe5bf6a8ac40edbcbd711fca",
+      "reload_launch.py": "ffdc13bfefa1119c15ef0c692829bed0a87203903e702b8c1bd900c3064d1b00",
+      "s3.py": "7524200358a58c6e69e75442ed5f68b81df11553e5581775d4136f6870021268"
+    }
+  },
+  "usage": {
+    "aggregatePublicationBudgetRequestsRemaining": 16,
+    "aggregatePublicationBudgetRequestsUsed": 16,
+    "cleanupRequests": 4,
+    "cleanupRequestsRemaining": 12,
+    "controllerSeconds": 20.214809570000057,
+    "priorPublicationBudgetRequestsConsumed": 4,
+    "publicationRequests": 12,
+    "remoteWriteBytes": 156099359,
+    "timingsSeconds": {
+      "first_upload_seconds": 0.5124602930000037,
+      "publisher_prep_seconds": 0.12545097999998234,
+      "readback_seconds": 2.8661050270000032,
+      "receipt_seconds": 1.7772732729999916,
+      "seal_seconds": 0.6601504300000443,
+      "source_check_seconds": 0.12535489499998675,
+      "upload_seconds": 11.72399012400001
+    }
+  },
+  "validation": {
+    "focusedCommand": ".local/r2-qualification-venv/bin/python -m unittest discover -s tests -p 'test_archive*.py' -v",
+    "focusedTests": 23,
+    "focusedTestsPassed": true,
+    "focusedUnittestSeconds": 7.646,
+    "fullSuiteRunForThisChange": false,
+    "independentCodeReview": {
+      "baseCommit": "9b842bdf181b13019407bc5f798b74e874ee7e28",
+      "confirmedActionableFindings": 0,
+      "historicalClaimsNotIndependentlyReobserved": [
+        "The original user authorization and prior 23-test passing run.",
+        "Live provider outcomes, credential-handling history, and remote repository privacy checks."
+      ],
+      "independentlyVerified": [
+        "All 10 original evidence file hashes and all six runtime file hashes match.",
+        "The aggregate implementation hash, captured harness tree, and original parameterization patch match.",
+        "The canonical fresh plan hash, five approval booleans, and documented limits match.",
+        "The retained archive hash, size, manifest, and 1939 archived and source file hashes match.",
+        "Telemetry contains 12 publication calls and four cleanup calls, including two delete 204 / HEAD 404 pairs.",
+        "The original private attempt is ignored and contains no tracked files.",
+        "Source inspection confirms strict lower limits, approved timeout propagation, request caps, and exact cleanup scope."
+      ],
+      "limitations": "Static and local evidence review does not repeat live execution or establish actual billing.",
+      "method": "Independent static source review and preserved local evidence cross-check",
+      "providerCallsPerformed": 0,
+      "reviewedCommit": "66d1e936f37fe8a539fe58328bd6725c434cc3d0",
+      "runtimeChangesRequired": false,
+      "testsRerun": false
+    },
+    "independentCodeReviewStatus": "completed",
+    "testsMatchCapturedHarnessCommit": true
+  },
+  "verification": {
+    "completionReceiptSha256": "29fe1f51ba4ada1856f4d8053d0baa192f2dbaf67a9f23ebdba21f955b51602a",
+    "completionReceiptVerifiedTwice": true,
+    "independentArchivedAndSourceFileHashesVerified": 1939,
+    "independentLocalArchiveReload": true,
+    "providerRequestsAfterCleanup": 0,
+    "publisherExitCode": 0,
+    "publisherTimedOut": false,
+    "streamedFullR2Sha256Readback": true
+  }
+}
