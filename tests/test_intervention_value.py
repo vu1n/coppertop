@@ -195,6 +195,63 @@ class ValueTests(unittest.TestCase):
         self.assertEqual(pair['case_frame_id'], parent.identity(proto.boundary))
         self.assertEqual(pair['timing_label'], 'replan')
 
+    def test_contract_paired_value_rejects_colliding_divergent_suffix_records(self):
+        proto = protocol()
+        evidence = replay()
+        parent = replace(evidence.uninterrupted, episode_id='synthetic/decision',
+                         parent_episode_id=None, inherited_frames=0)
+        evidence = replace(evidence, uninterrupted=parent)
+        continuing = branch(proto, 'continue')
+        replanning = branch(proto, 'replan', changed=True)
+        same_branch_id = replace(replanning.tape, episode_id=continuing.tape.episode_id)
+        variants = {
+            'branch_collision': same_branch_id,
+            'uninterrupted_collision': replace(replanning.tape, inherited_frames=len(replanning.tape.frames)),
+            'restored_collision': replace(replanning.tape, episode_id=evidence.restored.episode_id),
+            'incoming_action_only': replace(same_branch_id, frames=continuing.tape.frames),
+            'observation_only': replace(same_branch_id, actions=continuing.tape.actions),
+        }
+        for name, value in variants.items():
+            with self.subTest(name=name):
+                pair = evaluate_pair(continuing, replace(replanning, tape=value),
+                                     protocol=proto, recipe=recipe(), replay=evidence)
+                self.assertIn('suffix_identity_collision', pair['invalid_reasons'])
+                self.assertIsNone(pair['delta'])
+                self.assertIsNone(pair['timing_label'])
+
+    def test_consistent_suffix_identity_reuse_retains_no_handoff_costs(self):
+        proto = protocol()
+        continuing = branch(proto, 'same-recording')
+        replanning = branch(proto, 'same-recording', calls=(call(), call(started=200)))
+        pair = evaluate_pair(continuing, replanning, protocol=proto, recipe=recipe(), replay=replay())
+        self.assertTrue(pair['valid'])
+        self.assertEqual(pair['handoff'], 'no_handoff')
+        self.assertEqual(pair['timing_label'], 'continue')
+
+    def test_delayed_fork_can_share_an_observation_with_different_outgoing_controls(self):
+        proto = protocol()
+        evidence = replay()
+        parent = replace(evidence.uninterrupted, episode_id='synthetic/decision',
+                         parent_episode_id=None, inherited_frames=0)
+        evidence = replace(evidence, uninterrupted=parent)
+        continuing = branch(proto, 'continue')
+        continuing = replace(continuing, tape=replace(continuing.tape, inherited_frames=3))
+        replanning = branch(proto, 'replan', changed=True)
+        delayed = replace(replanning.tape, actions=continuing.tape.actions[:2] + replanning.tape.actions[2:],
+                          frames=continuing.tape.frames[:3] + replanning.tape.frames[3:], inherited_frames=3)
+        self.assertEqual(continuing.tape.identity(2), delayed.identity(2))
+        self.assertNotEqual(continuing.tape.actions[2], delayed.actions[2])
+        self.assertNotEqual(continuing.tape.identity(3), delayed.identity(3))
+        pair = evaluate_pair(continuing, replace(replanning, tape=delayed),
+                             protocol=proto, recipe=recipe(), replay=evidence)
+        self.assertTrue(pair['valid'])
+        self.assertEqual(pair['changed_controls'], 2)
+        early = branch(proto, 'early-success', tape=tape('early-success', changed=True, success=True, end=2),
+                       success_wall_ns=900_000_000)
+        pair = evaluate_pair(continuing, early, protocol=proto, recipe=recipe(), replay=evidence)
+        self.assertTrue(pair['valid'])
+        self.assertEqual(pair['timing_label'], 'replan')
+
     def test_contract_paired_value_budget_protocol_seed_and_accounting_are_strict(self):
         proto = protocol(ceiling=1)
         for kwargs in [dict(protocol_sha256=digest(b'other')), dict(split='sealed_test'),

@@ -231,6 +231,12 @@ def _match(continuing, replanning, replay, protocol):
                 or branch.tape.frames[:protocol.boundary + 1] != reference.frames[:protocol.boundary + 1]
                 or prefix_ids(branch.tape) != reference_ids):
             reasons.append('branch_prefix_mismatch')
+    suffixes = {}
+    for tape in (reference, restored, continuing.tape, replanning.tape):
+        for index in range(protocol.boundary + 1, len(tape.frames)):
+            observed = (tape.frames[index], tape.actions[index - 1])
+            if suffixes.setdefault(tape.identity(index), observed) != observed:
+                reasons.append('suffix_identity_collision')
     if reference.frames[min(protocol.boundary, len(reference.actions))].stopped:
         reasons.append('stopped_decision_boundary')
     if replay.scope == 'recorded_replay':

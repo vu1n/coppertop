@@ -131,7 +131,10 @@ suffix. It also compares native observation identities across the full prefix
 through the decision boundary. Branches and the restored replay must share the
 uninterrupted tape's represented prefix identities; legitimate child tapes keep
 distinct suffix identities. Equal telemetry alone cannot bind unrelated episodes
-to one case. Both branch prefixes must match the reference. Equality of reset alone
+to one case. Reused suffix identities must bind the same post-control observation
+and incoming executed control across every branch and replay tape. Shared
+observations can precede different outgoing controls at a delayed fork. Both
+branch prefixes must match the reference. Equality of reset alone
 does not qualify. The coverage hash identifies the external restoration audit;
 matching component hashes cannot establish its completeness. Version1 labels
 only `synthetic_fixture` replay evidence. `recorded_replay` is retained with
