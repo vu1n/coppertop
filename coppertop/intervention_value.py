@@ -214,15 +214,22 @@ def _match(continuing, replanning, replay, protocol):
     records = [record['uninterrupted'], record['restored']]
     reference, restored = replay.uninterrupted, replay.restored
     reasons = []
+
+    def prefix_ids(tape):
+        return tuple(tape.identity(i) for i in range(min(protocol.boundary + 1, len(tape.frames))))
+
+    reference_ids = prefix_ids(reference)
     # A second observation alone does not test restoration: compare an actual
     # no-intervention suffix as well as every audited prefix component/action.
     if (len(reference.actions) <= protocol.boundary or reference.seed != restored.seed
-            or reference.actions != restored.actions or reference.frames != restored.frames):
+            or reference.actions != restored.actions or reference.frames != restored.frames
+            or prefix_ids(restored) != reference_ids):
         reasons.append('no_intervention_replay_mismatch')
     for branch in (continuing, replanning):
         if (branch.tape.seed != reference.seed
                 or branch.tape.actions[:protocol.boundary] != reference.actions[:protocol.boundary]
-                or branch.tape.frames[:protocol.boundary + 1] != reference.frames[:protocol.boundary + 1]):
+                or branch.tape.frames[:protocol.boundary + 1] != reference.frames[:protocol.boundary + 1]
+                or prefix_ids(branch.tape) != reference_ids):
             reasons.append('branch_prefix_mismatch')
     if reference.frames[min(protocol.boundary, len(reference.actions))].stopped:
         reasons.append('stopped_decision_boundary')
@@ -242,6 +249,12 @@ def _utility(outcome, recipe):
             - weights['task_failure'] * outcome['task_failures'])
 
 
+def _eligibility(eligible, reason):
+    if type(eligible) is not bool or (eligible and reason is not None) or (
+            not eligible and (not isinstance(reason, str) or not reason or len(reason) > 256)):
+        raise ValueError('Runtime eligibility and exclusion reason must be separate from value')
+
+
 def evaluate_pair(continuing, replanning, *, protocol, recipe, replay=None, eligible=True,
                   ineligible_reason=None):
     """Reduce a single declared comparison; no model calls, training export or actuation.
@@ -251,9 +264,7 @@ def evaluate_pair(continuing, replanning, *, protocol, recipe, replay=None, elig
     """
     if not isinstance(protocol, PairProtocol) or not isinstance(recipe, UtilityRecipe):
         raise ValueError('Frozen protocol and explicit objective recipe required')
-    if type(eligible) is not bool or (eligible and ineligible_reason is not None) or (
-            not eligible and (not isinstance(ineligible_reason, str) or not ineligible_reason or len(ineligible_reason) > 256)):
-        raise ValueError('Runtime eligibility and exclusion reason must be separate from value')
+    _eligibility(eligible, ineligible_reason)
     outcomes = {'continue': _outcome(continuing, protocol), 'replan': _outcome(replanning, protocol)}
     reasons, match = _match(continuing, replanning, replay, protocol)
     for arm, outcome in outcomes.items():
@@ -416,6 +427,7 @@ def evaluate_plan(store, plan_ref):
                 or spec['comparison_id'] in identities):
             raise ValueError('Distinct scheduled comparison identity/schema required')
         identities.add(spec['comparison_id'])
+        _eligibility(spec['eligible'], spec['ineligible_reason'])
         fields = dict(spec['protocol'], actor_seeds=tuple(spec['protocol']['actor_seeds']))
         protocol = PairProtocol(**fields)
         if groups.setdefault(protocol.initialization_group, protocol.split) != protocol.split:

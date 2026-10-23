@@ -22,7 +22,7 @@ def _fixture_tape(name, *, changed=False, success=False):
     frames = tuple(Frame(i, i * 50_000_000,
                          tuple((key, digest(f'{key}/{i}/{changed and i > 1}'.encode())) for key in COMPONENTS),
                          success=success and i == 4) for i in range(5))
-    return Tape(name, 1152, actions, frames)
+    return Tape(name, 1152, actions, frames, parent_episode_id='synthetic/decision', inherited_frames=2)
 
 
 def _fixture_call(kind, index):

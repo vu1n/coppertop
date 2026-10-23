@@ -156,6 +156,24 @@ class LocalWorkflowTests(unittest.TestCase):
         with patch('coppertop.intervention_value.MAX_EVIDENCE_BYTES', 1), self.assertRaises(ValueError):
             evaluate_plan(self.store, self.example['evaluation_plan'])
 
+    def test_missing_comparisons_cannot_hide_invalid_eligibility(self):
+        plan = json.loads(self.store.get(self.example['evaluation_plan']))
+        spec = plan['comparisons'][0]
+        for absent in (None, digest(b'unavailable object')):
+            for eligible, reason in ((True, 'stale'), (1, None), (0, 'stale'),
+                                     (False, None), (False, ''), (False, 'x'*257)):
+                changed = dict(spec, **{'continue': absent, 'eligible': eligible, 'ineligible_reason': reason})
+                key = self.store.put(canonical(dict(plan, comparisons=[changed])))
+                with self.subTest(absent=absent, eligible=eligible, reason=reason):
+                    with self.assertRaisesRegex(ValueError, 'eligibility'):
+                        evaluate_plan(self.store, key)
+            changed = dict(spec, **{'continue': absent, 'eligible': False, 'ineligible_reason': 'stale'})
+            key = self.store.put(canonical(dict(plan, comparisons=[changed])))
+            report = evaluate_plan(self.store, key)
+            self.assertEqual(report['evaluated_pairs'], 0)
+            self.assertEqual(len(report['missing_comparisons']), 1)
+            self.assertEqual(report['labels'], {})
+
     def test_oversized_utf8_identifiers_fail_before_tape_construction(self):
         plan = json.loads(self.store.get(self.example['evaluation_plan']))
         spec = plan['comparisons'][0]

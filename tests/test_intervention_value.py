@@ -34,7 +34,8 @@ def tape(name, *, changed=False, success=False, end=4, terminated=False, truncat
                             truncated=truncated and index == end))
         if index < end:
             actions.append(native_actions([1.0 if changed and index >= 1 else 0.0] * 12))
-    return Tape(name, 1152, tuple(actions), tuple(frames))
+    return Tape(name, 1152, tuple(actions), tuple(frames),
+                parent_episode_id='synthetic/decision', inherited_frames=min(2, len(frames)))
 
 
 def call(kind='actor', *, control=1, started=0, status='completed', cost=0.01, seed=17):
@@ -139,6 +140,60 @@ class ValueTests(unittest.TestCase):
             pair = evaluate_pair(branch(proto, 'continue'), branch(proto, 'replan'),
                                  protocol=proto, recipe=recipe(), replay=evidence)
             self.assertIn('no_intervention_replay_mismatch', pair['invalid_reasons'])
+
+    def test_contract_paired_value_requires_shared_native_prefix_identities(self):
+        proto = protocol()
+        continuing = branch(proto, 'continue')
+        replanning = branch(proto, 'replan', changed=True, success=True)
+        evidence = replay()
+        baseline = evaluate_pair(continuing, replanning, protocol=proto, recipe=recipe(), replay=evidence)
+        self.assertTrue(baseline['valid'])
+        for arm in ('continue', 'replan', 'uninterrupted', 'restored'):
+            first, second, verification = continuing, replanning, evidence
+            original = {'continue': continuing.tape, 'replan': replanning.tape,
+                        'uninterrupted': evidence.uninterrupted, 'restored': evidence.restored}[arm]
+            foreign = replace(original, episode_id='unrelated/episode', parent_episode_id=None, inherited_frames=0)
+            if arm == 'continue':
+                first = replace(continuing, tape=foreign)
+            elif arm == 'replan':
+                second = replace(replanning, tape=foreign)
+            else:
+                verification = replace(evidence, **{arm: foreign})
+            with self.subTest(arm=arm):
+                pair = evaluate_pair(first, second, protocol=proto, recipe=recipe(), replay=verification)
+                self.assertFalse(pair['valid'])
+                self.assertIsNone(pair['delta'])
+                self.assertIsNone(pair['timing_label'])
+
+    def test_matching_boundary_identity_does_not_hide_different_reset_lineage(self):
+        proto = protocol()
+        evidence = replay()
+        source = evidence.uninterrupted.parent_episode_id or evidence.uninterrupted.episode_id
+        replanning = branch(proto, 'replan', changed=True)
+        different_reset = replace(replanning.tape, episode_id=source,
+                                  parent_episode_id='unrelated/reset', inherited_frames=1)
+        self.assertEqual(different_reset.identity(proto.boundary), evidence.uninterrupted.identity(proto.boundary))
+        self.assertNotEqual(different_reset.identity(0), evidence.uninterrupted.identity(0))
+        pair = evaluate_pair(branch(proto, 'continue'), replace(replanning, tape=different_reset),
+                             protocol=proto, recipe=recipe(), replay=evidence)
+        self.assertIn('branch_prefix_mismatch', pair['invalid_reasons'])
+        self.assertIsNone(pair['timing_label'])
+
+    def test_native_parent_and_inherited_children_keep_distinct_suffix_identities(self):
+        proto = protocol()
+        evidence = replay()
+        parent = replace(evidence.uninterrupted, episode_id='synthetic/decision',
+                         parent_episode_id=None, inherited_frames=0)
+        evidence = replace(evidence, uninterrupted=parent)
+        continuing = branch(proto, 'continue')
+        replanning = branch(proto, 'replan', changed=True, success=True)
+        for child in (continuing.tape, replanning.tape, evidence.restored):
+            self.assertEqual(child.identity(proto.boundary), parent.identity(proto.boundary))
+            self.assertNotEqual(child.identity(proto.boundary + 1), parent.identity(proto.boundary + 1))
+        pair = evaluate_pair(continuing, replanning, protocol=proto, recipe=recipe(), replay=evidence)
+        self.assertTrue(pair['valid'])
+        self.assertEqual(pair['case_frame_id'], parent.identity(proto.boundary))
+        self.assertEqual(pair['timing_label'], 'replan')
 
     def test_contract_paired_value_budget_protocol_seed_and_accounting_are_strict(self):
         proto = protocol(ceiling=1)

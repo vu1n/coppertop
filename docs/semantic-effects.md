@@ -127,7 +127,11 @@ a bounded task outcome; an early truncated or unfinished prefix does not.
 
 `ReplayEvidence` compares all eight existing audited components, native actions,
 seed and control timestamps across the full prefix and an actual no-intervention
-suffix. Both branch prefixes must match that reference. Equality of reset alone
+suffix. It also compares native observation identities across the full prefix
+through the decision boundary. Branches and the restored replay must share the
+uninterrupted tape's represented prefix identities; legitimate child tapes keep
+distinct suffix identities. Equal telemetry alone cannot bind unrelated episodes
+to one case. Both branch prefixes must match the reference. Equality of reset alone
 does not qualify. The coverage hash identifies the external restoration audit;
 matching component hashes cannot establish its completeness. Version1 labels
 only `synthetic_fixture` replay evidence. `recorded_replay` is retained with
@@ -154,7 +158,9 @@ probability. No-handoff results retain their query costs and are identified
 separately; they cannot establish a different action's benefit. Changed controls
 are measured from overlapping executed controls, not inferred from scorer output.
 
-`evaluate_pair` keeps runtime eligibility separate. Ineligible cases do not
+`evaluate_pair` keeps runtime eligibility separate. Saved plans validate
+eligibility and exclusion-reason metadata even when branches or objects are
+missing. Ineligible cases do not
 become intrinsic continue labels. Missing replay, unknown outcomes, unqualified
 restoration and infrastructure failures have explicit reasons and null labels.
 Malformed artifacts, protocol/seed/budget violations and corruption fail loudly;
