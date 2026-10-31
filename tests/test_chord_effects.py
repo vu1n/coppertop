@@ -10,7 +10,7 @@ import pyarrow.compute as pc
 
 from coppertop.analysis import FrameData, FRAME_SCHEMA, from_release
 from coppertop.chord_effects import effect_annotation, effect_table, from_effect_release
-from coppertop.chords import LocalStore, canonical, digest, fork
+from coppertop.chords import LocalStore, canonical, digest, fork, frame_id
 from test_analysis import fixture
 
 
@@ -108,9 +108,57 @@ class EffectTests(unittest.TestCase):
     def test_initialization_siblings_cannot_cross_split(self):
         rows = self.data.table.to_pylist()
         siblings = copy.deepcopy(rows)
-        from coppertop.chords import frame_id
         for row in siblings:
             row.update(episode_id='sibling', split='train', frame_id=frame_id('sibling', row['frame_index']))
         bad = FrameData(pa.Table.from_pylist(rows+siblings, schema=FRAME_SCHEMA), self.data.sources)
         with self.assertRaisesRegex(ValueError, 'cross splits'):
             effect_table(bad, [])
+
+    def test_overlapping_annotations_do_not_rescan_native_actions(self):
+        rows = []
+        original = self.data.table.to_pylist()[0]
+        for index in range(128):
+            row = copy.deepcopy(original)
+            row.update(frame_index=index, time_ns=index*50_000_000,
+                       frame_id=frame_id(row['episode_id'], index))
+            if index == 127:
+                row['action'] = None
+            rows.append(row)
+        table = pa.Table.from_pylist(rows, schema=FRAME_SCHEMA)
+        data = FrameData(table, self.data.sources)
+        fields = dict(episode_id=original['episode_id'], start=0, end=127,
+                      entity='mug', predicate='support_relation', before='table', after='gripper',
+                      evidence_kind='synthetic_fixture', provenance=digest(b'fixture rubric'))
+        annotation = effect_annotation(data, **fields)
+        overlays = [dict(annotation, entity=f'entity-{index}') for index in range(128)]
+        reads = [0]
+
+        class CountedRow(dict):
+            def __getitem__(self, key):
+                if key == 'action':
+                    reads[0] += 1
+                return super().__getitem__(key)
+
+        class CountedTable:
+            def __getattr__(self, key):
+                return getattr(table, key)
+
+            def to_pylist(self):
+                return [CountedRow(row) for row in table.to_pylist()]
+
+        counted = FrameData(CountedTable(), self.data.sources)
+        self.assertEqual(effect_table(counted, overlays).num_rows, len(overlays))
+        # Count work rather than wall time: each frame plus bounded per-label work.
+        self.assertLessEqual(reads[0], 3*len(rows) + len(overlays))
+
+    def test_missing_action_is_checked_only_within_each_half_open_interval(self):
+        rows = self.data.table.to_pylist()
+        rows[1]['action'] = None
+        data = FrameData(pa.Table.from_pylist(rows, schema=FRAME_SCHEMA), self.data.sources)
+        fields = {key: value for key, value in self.annotation().items()
+                  if key in ('episode_id', 'entity', 'predicate', 'before', 'after', 'evidence_kind', 'provenance')}
+        for start, end in ((0, 1), (2, 3)):
+            self.assertEqual(effect_annotation(data, start=start, end=end, **fields)['end'], end)
+        for start, end in ((0, 2), (1, 2), (1, 3)):
+            with self.subTest(start=start, end=end), self.assertRaisesRegex(ValueError, 'outgoing'):
+                effect_annotation(data, start=start, end=end, **fields)

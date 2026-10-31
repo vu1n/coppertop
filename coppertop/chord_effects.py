@@ -32,7 +32,9 @@ def _episodes(data):
     data.validate()
     episodes = {}
     for row in data.table.to_pylist():
-        episodes.setdefault(row['episode_id'], []).append(row)
+        rows, missing = episodes.setdefault(row['episode_id'], ([], [0]))
+        rows.append(row)
+        missing.append(missing[-1] + (row['action'] is None))
     return episodes
 
 
@@ -47,12 +49,12 @@ def _annotation(episodes, *, episode_id, start, end, entity, predicate, before, 
                 evidence_kind, provenance, available_at=None):
     if not isinstance(episode_id, str) or episode_id not in episodes:
         raise ValueError('Effect episode is absent from native frames')
-    rows = episodes[episode_id]
+    rows, missing = episodes[episode_id]
     available_at = end if available_at is None else available_at
     if (any(type(x) is not int for x in (start, end, available_at))
             or not 0 <= start < end <= available_at < len(rows)):
         raise ValueError('Observed interval and availability at or after its end required')
-    if any(row['action'] is None for row in rows[start:end]):
+    if missing[end] != missing[start]:
         raise ValueError('Interval must have every outgoing native control')
     for value in (entity, predicate):
         _text(value)
