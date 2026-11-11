@@ -41,6 +41,10 @@ read-only frame/window tables with DataFusion and creates pinned derived Lance
 snapshots for exact state-vector lookup. Canonical Chords artifacts remain
 unchanged; unfinished prefixes retain unknown final outcomes.
 
+[Demonstration quality scoring](docs/quality.md) separates capture faults
+(tracking drift, pose jumps, truncated segments) from within-task execution
+scores on any LeRobot v3 dataset, read-only.
+
 The [reload-only launcher](docs/reload-only.md) reuses the saved checkpoint with
 one disposable input Volume. Preparation is offline; execution requires the
 exact approved plan and current code hashes.
